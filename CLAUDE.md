@@ -33,3 +33,7 @@ belong in mass-gap-investigation. See README.md for the model.
   At the starting points: cold start ln L −7220, Var 91–104, min event Neff 23–29; warm start (k = 10) ln L −6633,
   Var 122, min Neff 13 (the high-spin events, which the source fit with its 2G ellipse). Value+gradient 24 ms (k = 10),
   10 ms (k = 5) on an A100.
+- 2026-10-20 11:35 EDT: both stopped for a cluster reboot (user), launchers and runs killed by PID. k = 5 short was sampling
+  (partial chain in `results/ppc_nrsur_k5_short/`); k = 10 short was at warmup step 1827/2000 (no samples). Relaunch with
+  `launch.sh` (frozen copy); `run.py` refuses a run directory that already has chains, so the k = 5 short needs `--tag` or
+  moving its partial chain aside.
