@@ -1,6 +1,6 @@
 # bbh-pixelpop-constraints
 
-Weakly modelled constraints on the binary black hole population (O1–O4b, 236 events) with PixelPop: what the data say
+Weakly modelled constraints on the binary black hole population (O1–O4b, 259 events at IFAR > 1 yr) with PixelPop: what the data say
 about masses and spins, and how spins change with mass, without gates, channels or a second-generation template.
 
 ## Model (`model.py`)
@@ -19,20 +19,43 @@ about masses and spins, and how spins change with mass, without gates, channels 
 The model is the `mass_gate='none'`, `frac_2g_gate='none'` case of mass-gap-investigation's `hierarchical.py`;
 `tests/test_model.py` checks they give the same likelihood.
 
-## Data
+## Data (`collect/`)
 
-The PE and injection collections live in mass-gap-investigation (`data/<catalog>_o1o4b_chieffchip/data/`): the same
-236 BBHs (IFAR > 4 yr, GW190814 excluded) and VT mixture as there; catalog `nrsur` uses NRSur7dq4 PE where available.
-Set `PPC_DATA_ROOT` to read them from elsewhere.
+Catalog `gwtc5`: the O4b population paper's August-rerun set
+(`~/public_html/o4b_population/pixelpop-o4/code/collection/collect_o4b_chieff_chip.ini`), 259 O1–O4b BBHs at
+**FAR < 1/yr (IFAR > 1 yr)**. Same files, ignore list, labels, VT and thresholds as that ini:
+
+- files: rp.o4's GWTC-2.1 and GWTC-3 (v1) data releases, GWTC-4.1 Stable_Release-3 and GWTC-5 Stable_Release-8
+  `bbh_only` trees (scraped at FAR < 1/yr); the ini's ignore list removes sub-threshold and NS-containing O1–O3 events
+  and GW190814, GW190917;
+- labels: first present of NRSur7dq4 > Mixed > IMRPhenomXPHM-SpinTaylor (C01:Mixed for O1–O3; C00:NRSur7dq4 else
+  C00:Mixed for O4a; NRSur7dq4 else SpinTaylor for O4b);
+- VT: `multirun-mixtures_20260410130052UTC_corrected/mixture-semi_o1_o2-real_o3_o4a_o4b-cartesian_spins_...-clipped.hdf`,
+  IFAR > 1, O1/O2 semianalytic SNR > 10.
+
+The difference is the collector: the reference used upstream `gwpopulation_pipe_collection`, which cuts every event to
+the smallest one's 1993 samples. Here pixelpop's collector keeps each event's own samples (**variable NPE**, cap 20000;
+per-event counts 1993–134k, median 17k), padding short events with prior = +inf rows. Each event's PE prior is
+evaluated in the cosmology its samples were drawn with (Planck15_LAL for O1–O3 and for GWTC-5's GW250114 NRSur7dq4
+group, astropy Planck15 for the rest of O4; `dry_run.py` verifies d_L(z) per file). `dry_run.py` and `check_labels.py`
+check events, files and labels against the reference's `event_data.json`.
+
+```bash
+cd collect && bash run_collect.sh > logs/collect.log 2>&1   # dry run, collect, check
+```
+
+Output: `data/gwtc5_ifar1_chieffchip/data/{posteriors,injections}.pkl` (gitignored; `PPC_DATA_DIR` reads it from
+elsewhere). The earlier catalogs `nrsur`, `physical`, `mixed` (mass-gap-investigation's IFAR > 4 yr collections, 236
+events, `PPC_DATA_ROOT`) stay loadable for comparison.
 
 ## Running
 
 ```bash
 # environment: ~/.conda/envs/gwjax313 (pixelpop 0.4.0.dev1 with the per-file cosmology collection edit)
-python run.py nrsur --spin-mass-modes 10 --device 0 --mem-fraction .4 --check-only     # ln L at the start, speed
-python warmstart.py nrsur --spin-mass-modes 10 --device 0 --source <chain h5> --out results/warm.npz
-python run.py nrsur --spin-mass-modes 10 --device 0 --mem-fraction .4 [--short] --init-from results/warm.npz
-bash launch.sh nrsur 10 0 .4          # warm start, short chain, long chain (launch a frozen copy)
+python run.py gwtc5 --spin-mass-modes 10 --device 0 --mem-fraction .4 --check-only     # ln L at the start, speed
+python warmstart.py gwtc5 --spin-mass-modes 10 --device 0 --source <chain h5> --out results/warm.npz
+python run.py gwtc5 --spin-mass-modes 10 --device 0 --mem-fraction .4 [--short] --init-from results/warm.npz
+bash launch.sh gwtc5 10 0 .4          # warm start, short chain, long chain (launch a frozen copy)
 JAX_PLATFORMS=cpu XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1" \
     taskset -c <4 cores> python -m pytest tests -q
 ```

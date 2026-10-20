@@ -1,6 +1,6 @@
 """Sample the weakly modelled population (model.py); chains land in results/<run name>/.
 
-    python run.py nrsur --spin-mass-modes 10 --device 0 --mem-fraction .4 [--short]
+    python run.py gwtc5 --spin-mass-modes 10 --device 0 --mem-fraction .4 [--short]
 
 Run name: ppc_<catalog>_k<spin mass modes>[_neff<floor>][_no231123][_short][_<tag>].
 
@@ -18,7 +18,7 @@ SHORT = dict(warmup=2000, tot_samples=500, thinning=5)
 
 def make_parser():
     ap = argparse.ArgumentParser()
-    ap.add_argument('catalog', choices=['nrsur', 'physical', 'mixed'])
+    ap.add_argument('catalog', choices=['gwtc5', 'nrsur', 'physical', 'mixed'])
     ap.add_argument('--spin-mass-modes', type=int, default=10,
                     help='mass modes per axis (ln m1, q) of the spin field; 0: spins independent of mass')
     ap.add_argument('--spin-bins', type=int, nargs=2, default=[100, 100], metavar=('B_CHIEFF', 'B_CHIP'))

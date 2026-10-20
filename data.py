@@ -1,8 +1,13 @@
 """Data loading and PixelPopData construction.
 
-The PE and injection collections are not part of this repository. They are the (ln m1, q, chi_eff, chi_p) collections
-of mass-gap-investigation (O1-O4b, IFAR > 4 yr, 236 BBHs; VT mixture-semi_o1_o2-real_o3_o4a_o4b), read from
-``DATA_ROOT/<catalog>_o1o4b_chieffchip/data/{posteriors,injections}.pkl``. Set PPC_DATA_ROOT to point elsewhere.
+Catalogs (all (ln m1, q, chi_eff, chi_p) collections, read from ``<directory>/{posteriors,injections}.pkl``):
+
+* ``gwtc5`` (default): the O4b paper's O1-O4b set at FAR < 1/yr (IFAR > 1 yr), 259 BBHs, NRSur7dq4 > Mixed >
+  SpinTaylor PE, variable NPE capped at 20000; VT the corrected April 2026 mixture at IFAR 1, SNR 10. Collected by
+  ``collect/`` into
+  ``data/gwtc5_ifar1_chieffchip/data/`` (gitignored); set PPC_DATA_DIR to read it from elsewhere.
+* ``nrsur``, ``physical``, ``mixed``: mass-gap-investigation's IFAR > 4 yr collections (236 BBHs, PE capped at 15000
+  samples), from ``PPC_DATA_ROOT/<catalog>_o1o4b_chieffchip/data/``; kept to compare with the earlier runs.
 
 Conventions (as mass-gap-investigation's run_utils): variable-NPE rectangular posteriors with ``event_counts``, short
 events padded with prior = +inf; log_mass_1 with its Jacobian; PE samples outside the grid flagged with prior = +inf,
@@ -20,8 +25,12 @@ from numpyro import distributions as dist
 import pixelpop
 from pixelpop.models.gwtc_defaults import gwtc6_default
 
+REPO = os.path.dirname(os.path.abspath(__file__))
 DATA_ROOT = os.environ.get('PPC_DATA_ROOT', '/home/jack.heinzel/public_html/mass-gap-investigation/data')
-CATALOGS = ('nrsur', 'physical', 'mixed')
+CATALOGS = {
+    'gwtc5': os.environ.get('PPC_DATA_DIR', os.path.join(REPO, 'data', 'gwtc5_ifar1_chieffchip', 'data')),
+    **{c: os.path.join(DATA_ROOT, f'{c}_o1o4b_chieffchip', 'data') for c in ('nrsur', 'physical', 'mixed')},
+}
 MIN_M, MAX_M, MAX_Z = 3., 200., 1.9
 OTHER_PARAMS = ['redshift', 'mass_ratio_window']
 WINDOW_PRIORS = {'mlow_2': ([MIN_M], dist.Delta), 'delta_m_2': ([0.], dist.Delta)}
@@ -31,8 +40,8 @@ def load_data(catalog, exclude_events=()):
     """Posteriors, injections and real per-event sample counts. ``exclude_events``: drop events whose file name contains
     any of these strings (their PE samples only; the selection function is unchanged)."""
     if catalog not in CATALOGS:
-        raise ValueError(f'catalog must be one of {CATALOGS}, got {catalog!r}')
-    directory = os.path.join(DATA_ROOT, f'{catalog}_o1o4b_chieffchip', 'data')
+        raise ValueError(f'catalog must be one of {tuple(CATALOGS)}, got {catalog!r}')
+    directory = CATALOGS[catalog]
     with open(os.path.join(directory, 'posteriors.pkl'), 'rb') as f:
         loaded = pickle.load(f)
     with open(os.path.join(directory, 'injections.pkl'), 'rb') as f:

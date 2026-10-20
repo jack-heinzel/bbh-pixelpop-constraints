@@ -10,7 +10,10 @@ belong in mass-gap-investigation. See README.md for the model.
 - Spins in (chi_eff, chi_p), not component spins.
 - No Planck gates; no 2G gates or 2G spin component of any kind.
 - Spin field mass dependence: k = 10 mass modes per axis (baseline), k = 5 (sensitivity).
-- Catalog `nrsur`, with GW231123; corrected likelihood, event Neff floor 100, no variance cut (as mass-gap-investigation).
+- Catalog `gwtc5` (user, 2026-10-20, replacing `nrsur`): the O4b paper's August-rerun set (o4b_population/pixelpop-o4,
+  FAR < 1/yr, 259 events: its rp.o4 directories, ignore list, NRSur > Mixed > SpinTaylor labels and VT), collected with
+  pixelpop's variable-NPE loader (cap 20000) instead of upstream's downsampling; built by `collect/` (README). With GW231123; corrected likelihood, event
+  Neff floor 100, no variance cut (as mass-gap-investigation).
 
 ## Conventions (shared with mass-gap-investigation)
 
