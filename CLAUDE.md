@@ -71,4 +71,9 @@ belong in mass-gap-investigation. See README.md for the model.
   The LIGO-cluster runs of 2026-10-20/21 above (`ppc_gwtc5_k{5,10}_short`, `..._k10_split_short`, `..._k{10,100}_gauss_short`)
   predate it: warm-started, and with every collected sample (up to the collection's 20000 cap, unusable ones included
   at zero weight), so their ln L differ from post-merge runs by a per-event constant.
+- 2026-10-21 (Rusty): long chains `ppc_gwtc5_k10`, `ppc_gwtc5_k5` (2 chains x 1000 draws each, `submit.sbatch`) done.
+  Notebook spin quantities are rebuilt on every draw and cached in `results/post_processing/for_plotting/<run>/`
+  (`notebooks/analysis.py`); build them and execute the main notebooks with `sbatch post.sbatch` (job 7300264: 9 min on
+  one GPU, 0.04-0.07 s per draw). Rusty login nodes cap each user at 1 CPU and 8 GB in total, so do this on a GPU node,
+  not the login node. Older notebooks are in `notebooks/exploratory/`.
 

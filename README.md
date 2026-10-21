@@ -70,6 +70,12 @@ JAX_PLATFORMS=cpu XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_paralle
 ```
 
 Chains go to `results/<run name>/chain_0_samples.h5` (gitignored). Run names: `ppc_<catalog>_k<k>[_short][...]`.
+
+`notebooks/` holds the main notebooks (the gwtc5 long chains); earlier ones from short chains, the `nrsur` catalog and
+the spin-model variants are in `notebooks/exploratory/`. The notebooks' spin quantities are rebuilt from the spin latents
+on every posterior draw and cached per chain in `results/post_processing/for_plotting/<run>/chain_<c>.h5` (on ceph,
+gitignored with `results/`); build them ahead of time, one pinned core per chain, with
+`python notebooks/analysis.py <run> [<chain> ...]` (about 1.5-2 s per draw on one core).
 `run.py` keeps at most 20000 PE samples per event (`--max-samples`; 0 keeps all, run name `_npeall`; the short
 chains `ppc_gwtc5_k*_npe10000_short` used 10000), a fixed random
 subset of the usable ones: inside the grid and in (ln m1, q) and (chi_eff, chi_p) bins that injections reach (the other

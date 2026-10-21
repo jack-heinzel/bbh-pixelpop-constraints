@@ -9,7 +9,8 @@ flags before importing this), since this imports jax through pixelpop.
 
 * Mass: the saved ``log_p_mass`` is unwindowed; ``p_mass`` adds the m2 > 3 Msun window on bin centres and renormalizes.
 * Spins: rebuilt from the saved spin latents of any spin model (field, split, gauss; exactly as model.py builds them) on
-  up to ``max_rebuild`` evenly spaced draws: the windowed population marginal, the conditional's per-(m1, q) mean and
+  every draw, and cached per chain in results/post_processing/for_plotting/<run>/chain_<c>.h5 (built on first use,
+  or ahead of time with ``python notebooks/analysis.py <run> [<chain> ...]``): the windowed population marginal, the conditional's per-(m1, q) mean and
   sd of chi_eff and chi_p, p(chi_eff | m1) and p(chi_p | m1) averaged over the windowed p(q | m1), and the per-cell
   probability of each chi_eff slice (CHI_EFF_SLICES), from which p(m1, q | chi_eff in S) follows.
 """
@@ -23,7 +24,7 @@ import h5py
 import numpy as np
 import pandas as pd
 
-REPO = '/home/jack.heinzel/public_html/bbh-pixelpop-constraints'
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MIN_M, MAX_M = 3., 200.
 B = 100
 lnm_edges = np.linspace(np.log(MIN_M), np.log(MAX_M), B + 1)
@@ -88,12 +89,11 @@ CHI_EFF_SLICES = {r'0 < \chi_\mathrm{eff} < 0.1': lambda e: (e > 0) & (e < 0.1),
                   r'|\chi_\mathrm{eff}| > 0.2': lambda e: np.abs(e) > 0.2}
 
 
-def _rebuild(files, n_draws, draws, logW, spin_model, flat):
-    """Spin quantities from the saved latents of any spin model, on ``draws`` of each chain:
-    P_raw, P_win (population marginal, unwindowed / windowed mass weights), MOM (per-cell moments), PE_M, PP_M
-    (p(chi_eff | m1), p(chi_p | m1): per-bin probabilities, averaged over the windowed p(q | m1)), SLICE (per-cell
-    P(chi_eff in S | m1, q) for CHI_EFF_SLICES), and the largest total variation between the rebuilt and the saved
-    unwindowed marginal (a check of the rebuild)."""
+def _spin_fns(km, logW, spin_model):
+    """Jitted spin rebuild for one draw of the given spin model; returns P_raw, P_win (population marginal,
+    unwindowed / windowed mass weights, unnormalized), MOM (per-cell moments), PE_M, PP_M (p(chi_eff | m1),
+    p(chi_p | m1): per-bin probabilities, averaged over the windowed p(q | m1)) and SLICE (per-cell
+    P(chi_eff in S | m1, q) for CHI_EFF_SLICES)."""
     import jax
     jax.config.update('jax_enable_x64', True)
     import jax.numpy as jnp
@@ -106,9 +106,6 @@ def _rebuild(files, n_draws, draws, logW, spin_model, flat):
     window = spin_window_fraction(q_edges, e_edges, p_edges)
     log_window = jnp.asarray(np.where(window > 0, np.log(np.maximum(window, 1e-300)), NEG))
     log_support = jnp.where(log_window > NEG / 2, 0., NEG)
-    with h5py.File(files[0], 'r') as h:
-        km = (h['_spin_sites'].shape[1] if spin_model == 'field' else h['_spin1_sites'].shape[1] if spin_model == 'split'
-              else h['_gauss_sites'].shape[1])
     pin = np.zeros((km, km, B, B), bool); pin[:, :, 0, 0] = True; pin = jnp.asarray(pin)
     Vm = Vq = v_ax[:, :km]
     ec, pc, lW, logdV = jnp.asarray(e_c), jnp.asarray(p_c), jnp.asarray(logW), np.log(dlnm * dq)
@@ -148,31 +145,90 @@ def _rebuild(files, n_draws, draws, logW, spin_model, flat):
         return stats(lambda m: gauss_log_kernel(theta[:, m][:, :, None, None], ec[None, :, None], pc[None, None, :]),
                      log_p_mass)
 
-    out = {k: [] for k in ('P_raw', 'P_win', 'MOM', 'PE_M', 'PP_M', 'SLICE')}
-    tv = []
-    for c, f in enumerate(files):
-        with h5py.File(f, 'r') as h:
-            g = lambda k, i: jnp.asarray(h[k][i], dtype=float)
-            for i in draws:
-                if spin_model == 'field':
-                    res = field(g('_spin_sites', i), g('lnsigma_spin', i), g('log_nu_spin', i), g('log_ranges_spin', i),
-                                g('log_p_mass', i))
-                elif spin_model == 'split':
-                    res = split(*(g(k, i) for k in ('_spin0_sites', 'lnsigma_spin0', 'log_nu_spin0', 'log_ranges_spin0',
-                                                    '_spin1_sites', 'lnsigma_spin1', 'log_nu_spin1', 'log_ranges_spin1',
-                                                    'log_p_mass')))
-                else:
-                    res = gauss(jnp.asarray(flat['gauss_params'][c * n_draws + i], dtype=float), g('log_p_mass', i))
-                raw, win, mom, pe_m, pp_m, sl = (np.asarray(x) for x in res)
-                saved = np.exp(h['log_p_spin_marginal'][i].astype(float))
-                tv.append(0.5 * np.abs(raw / raw.sum() - saved / saved.sum()).sum())
-                for k, v in zip(out, (raw / raw.sum(), win / win.sum(), mom, pe_m, pp_m, sl)):
-                    out[k].append(np.asarray(v, dtype=np.float32))
-    out = {k: np.array(v) for k, v in out.items()}
-    return out, float(np.max(tv))
+    keys = {'field': ('_spin_sites', 'lnsigma_spin', 'log_nu_spin', 'log_ranges_spin', 'log_p_mass'),
+            'split': ('_spin0_sites', 'lnsigma_spin0', 'log_nu_spin0', 'log_ranges_spin0',
+                      '_spin1_sites', 'lnsigma_spin1', 'log_nu_spin1', 'log_ranges_spin1', 'log_p_mass'),
+            'gauss': ('gauss_params', 'log_p_mass')}[spin_model]
+    return {'field': field, 'split': split, 'gauss': gauss}[spin_model], keys
 
 
-def load_run(run, max_rebuild=150):
+REBUILT = ('P_raw', 'P_win', 'MOM', 'PE_M', 'PP_M', 'SLICE')
+POST_DIR = os.path.join(REPO, 'results', 'post_processing', 'for_plotting')
+
+
+def post_path(run, chain_file):
+    """results/post_processing/for_plotting/<run>/chain_<c>.h5 for results/<run>/chain_<c>_samples.h5."""
+    return os.path.join(POST_DIR, run, os.path.basename(chain_file).replace('_samples.h5', '.h5'))
+
+
+def spin_model_of(keys):
+    return 'split' if 'lnsigma_spin1' in keys else 'gauss' if 'gauss_offsets' in keys else 'field'
+
+
+def rebuild_chain(run, chain_file, n_draws=None, log_every=100, block=25):
+    """Rebuild the spin quantities (REBUILT) on every draw of one chain from its saved spin latents, exactly as
+    model.py builds them, and write them (float32, normalized per draw) with the per-draw total variation between the
+    rebuilt and the saved unwindowed marginal (``tv``, a check of the rebuild) to post_path(run, chain_file).
+    Reads the chain ``block`` draws at a time (one read per dataset and block: draw-by-draw reads of the multi-GB chain
+    files crawl on ceph, and a whole k = 10 chain, 4 GB, does not fit the login nodes' 8 GB per user) and writes as it
+    goes, so memory stays near 1 GB."""
+    import time
+    import jax.numpy as jnp
+    logW = mass_window()
+    path = post_path(run, chain_file)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.partial'
+    t0 = time.time()
+    with h5py.File(chain_file, 'r') as h, h5py.File(tmp, 'w') as g:
+        spin_model = spin_model_of(h)
+        km = (h['_spin_sites'].shape[1] if spin_model == 'field' else h['_spin1_sites'].shape[1] if spin_model == 'split'
+              else 1)
+        n = len(h['log_likelihood']) if n_draws is None else n_draws
+        fn, keys = _spin_fns(km, logW, spin_model)
+        g.attrs.update(n_draws=n, spin_model=spin_model, k=km, source=chain_file)
+        out = None
+        tv = g.create_dataset('tv', (n,))
+        for b in range(0, n, block):
+            data = {k: h[k][b:min(b + block, n)] for k in keys + ('log_p_spin_marginal',)}
+            for j in range(len(data['log_p_mass'])):
+                i = b + j
+                res = [np.array(x) for x in fn(*(jnp.asarray(data[k][j], dtype=float) for k in keys))]
+                res[0] /= res[0].sum(); res[1] /= res[1].sum()
+                if out is None:
+                    out = {k: g.create_dataset(k, (n,) + v.shape, 'f4', chunks=(1,) + v.shape, compression='gzip',
+                                               compression_opts=1) for k, v in zip(REBUILT, res)}
+                saved = np.exp(data['log_p_spin_marginal'][j].astype(float))
+                tv[i] = 0.5 * np.abs(res[0] - saved / saved.sum()).sum()
+                for k, v in zip(REBUILT, res):
+                    out[k][i] = v
+                if log_every and (i + 1) % log_every == 0:
+                    print(f'{run} {os.path.basename(chain_file)}: {i + 1}/{n} draws, '
+                          f'{(time.time() - t0) / (i + 1):.2f} s each', flush=True)
+    os.replace(tmp, path)
+    return path
+
+
+def load_rebuilt(run, files, n_draws):
+    """The rebuilt spin quantities of every chain, first n_draws draws each, rebuilding any chain whose file is
+    missing or shorter than n_draws (slow on CPU: about 1 s per draw; ``python notebooks/analysis.py <run>`` does it
+    ahead of time)."""
+    out = {k: [] for k in REBUILT + ('tv',)}
+    for f in files:
+        path = post_path(run, f)
+        have = 0
+        if os.path.exists(path):
+            with h5py.File(path, 'r') as g:
+                have = g.attrs['n_draws']
+        if have < n_draws:
+            print(f'rebuilding spins of {run} {os.path.basename(f)} -> {path}', flush=True)
+            rebuild_chain(run, f)
+        with h5py.File(path, 'r') as g:
+            for k in out:
+                out[k].append(g[k][:n_draws])
+    return {k: np.concatenate(v) for k, v in out.items()}
+
+
+def load_run(run):
     """Everything the notebooks need from results/<run>/, as a namespace."""
     files = sorted(glob.glob(os.path.join(REPO, 'results', run, 'chain_*_samples.h5')))
     if not files:
@@ -186,7 +242,7 @@ def load_run(run, max_rebuild=150):
     flat = {k: v.reshape(-1, *v.shape[2:]) for k, v in S.items()}
     r = SimpleNamespace(run=run, catalog=run.split('_')[1], files=files, n_chains=len(files), n_draws=n_draws, S=S,
                         flat=flat)
-    r.spin_model = 'split' if 'lnsigma_spin1' in S else 'gauss' if 'gauss_offsets' in S else 'field'
+    r.spin_model = spin_model_of(S)
     r.k = int(re.search(r'_k(\d+)', run).group(1))
     r.summary = summarize(S)
 
@@ -201,14 +257,15 @@ def load_run(run, max_rebuild=150):
     wm = np.exp(flat['log_p_mass'].astype(float)) * dlnm * dq
     r.window_removed = (wm * (r.logW < -1)[None]).sum((1, 2))
 
-    # spins, windowed: always rebuilt (the per-mass and chi_eff-slice quantities are not saved by any model)
-    draws = np.unique(np.linspace(0, n_draws - 1, min(n_draws, max_rebuild)).round().astype(int))
-    reb, r.rebuild_tv = _rebuild(files, n_draws, draws, r.logW, r.spin_model, flat)
-    r.P_raw, r.P_win, r.MOM, r.PE_M, r.PP_M, r.SLICE = (reb[k] for k in ('P_raw', 'P_win', 'MOM', 'PE_M', 'PP_M', 'SLICE'))
-    r.spin_source = f'rebuilt from the saved spin latents on {len(draws)} of {n_draws} draws per chain'
+    # spins, windowed: rebuilt from the spin latents on every draw (the per-mass and chi_eff-slice quantities are not
+    # saved by any model), cached in results/post_processing/for_plotting/<run>/
+    reb = load_rebuilt(run, files, n_draws)
+    r.P_raw, r.P_win, r.MOM, r.PE_M, r.PP_M, r.SLICE = (reb[k] for k in REBUILT)
+    r.rebuild_tv = float(reb['tv'].max())
+    r.spin_source = (f'rebuilt from the saved spin latents on all {n_draws} draws per chain '
+                     f'(results/post_processing/for_plotting/{run}/)')
     # mass in chi_eff slices: p(ln m1, q | chi_eff in S) ~ p_mass(ln m1, q) P(S | m1, q), on the rebuilt draws
-    pm = r.p_mass.reshape(r.n_chains, n_draws, B, B)[:, draws].reshape(-1, B, B)
-    joint = pm[..., None] * r.SLICE * dlnm * dq                                     # (draws, Bm, Bq, n_slices)
+    joint = r.p_mass[..., None] * r.SLICE * dlnm * dq                                     # (draws, Bm, Bq, n_slices)
     r.slice_share = joint.sum((1, 2))                                               # P(chi_eff in S)
     r.p_mass_slice = joint / np.maximum(r.slice_share[:, None, None], 1e-300) / (dlnm * dq)
     r.P_q1 = (lambda P: P / P.sum((2, 3), keepdims=True))(np.exp(flat['log_p_spin_q1_m'].astype(float)))
@@ -239,3 +296,16 @@ def spin_moments_table(P):
 def fmt(x):
     lo, med, hi = np.percentile(x, [5, 50, 95])
     return f'{med:.3f} [{lo:.3f}, {hi:.3f}]'
+
+
+if __name__ == '__main__':
+    # python notebooks/analysis.py <run> [<chain> ...]: rebuild and cache the spin quantities of all (or the given)
+    # chains. Pin it first (taskset, single-thread XLA flags; see build_run_nb.py), or run it on a GPU.
+    import sys
+    sys.path.insert(0, REPO)
+    run, chains = sys.argv[1], sys.argv[2:]
+    files = sorted(glob.glob(os.path.join(REPO, 'results', run, 'chain_*_samples.h5')))
+    if chains:
+        files = [f for f in files if os.path.basename(f).split('_')[1] in chains]
+    for f in files:
+        print('wrote', rebuild_chain(run, f), flush=True)

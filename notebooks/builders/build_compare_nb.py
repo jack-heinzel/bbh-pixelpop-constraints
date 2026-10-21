@@ -15,6 +15,7 @@ name, runs = sys.argv[1], sys.argv[2:]
 if len(runs) < 2:
     sys.exit('give at least two runs')
 here = os.path.dirname(os.path.abspath(__file__))
+repo = os.path.abspath(os.path.join(here, '..', '..'))      # this machine's checkout
 out = os.path.join(here, '..', f'compare_{name}.ipynb')
 
 nb = nbf.v4.new_notebook()
@@ -33,7 +34,7 @@ os.environ.setdefault('XLA_FLAGS', '--xla_cpu_multi_thread_eigen=false intra_op_
 for v in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS'):
     os.environ.setdefault(v, '1')
 import sys
-REPO = '/home/jack.heinzel/public_html/bbh-pixelpop-constraints'
+REPO = '""" + repo + r"""'
 sys.path.insert(0, REPO); sys.path.insert(0, os.path.join(REPO, 'notebooks'))
 import numpy as np
 import pandas as pd

@@ -14,6 +14,7 @@ import nbformat as nbf
 run = sys.argv[1]
 catalog = run.split('_')[1]
 here = os.path.dirname(os.path.abspath(__file__))
+repo = os.path.abspath(os.path.join(here, '..', '..'))      # this machine's checkout
 out = os.path.join(here, '..', f'{run}.ipynb')
 
 nb = nbf.v4.new_notebook()
@@ -40,7 +41,7 @@ os.environ.setdefault('XLA_FLAGS', '--xla_cpu_multi_thread_eigen=false intra_op_
 for v in ('OMP_NUM_THREADS', 'OPENBLAS_NUM_THREADS', 'MKL_NUM_THREADS'):
     os.environ.setdefault(v, '1')
 import sys
-REPO = '/home/jack.heinzel/public_html/bbh-pixelpop-constraints'
+REPO = '""" + repo + r"""'
 sys.path.insert(0, REPO)
 import glob, pickle
 import h5py
@@ -80,10 +81,10 @@ for f in files:
     meta = f.replace('_samples.h5', '_metadata.txt')
     if os.path.exists(meta):
         print(open(meta).read())
-log = os.path.join(REPO, 'results', 'logs', f'{RUN}.log')
-if os.path.exists(log):
+for log in sorted(glob.glob(os.path.join(REPO, 'results', 'logs', f'{RUN}.log'))
+                  + glob.glob(os.path.join(REPO, 'results', 'logs', f'{RUN}_long_chain*.log'))):
     tail = open(log, errors='replace').read().replace('\r', '\n').strip().splitlines()[-1]
-    print('last log line:', tail[:160])"""),
+    print(f'last line of {os.path.basename(log)}:', tail[:160])"""),
 code(r"""SPIN_MODEL = 'split' if 'lnsigma_spin1' in S else 'gauss' if 'gauss_offsets' in S else 'field'
 print('spin model:', SPIN_MODEL)
 HYPER = [k for k in ('lnsigma', 'log_nu_spde', 'log_ranges', 'lnsigma_spin', 'log_nu_spin', 'log_ranges_spin',
@@ -217,79 +218,17 @@ The saved `log_p_spin_marginal` averages with the mass weights **before** the $m
 never see the windowed-out corner ($q < 3/m_1$), so the field is unconstrained there. It carries a sizeable,
 prior-driven share of the unwindowed mass probability (printed below), and with it that corner's spins. So the
 marginal is rebuilt here from the saved spin field (`_spin_sites` and the spin hyperparameters, exactly as `model.py`
-builds it) and averaged with the **windowed** mass weights. The first cell checks the rebuild against the saved
-marginal and the saved $q \approx 1$ slices, using the unwindowed weights; differences of order $10^{-3}$ come from
-the chain being stored in float32."""),
-code(r"""import jax
-jax.config.update('jax_enable_x64', True)
-import jax.numpy as jnp
-from jax.scipy.special import logsumexp as LSE
-import pixelpop
-from model import axis_eigs, matern_spectrum, to_grid, spin_window_fraction, NEG
-
-B = 100
-(w_ax, v_ax), = axis_eigs([pixelpop.utils.create_CAR_coupling_matrix(B, 1, isVisible=False)])   # every axis: 100 bins
-window = spin_window_fraction(q_edges, e_edges, p_edges)
-log_window = jnp.asarray(np.where(window > 0, np.log(np.maximum(window, 1e-300)), NEG))
-log_support = jnp.where(log_window > NEG / 2, 0., NEG)
-logdV = np.log(dlnm * dq)
-SAVED = 'spin_moments' in S and 'log_p_spin_marginal_windowed' in S
-with h5py.File(files[0], 'r') as h:
-    km = h['_spin_sites'].shape[1] if '_spin_sites' in h else 1
-pin = np.zeros((km, km, B, B), bool); pin[:, :, 0, 0] = True; pin = jnp.asarray(pin)
-Vm = Vq = v_ax[:, :km]
-sel_m = jnp.asarray([int(np.argmin(np.abs(np.exp(lnm_c) - m))) for m in SPIN_REF_MASSES])
-
-@jax.jit
-def spin_marginals(white, lnsig, lognu, logr, log_p_mass):
-    # spin field G and per-(m1, q) conditional, as model.setup_model; returns the population marginal with the
-    # unwindowed and the windowed mass weights, the log conditional at q ~ 1 for SPIN_REF_MASSES, and the conditional's
-    # mean and sd of chi_eff and chi_p in every (m1, q) bin, (Bm, Bq, 4)
-    amp = matern_spectrum([w_ax[:km], w_ax[:km], w_ax, w_ax], lnsig, logr, jnp.exp(lognu), B ** 4, pin=pin)
-    G = to_grid(amp, white, [jnp.eye(km), jnp.eye(km), v_ax, v_ax])
-    lw = log_p_mass + logdV
-    w_raw = jnp.exp(lw); lw_win = lw + logW; w_win = jnp.exp(lw_win - LSE(lw_win))
-    def slab(m):
-        T = jnp.einsum('k,ql,klep->qep', Vm[m], Vq, G) + log_support
-        P = jnp.exp(T - LSE(T + log_window, axis=(1, 2))[:, None, None] + log_window)
-        pe, pp = P.sum(2), P.sum(1)                                     # (Bq, Be), (Bq, Bp)
-        me, mp = pe @ e_c, pp @ p_c
-        mom = jnp.stack([me, jnp.sqrt(jnp.maximum(pe @ e_c ** 2 - me ** 2, 0.)),
-                         mp, jnp.sqrt(jnp.maximum(pp @ p_c ** 2 - mp ** 2, 0.))], -1)
-        return jnp.einsum('q,qep->ep', w_raw[m], P), jnp.einsum('q,qep->ep', w_win[m], P), mom
-    raw, win, mom = jax.lax.map(slab, jnp.arange(B), batch_size=10)
-    T1 = jnp.einsum('mk,l,klep->mep', Vm[sel_m], Vq[-1], G) + log_support[-1][None]
-    q1 = T1 - LSE(T1 + log_window[-1][None], axis=(1, 2))[:, None, None] + log_window[-1][None]
-    return raw.sum(0), win.sum(0), q1, mom
-
-THIN = 1                                                 # every draw: about 1 s each on one core
-P_raw, P_win, tv_marg, tv_q1, MOM = [], [], [], [], []
-for f in ([] if SAVED else files):            # chains from model.py versions without the saved quantities: rebuild
-    with h5py.File(f, 'r') as h:
-        for i in range(0, n_draws, THIN):
-            raw, win, q1, mom = spin_marginals(jnp.asarray(h['_spin_sites'][i], dtype=float), float(h['lnsigma_spin'][i]),
-                                          float(h['log_nu_spin'][i]), jnp.asarray(h['log_ranges_spin'][i], dtype=float),
-                                          jnp.asarray(h['log_p_mass'][i], dtype=float))
-            raw, win = np.asarray(raw), np.asarray(win)
-            saved = np.exp(h['log_p_spin_marginal'][i].astype(float))
-            sq1 = np.exp(h['log_p_spin_q1_m'][i].astype(float)); q1 = np.exp(np.asarray(q1))
-            tv_marg.append(0.5 * np.abs(raw / raw.sum() - saved / saved.sum()).sum())
-            tv_q1.append((0.5 * np.abs(q1 / q1.sum((1, 2), keepdims=True)
-                                       - sq1 / sq1.sum((1, 2), keepdims=True)).sum((1, 2))).max())
-            P_raw.append(raw / raw.sum()); P_win.append(win / win.sum()); MOM.append(np.asarray(mom, dtype=np.float32))
-if SAVED:
-    norm = lambda lp: (lambda P: P / P.sum((1, 2), keepdims=True))(np.exp(lp.astype(float)))
-    P_raw, P_win = norm(flat['log_p_spin_marginal']), norm(flat['log_p_spin_marginal_windowed'])
-    MOM = flat['spin_moments']
-    print('spin marginals and moments: saved by the model (no rebuild)')
-else:
-    P_raw, P_win, MOM = np.array(P_raw), np.array(P_win), np.array(MOM)   # MOM: (draws, ln m1, q, 4)
+builds it, on every draw; `notebooks/analysis.py`, cached in `results/post_processing/for_plotting/`) and averaged
+with the **windowed** mass weights. The rebuild is checked against the saved marginal, using the unwindowed weights;
+differences of order $10^{-3}$ come from the chain being stored in float32."""),
+code(r"""sys.path.insert(0, os.path.join(REPO, 'notebooks'))
+import analysis as A
+r = A.load_run(RUN)              # spins: every draw, cached in results/post_processing/for_plotting/<RUN>/
+print('spins', r.spin_source)
+P_raw, P_win, MOM = r.P_raw, r.P_win, r.MOM          # MOM: (draws, ln m1, q, 4)
 tv_win = 0.5 * np.abs(P_win - P_raw).sum((1, 2))
-wm = np.exp(flat['log_p_mass']) * dlnm * dq
-removed = (wm * (logW < -1)[None]).sum((1, 2))
-if not SAVED:
-    print(f'rebuilt {len(P_win)} draws. Rebuild vs saved, total variation: marginal max {max(tv_marg):.1e}, '
-          f'q ~ 1 slices max {max(tv_q1):.1e}')
+removed = r.window_removed
+print(f'rebuild vs saved marginal, total variation: max {r.rebuild_tv:.1e}')
 print('mass probability the window removes: median %.3f, 90%% [%.3f, %.3f]' % tuple(np.percentile(removed, [50, 5, 95])))
 print('windowed vs unwindowed spin marginal, total variation: median %.3f, 90%% [%.3f, %.3f]'
       % tuple(np.percentile(tv_win, [50, 5, 95])))"""),
