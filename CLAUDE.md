@@ -10,6 +10,11 @@ belong in mass-gap-investigation. See README.md for the model.
 - Spins in (chi_eff, chi_p), not component spins.
 - No Planck gates; no 2G gates or 2G spin component of any kind.
 - Spin field mass dependence: k = 10 mass modes per axis (baseline), k = 5 (sensitivity).
+- Spin-prior variants (user, 2026-10-20: "try these in order, with short chains"), `run.py --spin-model`: `field`
+  (baseline), then `split` (G0(chi) + G1(m1, q, chi), separate amplitudes, separable G1 spectrum), then `gauss`
+  (truncated 2D Gaussian whose mean, ln sd and atanh rho are Matern fields on (ln m1, q)). A two-component mixture
+  with a Gaussian was discussed but is a channel/template, so it belongs in mass-gap-investigation unless the user
+  relaxes the rule above.
 - Catalog `gwtc5` (user, 2026-10-20, replacing `nrsur`): the O4b paper's August-rerun set (o4b_population/pixelpop-o4,
   FAR < 1/yr, 259 events: its rp.o4 directories, ignore list, NRSur > Mixed > SpinTaylor labels and VT), collected with
   pixelpop's variable-NPE loader (cap 20000) instead of upstream's downsampling; built by `collect/` (README). With GW231123; corrected likelihood, event
@@ -40,3 +45,17 @@ belong in mass-gap-investigation. See README.md for the model.
   (partial chain in `results/ppc_nrsur_k5_short/`); k = 10 short was at warmup step 1827/2000 (no samples). Relaunch with
   `launch.sh` (frozen copy); `run.py` refuses a run directory that already has chains, so the k = 5 short needs `--tag` or
   moving its partial chain aside.
+- 2026-10-20 18:16 EDT: baseline `gwtc5` shorts, `launch_frozen_short_20261020.sh gwtc5 10 0 .4 -` and `... 5 1 .4 -`
+  (warm start from the mass-gap bm3 short as before; on gwtc5 it gives ln L -7336, Var 123, min event Neff 3). k = 10 runs
+  at 5.4 s/it (GPU 0 shared with another user's job, 92% busy), k = 5 at 1.3 s/it.
+- 2026-10-20 18:40 EDT: `launch_frozen_queue_variants_v2_20261020.sh 630157 630156` waits on the baseline launchers, then
+  runs `split` k = 10 on GPU 1 (warm start from `ppc_gwtc5_k5_short`) and `gauss` k = 10 on GPU 0 (from
+  `ppc_gwtc5_k10_short`), via `launch_frozen_short_variants_20261020.sh`. Kill the queue by its PIDs to cancel. The
+  baseline chains were started before model.py saved `spin_moments` / `log_p_spin_marginal_windowed`, so their
+  notebooks rebuild these from the spin field; the variants save them.
+- 2026-10-20 23:35 EDT: `launch_frozen_queue_gauss_k100_20261020.sh 796189`: after the split short (GPU 1), `gauss` with
+  all 100 x 100 mass modes (`--spin-mass-modes 100 --spin-model gauss`, user: "we could try to use all modes"; only
+  gauss can, its parameter fields have 5 x 1e4 sites against 1e8 for field/split at k = 100), warm-started from the
+  baseline k = 10 short. Its field start uses the source's k (warmstart.py); tested on CPU from the partial k = 10
+  chain: gauss k = 100 start ln L -7341 (field start -7276), Var 1.9, min event Neff 135.
+

@@ -14,7 +14,7 @@ import os
 
 import matplotlib.pyplot as plt
 
-REPO = '/home/jack.heinzel/public_html/mass-gap-investigation'
+REPO = os.path.dirname(os.path.abspath(__file__))
 PLOTS = f'{REPO}/plots'
 
 RC = {

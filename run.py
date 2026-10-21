@@ -2,7 +2,8 @@
 
     python run.py gwtc5 --spin-mass-modes 10 --device 0 --mem-fraction .4 [--short]
 
-Run name: ppc_<catalog>_k<spin mass modes>[_neff<floor>][_no231123][_short][_<tag>].
+Run name: ppc_<catalog>_k<spin mass modes>[_<spin model>][_neff<floor>][_no231123][_short][_<tag>]; the spin model
+('field', the default, 'split' or 'gauss'; model.py) is left out of the name for 'field'.
 
 This node caps processes + threads at 500 per user, and XLA sizes its thread pools from the CPU affinity, so the job
 pins itself (--cpus cores, the least busy ones by default) and serializes XLA compilation before jax is imported.
@@ -21,6 +22,9 @@ def make_parser():
     ap.add_argument('catalog', choices=['gwtc5', 'nrsur', 'physical', 'mixed'])
     ap.add_argument('--spin-mass-modes', type=int, default=10,
                     help='mass modes per axis (ln m1, q) of the spin field; 0: spins independent of mass')
+    ap.add_argument('--spin-model', choices=['field', 'split', 'gauss'], default='field',
+                    help="spin conditional: one 4D Matern field ('field'), mass-independent + mass-varying fields with "
+                         "separate amplitudes ('split'), or a truncated Gaussian with field-valued parameters ('gauss')")
     ap.add_argument('--spin-bins', type=int, nargs=2, default=[100, 100], metavar=('B_CHIEFF', 'B_CHIP'))
     ap.add_argument('--bins', type=int, default=100, help='mass grid bins per axis')
     ap.add_argument('--event-neff-cut', type=float, default=100.)
@@ -46,6 +50,7 @@ def make_parser():
 
 def run_name(args):
     return (f'ppc_{args.catalog}_k{args.spin_mass_modes}'
+            + (f'_{args.spin_model}' if args.spin_model != 'field' else '')
             + (f'_neff{args.event_neff_cut:g}' if args.event_neff_cut != 100. else '')
             + ('_nocorr' if args.no_likelihood_correction else '')
             + ('_no' + '_'.join(e.replace('GW', '') for e in args.exclude_events) if args.exclude_events else '')
@@ -94,7 +99,7 @@ def build(args, name, record_weights=False):
                                                           exclude_events=tuple(args.exclude_events))
     prob_model, init = model.setup_model(pp, spin_mass_modes=args.spin_mass_modes, n_spin_bins=tuple(args.spin_bins),
                                          likelihood_correction=not args.no_likelihood_correction,
-                                         record_weights=record_weights)
+                                         record_weights=record_weights, spin_model=args.spin_model)
     return prob_model, init, posteriors, injections, pp
 
 
@@ -136,13 +141,15 @@ def main():
             print(f'value+grad {1e3 * (time.time() - t0) / 5:.1f} ms', flush=True)
         return
     s = dict(SHORT) if args.short else dict(warmup=args.warmup, tot_samples=args.samples, thinning=args.thinning)
-    print(f'run {name}: {s}, spin mass modes {args.spin_mass_modes}, spin bins {args.spin_bins}', flush=True)
-    print_keys = ['log_likelihood', 'log_likelihood_variance', 'log_likelihood_correction', 'lnsigma', 'lnsigma_spin',
-                  'detection_efficiency'] + [h for h, (_, d) in pp.priors.items() if d is not dist.Delta]
+    print(f'run {name}: {s}, spin model {args.spin_model}, spin mass modes {args.spin_mass_modes}, '
+          f'spin bins {args.spin_bins}', flush=True)
+    scalar_spin = [k for k in model.SPIN_SITES[args.spin_model] if k.startswith('lnsigma') and k != 'lnsigma_gauss']
+    print_keys = (['log_likelihood', 'log_likelihood_variance', 'log_likelihood_correction', 'lnsigma', *scalar_spin,
+                   'detection_efficiency'] + [h for h, (_, d) in pp.priors.items() if d is not dist.Delta])
     inference_loop(prob_model, model_kwargs={'posteriors': posteriors, 'injections': injections}, initial_value=init,
                    warmup=s['warmup'], tot_samples=s['tot_samples'], thinning=s['thinning'],
                    num_samples=max(1, min(100, s['tot_samples'] // 10)), pacc=0.7, maxtreedepth=args.maxtreedepth,
-                   parallel=1, run_dir=RESULTS, name=name, print_keys=print_keys, dense_mass=model.mass_matrix_blocks(),
+                   parallel=1, run_dir=RESULTS, name=name, print_keys=print_keys, dense_mass=model.mass_matrix_blocks(args.spin_model),
                    pixelpop_data=pp, rng_key=jax.random.PRNGKey(args.seed))
 
 

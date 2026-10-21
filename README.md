@@ -12,6 +12,12 @@ about masses and spins, and how spins change with mass, without gates, channels 
   chi_p < chi_p,max(chi_eff, q), whose shape changes smoothly with mass: the field is factorized over the lowest k × k
   Laplacian modes of the (ln m1, q) plane (k = 10 baseline, k = 5 sensitivity), all spin modes. A zero field is flat on
   the allowed region; there is no isotropic or template mean.
+- **Spin-prior variants** (`--spin-model`, `model.py`): `split`, F = G0(chi) + G1(ln m1, q, chi) with separate
+  amplitudes, G1 holding only mass-varying modes and a separable (mass x spin) Matérn spectrum, so sigma_1 measures the
+  mass dependence; `gauss`, a correlated 2D Gaussian in (chi_eff, chi_p) truncated to the physical window, whose mean,
+  ln sd and atanh rho are each an offset plus a k × k-mode Matérn field on (ln m1, q). All models save the windowed
+  spin marginal and the conditional's per-(m1, q) mean and sd of chi_eff and chi_p. `warmstart.py` maps a field start
+  onto either (exactly for split, via moments for gauss).
 - **Other parameters:** redshift power law and the m2 > 3 M☉ window (GWTC-6 parametric models).
 - **Likelihood:** rate-marginalized, selection-bias correction N(N+1)σ²_sel/2, event effective-sample-size floor 100,
   no variance cut.
@@ -56,6 +62,8 @@ python run.py gwtc5 --spin-mass-modes 10 --device 0 --mem-fraction .4 --check-on
 python warmstart.py gwtc5 --spin-mass-modes 10 --device 0 --source <chain h5> --out results/warm.npz
 python run.py gwtc5 --spin-mass-modes 10 --device 0 --mem-fraction .4 [--short] --init-from results/warm.npz
 bash launch.sh gwtc5 10 0 .4          # warm start, short chain, long chain (launch a frozen copy)
+[SRC=<chain h5>] bash launch_short.sh gwtc5 10 0 .4 - --spin-model split   # warm start + short only
+python notebooks/builders/build_run_nb.py <run>   # notebooks/<run>.ipynb; execute on pinned CPUs
 JAX_PLATFORMS=cpu XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1" \
     taskset -c <4 cores> python -m pytest tests -q
 ```
