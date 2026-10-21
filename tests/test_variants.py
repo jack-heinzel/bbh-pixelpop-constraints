@@ -156,3 +156,18 @@ def test_gauss_with_all_mass_modes():
     assert np.isfinite(float(val)) and all(np.all(np.isfinite(np.asarray(g))) for g in grad.values())
     mom = np.asarray(trace_at(model, init, **kw)['spin_moments']['value'])
     assert np.all(np.abs(mom[..., 0]) < 1) and np.all((mom[..., 2] > 0) & (mom[..., 2] < 1))
+
+
+@pytest.mark.parametrize('spin_model', ['field', 'split', 'gauss'])
+def test_prior_draw_is_a_valid_start(spin_model):
+    """run.prior_draw (the default initialization since the Rusty merge) gives a start with finite potential energy and
+    gradient in NUTS's unconstrained space, for every spin model."""
+    import run
+    from numpyro.infer.util import potential_energy, unconstrain_fn
+    pp, kw = synthetic()
+    model, init = setup_model(pp, spin_mass_modes=KM, n_spin_bins=SPIN_BINS, spin_model=spin_model)
+    draw = run.prior_draw(model, init, kw, seed=3, chain=1)
+    assert set(draw) == set(init)
+    u = unconstrain_fn(model, (), kw, draw)
+    pe, grad = jax.value_and_grad(lambda z: potential_energy(model, (), kw, z))(u)
+    assert np.isfinite(float(pe)) and all(np.all(np.isfinite(np.asarray(g))) for g in grad.values())

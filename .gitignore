@@ -5,3 +5,5 @@ __pycache__/
 launch_frozen_*.sh
 data/
 collect/logs/
+/data
+/results

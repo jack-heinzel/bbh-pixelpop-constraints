@@ -14,7 +14,8 @@ export VECLIB_MAXIMUM_THREADS=1
 export JAX_PLATFORMS=cpu
 export XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
 
-PY=~/.conda/envs/gwjax313/bin/python
+# the venv on Rusty (python/3.13.2 module), the conda env on the LIGO cluster
+PY=$( [ -x ~/venvs/gwjax313/bin/python ] && echo ~/venvs/gwjax313/bin/python || echo ~/.conda/envs/gwjax313/bin/python )
 INI=collect_gwtc5_ifar1_chieffchip.ini
 
 $PY dry_run.py $INI               # every file resolves to its label and cosmology

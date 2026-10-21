@@ -1,7 +1,7 @@
 """Tests for model.py (CPU, pinned):
 
     JAX_PLATFORMS=cpu XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1" \
-        taskset -c <4 cores> ~/.conda/envs/gwjax313/bin/python -m pytest tests -q
+        taskset -c <4 cores> ~/venvs/gwjax313/bin/python -m pytest tests -q
 """
 import os
 import sys
