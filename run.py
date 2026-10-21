@@ -2,7 +2,11 @@
 
     python run.py gwtc5 --spin-mass-modes 10 --device 0 --mem-fraction .4 [--short]
 
-Run name: ppc_<catalog>_k<spin mass modes>[_neff<floor>][_no231123][_short][_<tag>].
+The chain starts from a random draw from the prior of every latent site (keyed by --seed and --chain; --check-only
+evaluates the same draw), unless --init-from gives one. Chains of one run (--chain 0, 1, ...; separate jobs) share its
+directory as chain_<N>_samples.h5, each from its own prior draw and sampler key.
+
+Run name: ppc_<catalog>_k<spin mass modes>[_neff<floor>][_npe<max samples>][_no231123][_short][_<tag>].
 
 This node caps processes + threads at 500 per user, and XLA sizes its thread pools from the CPU affinity, so the job
 pins itself (--cpus cores, the least busy ones by default) and serializes XLA compilation before jax is imported.
@@ -14,6 +18,7 @@ import time
 REPO = os.path.dirname(os.path.abspath(__file__))
 RESULTS = os.path.join(REPO, 'results')
 SHORT = dict(warmup=2000, tot_samples=500, thinning=5)
+MAX_SAMPLES = 20000
 
 
 def make_parser():
@@ -24,6 +29,8 @@ def make_parser():
     ap.add_argument('--spin-bins', type=int, nargs=2, default=[100, 100], metavar=('B_CHIEFF', 'B_CHIP'))
     ap.add_argument('--bins', type=int, default=100, help='mass grid bins per axis')
     ap.add_argument('--event-neff-cut', type=float, default=100.)
+    ap.add_argument('--max-samples', type=int, default=MAX_SAMPLES,
+                    help='usable PE samples kept per event (those in grid bins injections reach); 0: keep all')
     ap.add_argument('--no-likelihood-correction', action='store_true')
     ap.add_argument('--exclude-events', nargs='*', default=[])
     ap.add_argument('--short', action='store_true', help=f'a first look, not converged: {SHORT}')
@@ -32,7 +39,9 @@ def make_parser():
     ap.add_argument('--thinning', type=int, default=5)
     ap.add_argument('--maxtreedepth', type=int, default=7)
     ap.add_argument('--seed', type=int, default=1)
-    ap.add_argument('--init-from', default=None, help='npz of latent-site values')
+    ap.add_argument('--chain', type=int, default=0, help='chain index within the run (its own prior draw and sampler key)')
+    ap.add_argument('--init-from', default=None,
+                    help='npz of latent-site values (default: a prior draw, keyed by --seed and --chain)')
     ap.add_argument('--tag', default='')
     ap.add_argument('--check-only', action='store_true',
                     help='print ln L, Var(ln L) and the smallest event Neff at the initial point, and the time per '
@@ -47,6 +56,7 @@ def make_parser():
 def run_name(args):
     return (f'ppc_{args.catalog}_k{args.spin_mass_modes}'
             + (f'_neff{args.event_neff_cut:g}' if args.event_neff_cut != 100. else '')
+            + (f'_npe{args.max_samples or "all"}' if args.max_samples != MAX_SAMPLES else '')
             + ('_nocorr' if args.no_likelihood_correction else '')
             + ('_no' + '_'.join(e.replace('GW', '') for e in args.exclude_events) if args.exclude_events else '')
             + ('_short' if args.short else '') + (f'_{args.tag}' if args.tag else '')
@@ -91,11 +101,26 @@ def build(args, name, record_weights=False):
     import model
     pp, posteriors, injections = data.build_pixelpop_data(name, args.catalog, bins=args.bins,
                                                           event_neff_cut=args.event_neff_cut,
-                                                          exclude_events=tuple(args.exclude_events))
+                                                          exclude_events=tuple(args.exclude_events),
+                                                          max_samples=args.max_samples, n_spin_bins=tuple(args.spin_bins))
     prob_model, init = model.setup_model(pp, spin_mass_modes=args.spin_mass_modes, n_spin_bins=tuple(args.spin_bins),
                                          likelihood_correction=not args.no_likelihood_correction,
                                          record_weights=record_weights)
     return prob_model, init, posteriors, injections, pp
+
+
+def chain_key(seed, chain, use):
+    """PRNG key for one ``use`` ('init' or 'sampler') of one chain: distinct for every (seed, chain, use)."""
+    import jax
+    return jax.random.fold_in(jax.random.fold_in(jax.random.PRNGKey(seed), {'init': 1, 'sampler': 2}[use]), chain)
+
+
+def prior_draw(prob_model, init, model_kwargs, seed, chain=0):
+    """Every latent site of ``init`` drawn from its prior (one forward pass of the model), keyed by ``seed``, ``chain``."""
+    from numpyro import handlers
+    key = chain_key(seed, chain, 'init')
+    tr = handlers.trace(handlers.seed(prob_model, key)).get_trace(**model_kwargs)
+    return {k: tr[k]['value'] for k in init}
 
 
 def main():
@@ -109,8 +134,8 @@ def main():
     import model
 
     name = run_name(args)
-    if not args.check_only and os.path.isdir(os.path.join(RESULTS, name)) and any(f.endswith('_samples.h5') for f in os.listdir(os.path.join(RESULTS, name))):
-        raise SystemExit(f'{name} already has chains; use --tag or --seed for a new run')
+    if not args.check_only and os.path.exists(os.path.join(RESULTS, name, f'chain_{args.chain}_samples.h5')):
+        raise SystemExit(f'{name} already has chain {args.chain}; use --chain, --tag or --seed for a new one')
     os.makedirs(RESULTS, exist_ok=True)
     prob_model, init, posteriors, injections, pp = build(args, name)
     if args.init_from:
@@ -120,6 +145,8 @@ def main():
             raise ValueError(f'{args.init_from}: not latent sites of this model: {unknown}')
         for k in loaded.files:
             init[k] = jnp.asarray(loaded[k])
+    else:
+        init = prior_draw(prob_model, init, {'posteriors': posteriors, 'injections': injections}, args.seed, args.chain)
     if args.check_only:
         from numpyro.infer.util import log_density
         kw = {'posteriors': posteriors, 'injections': injections}
@@ -136,14 +163,14 @@ def main():
             print(f'value+grad {1e3 * (time.time() - t0) / 5:.1f} ms', flush=True)
         return
     s = dict(SHORT) if args.short else dict(warmup=args.warmup, tot_samples=args.samples, thinning=args.thinning)
-    print(f'run {name}: {s}, spin mass modes {args.spin_mass_modes}, spin bins {args.spin_bins}', flush=True)
+    print(f'run {name} chain {args.chain}: {s}, spin mass modes {args.spin_mass_modes}, spin bins {args.spin_bins}', flush=True)
     print_keys = ['log_likelihood', 'log_likelihood_variance', 'log_likelihood_correction', 'lnsigma', 'lnsigma_spin',
                   'detection_efficiency'] + [h for h, (_, d) in pp.priors.items() if d is not dist.Delta]
     inference_loop(prob_model, model_kwargs={'posteriors': posteriors, 'injections': injections}, initial_value=init,
                    warmup=s['warmup'], tot_samples=s['tot_samples'], thinning=s['thinning'],
                    num_samples=max(1, min(100, s['tot_samples'] // 10)), pacc=0.7, maxtreedepth=args.maxtreedepth,
-                   parallel=1, run_dir=RESULTS, name=name, print_keys=print_keys, dense_mass=model.mass_matrix_blocks(),
-                   pixelpop_data=pp, rng_key=jax.random.PRNGKey(args.seed))
+                   parallel=[args.chain], run_dir=RESULTS, name=name, print_keys=print_keys, dense_mass=model.mass_matrix_blocks(),
+                   pixelpop_data=pp, rng_key=chain_key(args.seed, args.chain, 'sampler'))
 
 
 if __name__ == '__main__':

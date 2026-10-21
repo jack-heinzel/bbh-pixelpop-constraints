@@ -10,7 +10,7 @@ Catalogs (all (ln m1, q, chi_eff, chi_p) collections, read from ``<directory>/{p
   samples), from ``PPC_DATA_ROOT/<catalog>_o1o4b_chieffchip/data/``; kept to compare with the earlier runs.
 
 Conventions (as mass-gap-investigation's run_utils): variable-NPE rectangular posteriors with ``event_counts``, short
-events padded with prior = +inf; log_mass_1 with its Jacobian; PE samples outside the grid flagged with prior = +inf,
+events padded with prior = +inf; run.py keeps at most 20000 usable samples per event (``subsample``); log_mass_1 with its Jacobian; PE samples outside the grid flagged with prior = +inf,
 injections outside it dropped; redshift and the m2 > 3 Msun window are the GWTC-6 parametric models.
 
 Import only after the thread / CUDA environment is set (run.py), since this imports jax.
@@ -68,9 +68,63 @@ def load_data(catalog, exclude_events=()):
     return posteriors, injections, event_counts
 
 
-def build_pixelpop_data(name, catalog, bins=100, event_neff_cut=100., exclude_events=()):
-    """PixelPopData on the (ln m1, q) grid (ln m1 in [ln 3, ln 200], q in [0, 1]); no variance cut."""
+def subsample(posteriors, injections, event_counts, max_samples, bins, n_spin_bins, seed=0):
+    """At most ``max_samples`` columns, filled greedily with usable samples: each event keeps a random subset of its
+    real samples that are inside the grid (finite prior) and in a (ln m1, q) bin and a (chi_eff, chi_p) bin some
+    injection reaches (the bins of PixelPopData and model.setup_model), padded with prior = +inf copies. The other
+    samples carry zero weight anyway; leaving them out of the count shifts each event's ln L by the constant
+    -ln(usable / real samples). Returns the posteriors and the new event counts."""
+    from pixelpop.models.gwpop_models import bbh_maxima, bbh_minima
+    from model import spin_bins
+    axes = [np.asarray(jnp.linspace(np.log(MIN_M), np.log(MAX_M), bins + 1)),          # as pixelpop.place_in_bins
+            np.asarray(jnp.linspace(bbh_minima['mass_ratio'], bbh_maxima['mass_ratio'], bins + 1))]
+    spin_edges = np.linspace(-1., 1., n_spin_bins[0] + 1), np.linspace(0., 1., n_spin_bins[1] + 1)   # as model.py
+
+    def mass_index(x):
+        im, iq = (np.digitize(np.asarray(x[k]), a) - 1 for k, a in zip(('log_mass_1', 'mass_ratio'), axes))
+        return np.where((im >= 0) & (im < bins) & (iq >= 0) & (iq < bins), im * bins + iq, -1)
+
+    def spin_index(x):
+        ie, ip = spin_bins(x, *spin_edges)
+        return ie * n_spin_bins[1] + ip
+
+    im = mass_index(injections)
+    mass_reached = np.zeros(bins * bins, bool); mass_reached[im[im >= 0]] = True
+    spin_reached = np.zeros(int(np.prod(n_spin_bins)), bool); spin_reached[spin_index(injections)] = True
+    pm = mass_index(posteriors)
+    nobs, npe = pm.shape
+    usable = ((np.arange(npe)[None] < np.asarray(event_counts)[:, None]) & np.isfinite(np.asarray(posteriors['log_prior']))
+              & (pm >= 0) & mass_reached[np.maximum(pm, 0)] & spin_reached[spin_index(posteriors)])
+    n_usable = usable.sum(1)
+    if n_usable.min() == 0:
+        raise ValueError(f'events with no usable samples: {np.flatnonzero(n_usable == 0)}')
+    width = int(min(max_samples, n_usable.max()))
+    rng = np.random.default_rng(seed)
+    cols = []
+    for u in usable:
+        idx = np.flatnonzero(u)
+        if len(idx) > width:
+            idx = np.sort(rng.choice(idx, width, replace=False))
+        cols.append(np.concatenate([idx, rng.choice(idx, width - len(idx))]))
+    counts = np.minimum(n_usable, width)
+    rows = np.arange(nobs)[:, None]
+    out = {k: jnp.asarray(np.asarray(v)[rows, np.stack(cols)]) for k, v in posteriors.items()}
+    out['log_prior'] = jnp.where(jnp.asarray(np.arange(width)[None] >= counts[:, None]), jnp.inf, out['log_prior'])
+    real = np.asarray(event_counts)
+    print(f'subsample: {width} columns; usable samples per event min/median/max {n_usable.min()}/{int(np.median(n_usable))}/'
+          f'{n_usable.max()} ({1 - n_usable.sum() / real.sum():.2e} of real samples unusable, at most '
+          f'{(1 - n_usable / real).max():.2%} for one event); kept per event min/median/max {counts.min()}/'
+          f'{int(np.median(counts))}/{counts.max()}')
+    return out, counts
+
+
+def build_pixelpop_data(name, catalog, bins=100, event_neff_cut=100., exclude_events=(), max_samples=None,
+                        n_spin_bins=(100, 100)):
+    """PixelPopData on the (ln m1, q) grid (ln m1 in [ln 3, ln 200], q in [0, 1]); no variance cut. ``max_samples``:
+    keep at most that many usable samples per event (``subsample``; None keeps them all)."""
     posteriors, injections, event_counts = load_data(catalog, exclude_events)
+    if max_samples:
+        posteriors, event_counts = subsample(posteriors, injections, event_counts, max_samples, bins, n_spin_bins)
     models = {p: gwtc6_default.models[p] for p in OTHER_PARAMS}
     hypers = {p: list(gwtc6_default.hyperparameters[p]) for p in OTHER_PARAMS}
     priors = {h: gwtc6_default.priors[h] for p in OTHER_PARAMS for h in hypers[p]}

@@ -14,14 +14,20 @@ belong in mass-gap-investigation. See README.md for the model.
   FAR < 1/yr, 259 events: its rp.o4 directories, ignore list, NRSur > Mixed > SpinTaylor labels and VT), collected with
   pixelpop's variable-NPE loader (cap 20000) instead of upstream's downsampling; built by `collect/` (README). With GW231123; corrected likelihood, event
   Neff floor 100, no variance cut (as mass-gap-investigation).
+- PE samples (user, 2026-10-20): at most 20000 per event (`run.py --max-samples`, `data.subsample`; 10000 for the
+  short chains, now `ppc_gwtc5_k*_npe10000_short`, chosen for speed before the jax 0.9 environment), drawn
+  greedily from the usable ones (inside the grid, in (ln m1, q) and (chi_eff, chi_p) bins injections reach; fixed seed).
+  Unusable samples are 9.7e-4 of the total, at most 2.3% for one event (GW230704, mostly z > 1.9).
+- Initialization (user, 2026-10-20, replacing the warm start): every chain starts from a random prior draw of all latent
+  sites, keyed by `--seed`; `launch.sh` runs the short then the long chain, no `warmstart.py`.
 
 ## Conventions (shared with mass-gap-investigation)
 
-- Environment `~/.conda/envs/gwjax313`. The node caps processes + threads at 500 per user: GPU jobs pin themselves
+- Environment `~/venvs/gwjax313` (venv on the `python/3.13.2` module; activate with `gwjax`; jax 0.9.0 + CUDA 13, numpyro 0.21.0, as on LIGO: jax 0.12.0 makes ln L + gradient 2.5-3.8x slower on an A100, `bench.py`, 2026-10-20). The node caps processes + threads at 500 per user: GPU jobs pin themselves
   (`run.py --cpus`, least busy cores) before jax is imported; CPU tests need `taskset` and the XLA single-thread flags.
 - At most two GPUs at once, one job per GPU. Never edit a shell script while it runs: launch frozen copies.
 - Never `rm -f`/`rm -rf` variable or glob paths; never `pkill -f`/`pgrep -f` with self-matching patterns.
-- Compute the likelihood at the starting point before inference (`run.py --check-only`, `warmstart.py`).
+- Compute the likelihood at the starting point before inference (`run.py --check-only`, same `--seed` as the run).
 - Report times in US Eastern (the node clock is Pacific).
 - Plots: follow `~/public_html/mass-spin-correlations/plots/CLAUDE.md`; `plot_style.apply()`, no titles, PDF to `plots/`.
   PixelPop rates must be windowed (m2 > 3 M☉) before plotting; the saved `log_p_mass` is unwindowed.

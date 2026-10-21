@@ -51,13 +51,19 @@ events, `PPC_DATA_ROOT`) stay loadable for comparison.
 ## Running
 
 ```bash
-# environment: ~/.conda/envs/gwjax313 (pixelpop 0.4.0.dev1 with the per-file cosmology collection edit)
+# environment: ~/venvs/gwjax313 (venv on the python/3.13.2 module; jax 0.9.0 + CUDA 13, numpyro 0.21.0, not jax 0.12 (2.5-3.8x slower gradients); pixelpop 0.3.4 = 0.4.0.dev1 with the per-file cosmology collection edit)
 python run.py gwtc5 --spin-mass-modes 10 --device 0 --mem-fraction .4 --check-only     # ln L at the start, speed
-python warmstart.py gwtc5 --spin-mass-modes 10 --device 0 --source <chain h5> --out results/warm.npz
-python run.py gwtc5 --spin-mass-modes 10 --device 0 --mem-fraction .4 [--short] --init-from results/warm.npz
-bash launch.sh gwtc5 10 0 .4          # warm start, short chain, long chain (launch a frozen copy)
+python run.py gwtc5 --spin-mass-modes 10 --device 0 --mem-fraction .4 [--short]
+bash launch.sh gwtc5 10 0 .4          # short chain, long chain (launch a frozen copy)
+sbatch submit.sbatch                  # Rusty: chains 0 and 1 of k = 10 and k = 5, one GPU each (MODES=long: long only)
 JAX_PLATFORMS=cpu XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1" \
     taskset -c <4 cores> python -m pytest tests -q
 ```
 
 Chains go to `results/<run name>/chain_0_samples.h5` (gitignored). Run names: `ppc_<catalog>_k<k>[_short][...]`.
+`run.py` keeps at most 20000 PE samples per event (`--max-samples`; 0 keeps all, run name `_npeall`; the short
+chains `ppc_gwtc5_k*_npe10000_short` used 10000), a fixed random
+subset of the usable ones: inside the grid and in (ln m1, q) and (chi_eff, chi_p) bins that injections reach (the other
+samples get zero weight anyway, so this only shifts each event's ln L by a constant).
+Each chain starts from a random draw from the prior of every latent site, keyed by `--seed` and `--chain` (`--check-only`
+evaluates the same draw); chains of a run (`--chain 0`, `1`, separate jobs) write `chain_<N>_samples.h5` in its directory. `warmstart.py` and `--init-from` (start from an earlier fit's best sample) are kept but no longer used.

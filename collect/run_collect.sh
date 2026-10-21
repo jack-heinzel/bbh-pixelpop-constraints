@@ -14,7 +14,7 @@ export VECLIB_MAXIMUM_THREADS=1
 export JAX_PLATFORMS=cpu
 export XLA_FLAGS="--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1"
 
-PY=~/.conda/envs/gwjax313/bin/python
+PY=~/venvs/gwjax313/bin/python
 INI=collect_gwtc5_ifar1_chieffchip.ini
 
 $PY dry_run.py $INI               # every file resolves to its label and cosmology
