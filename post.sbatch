@@ -2,7 +2,8 @@
 # Rusty: rebuild the notebooks' spin quantities on every draw (results/post_processing/for_plotting/<run>/chain_<c>.h5,
 # notebooks/analysis.py) on one GPU, then execute the main notebooks. Submit from the repository:
 #     sbatch post.sbatch                                    (the runs below)
-#     sbatch --export=ALL,RUNS="ppc_gwtc5_k10 ppc_gwtc5_k5" post.sbatch
+#     RUNS=ppc_gwtc5_k10_gauss NOTEBOOKS=ppc_gwtc5_k10_gauss,compare_gwtc5_k10_field_vs_gauss sbatch post.sbatch
+# RUNS and NOTEBOOKS are lists separated by commas or spaces.
 # Chains whose cache is complete are skipped. Slurm copies this script at submission, so editing it does not affect
 # queued or running jobs.
 #SBATCH --job-name=ppc-post
@@ -21,6 +22,7 @@ unset JAX_PLATFORMS
 PY=~/venvs/gwjax313/bin/python
 RUNS=${RUNS:-ppc_gwtc5_k10 ppc_gwtc5_k5 ppc_gwtc5_k10_npe10000_short}
 NOTEBOOKS=${NOTEBOOKS:-ppc_gwtc5_k10 ppc_gwtc5_k5 compare_gwtc5_k5_vs_k10_long compare_gwtc5_k10_short_vs_long}
+RUNS=${RUNS//,/ }; NOTEBOOKS=${NOTEBOOKS//,/ }
 
 echo "$(date '+%F %H:%M') on $(hostname) ($(nvidia-smi --query-gpu=name --format=csv,noheader))"
 $PY - $RUNS <<'EOF' || exit 1

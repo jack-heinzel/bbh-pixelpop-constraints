@@ -223,7 +223,7 @@ with the **windowed** mass weights. The rebuild is checked against the saved mar
 differences of order $10^{-3}$ come from the chain being stored in float32."""),
 code(r"""sys.path.insert(0, os.path.join(REPO, 'notebooks'))
 import analysis as A
-r = A.load_run(RUN)              # spins: every draw, cached in results/post_processing/for_plotting/<RUN>/
+r = RES = A.load_run(RUN)        # spins: every draw, cached in results/post_processing/for_plotting/<RUN>/ (RES: r is reused below)
 print('spins', r.spin_source)
 P_raw, P_win, MOM = r.P_raw, r.P_win, r.MOM          # MOM: (draws, ln m1, q, 4)
 tv_win = 0.5 * np.abs(P_win - P_raw).sum((1, 2))
@@ -365,6 +365,115 @@ for c, lab in enumerate(MOM_LABELS):
 axes[0, 0].set_xscale('log'); axes[0, 0].set_xlim(MIN_M, MAX_M)
 fig.tight_layout()
 plot_style.save(fig, f'{RUN}_spin_moments_q_slices')"""),
+md(r"""## Spin moments given primary mass alone
+
+The moments above are of the conditional at fixed $(m_1, q)$. The population at a given $m_1$ mixes all mass ratios,
+with the windowed $p(q \mid m_1)$, so its spread has two parts (law of total variance):
+$$\mathrm{sd}^2(\chi \mid m_1) = \underbrace{\mathrm{E}_q\!\left[\mathrm{sd}^2(\chi \mid m_1, q)\right]}_{\text{within}^2}
++ \underbrace{\mathrm{Var}_q\!\left[\mathrm{E}(\chi \mid m_1, q)\right]}_{\text{between}^2}.$$
+*Within* is the width at fixed $q$; *between* is the spread of the per-$q$ means. A broad $p(\chi_\mathrm{eff} \mid m_1)$
+at some mass can come from either, which the $q \approx 1$ slice alone does not show."""),
+code(r"""Q = A.q_averaged_moments(RES)
+fig, axes = plt.subplots(2, 2, figsize=(12, 7.5), sharex=True)
+for row, (name, lab) in enumerate((('chi_eff', r'\chi_\mathrm{eff}'), ('chi_p', r'\chi_p'))):
+    for ax, key, ylab in ((axes[row, 0], 'mean', rf'mean ${lab}$'), (axes[row, 1], 'sd', rf'sd ${lab}$')):
+        lo, med, hi = band(Q[name][key])
+        ax.fill_between(m_c, lo, hi, color='C0', alpha=0.3, lw=0)
+        ax.plot(m_c, med, color='C0', label=r'given $m_1$')
+        mom = MOM[:, :, -1, {'mean': 0, 'sd': 1}[key] + 2 * row]
+        ax.plot(m_c, np.median(mom, 0), color='C1', ls='--', label=r'at $q \approx 1$ (median)')
+        ax.set_ylabel(ylab)
+axes[0, 0].axhline(0, color='0.5', lw=0.8, ls=':')
+axes[0, 1].legend(**plot_style.LEG_KW)
+for ax in axes.ravel():
+    ax.set_xscale('log'); ax.set_xlim(MIN_M, MAX_M)
+for ax in axes[1]:
+    ax.set_xlabel(r'$m_1\,[M_\odot]$')
+fig.tight_layout()
+plot_style.save(fig, f'{RUN}_spin_moments_given_m1')
+
+rows = []
+for m in (8., 12., 15., 18., 20., 25., 30., 35., 45., 60., 80., 100.):
+    im = int(np.argmin(np.abs(m_c - m)))
+    rows.append({'m1 [Msun]': f'{m_c[im]:.1f}', **{f'{k} chi_eff': A.fmt(Q['chi_eff'][k][:, im])
+                                                  for k in ('mean', 'sd', 'within', 'between')}})
+print('chi_eff given m1 (averaged over the windowed p(q | m1)): median [5%, 95%] over draws')
+pd.DataFrame(rows).set_index('m1 [Msun]')"""),
+md(r"""Where the $\chi_\mathrm{eff}$ distribution is broader or narrower than at the $35\,M_\odot$ peak: per-draw differences
+of sd($\chi_\mathrm{eff} \mid m_1$) from its value at the reference mass, then the same for its *within* and *between*
+parts. The panel splits sd into the two parts across $m_1$."""),
+code(r"""fig, ax = plt.subplots(figsize=(8, 4.8))
+for key, col, ls, lab in (('sd', 'C0', '-', 'total'), ('within', 'C2', '--', r'within $q$'),
+                          ('between', 'C3', ':', r'between $q$ (spread of means)')):
+    lo, med, hi = band(Q['chi_eff'][key])
+    ax.fill_between(m_c, lo, hi, color=col, alpha=0.2, lw=0)
+    ax.plot(m_c, med, color=col, ls=ls, label=lab)
+ax.axvline(A.WIDTH_REF, color='0.5', lw=0.8, ls=':')
+ax.set_xscale('log'); ax.set_xlim(MIN_M, MAX_M); ax.set_ylim(0)
+ax.set_xlabel(r'$m_1\,[M_\odot]$'); ax.set_ylabel(r'sd $\chi_\mathrm{eff}$ given $m_1$')
+ax.legend(**plot_style.LEG_KW)
+fig.tight_layout()
+plot_style.save(fig, f'{RUN}_chieff_width_split')
+pd.concat({k: A.width_contrasts(Q, key=k) for k in ('sd', 'within', 'between')}, axis=1)"""),
+md(r"""## Mass ratio and spin width together
+
+One figure on a shared $m_1$ axis: (1) the windowed $p(m_1)$; (2) $p(q \mid m_1)$, median over draws, with the mean
+$q$ given $m_1$ (90% band); (3) the $\chi_\mathrm{eff}$ width at fixed $(m_1, q)$, median over draws, with the
+25–75% (solid) and 5–95% (dashed) quantiles of the median $p(q \mid m_1)$, i.e. where the population sits in $q$; (4) sd($\chi_\mathrm{eff} \mid m_1$) and its
+within-$q$ and between-$q$ parts. Dotted lines: the two $p(m_1)$ peaks (the maxima of the median $p(m_1)$ in
+$7$–$14$ and $25$–$45\,M_\odot$); dashed lines: twice those masses, where a first-generation primary that merged once
+would land. Cells with $q\,m_1 < 3\,M_\odot$ are blank (no support)."""),
+code(r"""pq = RES.p_mass / RES.p_mass.sum(2, keepdims=True)                 # p(q | m1), probability per q bin
+ok = q_c[None, :] * m_c[:, None] >= MIN_M                           # (Bm, Bq): cells with support
+m_edges = np.exp(lnm_edges)
+p_m = RES.p_lnm / m_c[None]                                         # p(m1)
+med_pm = np.median(p_m, 0)
+PEAKS = [m_c[np.argmax(np.where((m_c > a) & (m_c < b), med_pm, -np.inf))] for a, b in ((7., 14.), (25., 45.))]
+print('p(m1) peaks: ' + ', '.join(f'{m:.1f}' for m in PEAKS) + ' Msun; twice: ' + ', '.join(f'{2 * m:.1f}' for m in PEAKS))
+
+fig, axes = plt.subplots(4, 1, figsize=(8.5, 14), sharex=True, gridspec_kw={'height_ratios': [1, 1.4, 1.4, 1.1]})
+ax = axes[0]
+lo, med, hi = band(p_m)
+ax.fill_between(m_c, lo, hi, color='C0', alpha=0.3, lw=0); ax.plot(m_c, med, color='C0')
+ax.set_yscale('log'); ax.set_ylim(np.percentile(lo, 2) / 3, hi.max() * 3)
+ax.set_ylabel(r'$p(m_1)\,[M_\odot^{-1}]$')
+
+ax = axes[1]
+img = np.where(ok, np.median(pq, 0) / dq, np.nan)
+pc = ax.pcolormesh(m_edges, q_edges, img.T, cmap='viridis', shading='flat', rasterized=True,
+                   vmin=0, vmax=np.nanpercentile(img, 99.5))
+cb = fig.colorbar(pc, cax=ax.inset_axes([1.015, 0, 0.025, 1])); cb.set_label(r'$p(q \mid m_1)$')
+lo, med, hi = band((pq * q_c).sum(2))
+ax.fill_between(m_c, lo, hi, color='w', alpha=0.25, lw=0); ax.plot(m_c, med, color='w', lw=1.2)
+ax.set_ylabel(r'$q$'); ax.set_ylim(0, 1)
+
+ax = axes[2]
+img = np.where(ok, np.median(MOM[:, :, :, 1], 0), np.nan)
+pc = ax.pcolormesh(m_edges, q_edges, img.T, cmap='magma', shading='flat', rasterized=True,
+                   vmin=0, vmax=np.nanpercentile(img, 99))
+cb = fig.colorbar(pc, cax=ax.inset_axes([1.015, 0, 0.025, 1])); cb.set_label(r'sd $\chi_\mathrm{eff}$ at $(m_1, q)$')
+# where the population sits in q at each m1: the 25-75% (solid) and 5-95% (dashed) quantiles of the median p(q | m1)
+P = np.median(pq, 0); cdf = np.cumsum(P / P.sum(1, keepdims=True), 1)
+for (a, b), ls in (((0.25, 0.75), '-'), ((0.05, 0.95), '--')):
+    for f in (a, b):
+        ax.plot(m_c, [np.interp(f, c, q_edges[1:]) for c in cdf], color='w', lw=1, ls=ls)
+ax.set_ylabel(r'$q$'); ax.set_ylim(0, 1)
+
+ax = axes[3]
+for key, col, ls, lab in (('sd', 'C0', '-', 'total'), ('within', 'C2', '--', r'within $q$'),
+                          ('between', 'C3', ':', r'between $q$')):
+    lo, med, hi = band(Q['chi_eff'][key])
+    ax.fill_between(m_c, lo, hi, color=col, alpha=0.2, lw=0)
+    ax.plot(m_c, med, color=col, ls=ls, label=lab)
+ax.set_ylim(0); ax.set_ylabel(r'sd $\chi_\mathrm{eff}$ given $m_1$'); ax.legend(loc='upper left', **plot_style.LEG_KW)
+
+for ax in axes:
+    for m in PEAKS:
+        ax.axvline(m, color='0.5', lw=0.9, ls=':')
+        ax.axvline(2 * m, color='0.5', lw=0.9, ls='--')
+axes[-1].set_xscale('log'); axes[-1].set_xlim(MIN_M, MAX_M); axes[-1].set_xlabel(r'$m_1\,[M_\odot]$')
+fig.tight_layout()
+plot_style.save(fig, f'{RUN}_mass_ratio_spin_summary')"""),
 md(r"""## Model-specific parameters
 
 - **`split`:** $\sigma_1$ is the marginal sd of the mass-varying part $G_1$ of the spin log density, and $\sigma_0$

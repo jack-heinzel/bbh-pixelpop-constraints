@@ -265,10 +265,14 @@ def load_run(run):
     r.spin_source = (f'rebuilt from the saved spin latents on all {n_draws} draws per chain '
                      f'(results/post_processing/for_plotting/{run}/)')
     # mass in chi_eff slices: p(ln m1, q | chi_eff in S) ~ p_mass(ln m1, q) P(S | m1, q), on the rebuilt draws
-    joint = r.p_mass[..., None] * r.SLICE * dlnm * dq                                     # (draws, Bm, Bq, n_slices)
-    r.slice_share = joint.sum((1, 2))                                               # P(chi_eff in S)
-    r.p_mass_slice = joint / np.maximum(r.slice_share[:, None, None], 1e-300) / (dlnm * dq)
-    r.P_q1 = (lambda P: P / P.sum((2, 3), keepdims=True))(np.exp(flat['log_p_spin_q1_m'].astype(float)))
+    # float32 from here on: these are only plotted as bands, and two long runs in float64 do not fit the login nodes' 8 GB
+    joint = (r.p_mass * (dlnm * dq)).astype(np.float32)[..., None] * r.SLICE           # (draws, Bm, Bq, n_slices)
+    r.slice_share = joint.sum((1, 2), dtype=float)                                  # P(chi_eff in S)
+    joint /= np.maximum(r.slice_share[:, None, None], 1e-300).astype(np.float32) * np.float32(dlnm * dq)
+    r.p_mass_slice = joint
+    lq = flat['log_p_spin_q1_m']
+    r.P_q1 = np.exp(lq - lq.max((2, 3), keepdims=True))
+    r.P_q1 /= r.P_q1.sum((2, 3), keepdims=True)
     try:
         names = event_names(r.catalog)
     except FileNotFoundError:
@@ -296,6 +300,41 @@ def spin_moments_table(P):
 def fmt(x):
     lo, med, hi = np.percentile(x, [5, 50, 95])
     return f'{med:.3f} [{lo:.3f}, {hi:.3f}]'
+
+
+def q_averaged_moments(r):
+    """Spin moments given m1 alone: the conditional averaged over the windowed p(q | m1), per draw and m1 bin.
+    For chi_eff and chi_p: 'mean', 'sd' (of p(chi | m1)), and the two parts of sd^2 by the law of total variance,
+    'within' = sqrt(E_q[sd(m1, q)^2]) (the width at fixed q) and 'between' = sqrt(Var_q[mean(m1, q)]) (the spread of
+    the per-q means), so sd^2 = within^2 + between^2. Each is (draws, Bm)."""
+    wq = r.p_mass / np.maximum(r.p_mass.sum(2, keepdims=True), 1e-300)          # windowed p(q | m1), (draws, Bm, Bq)
+    out = {}
+    for name, (i_mu, i_sd) in (('chi_eff', (0, 1)), ('chi_p', (2, 3))):
+        mu, sd = r.MOM[..., i_mu].astype(float), r.MOM[..., i_sd].astype(float)
+        mean = (wq * mu).sum(2)
+        within2 = (wq * sd ** 2).sum(2)
+        between2 = (wq * (mu - mean[..., None]) ** 2).sum(2)
+        out[name] = {'mean': mean, 'sd': np.sqrt(within2 + between2), 'within': np.sqrt(within2),
+                     'between': np.sqrt(between2)}
+    return out
+
+
+# the chi_eff width contrasts: the gap below the 35 Msun peak and above it, against the peak
+WIDTH_REF = 32.
+WIDTH_AT = (10., 19., 45., 60., 80.)
+
+
+def width_contrasts(Q, ref=WIDTH_REF, at=WIDTH_AT, name='chi_eff', key='sd'):
+    """Per-draw differences Q[name][key](m1) - Q[name][key](ref) at the m1 bins nearest ``at``: median [5%, 95%] and
+    P(> 0)."""
+    x = Q[name][key]
+    i0 = int(np.argmin(np.abs(m_c - ref)))
+    rows = {}
+    for m in at:
+        i = int(np.argmin(np.abs(m_c - m)))
+        d = x[:, i] - x[:, i0]
+        rows[f'{m_c[i]:.0f} minus {m_c[i0]:.0f} Msun'] = {'difference': fmt(d), 'P(> 0)': f'{np.mean(d > 0):.2f}'}
+    return pd.DataFrame(rows).T
 
 
 if __name__ == '__main__':

@@ -224,6 +224,48 @@ for c, lab in enumerate(MOM_LABELS):
 axes[0, 0].set_xscale('log'); axes[0, 0].set_xlim(A.MIN_M, A.MAX_M)
 axes[0, 1].legend(loc='upper left', **plot_style.LEG_KW)
 fig.tight_layout(); plot_style.save(fig, f'compare_{NAME}_spin_moments_q_slices')"""),
+md(r"""## Spin moments given primary mass alone
+
+The moments above are of the conditional at fixed $(m_1, q)$. At a given $m_1$ the population mixes mass ratios with the
+windowed $p(q \mid m_1)$, so $\mathrm{sd}^2(\chi \mid m_1) = \text{within}^2 + \text{between}^2$: the mean width at
+fixed $q$, $\mathrm{E}_q[\mathrm{sd}^2(\chi \mid m_1, q)]$, plus the spread of the per-$q$ means,
+$\mathrm{Var}_q[\mathrm{E}(\chi \mid m_1, q)]$ (`analysis.q_averaged_moments`)."""),
+code(r"""Q = {run: A.q_averaged_moments(R[run]) for run in RUNS}
+fig, axes = plt.subplots(2, 2, figsize=(12, 7.5), sharex=True)
+for row, (name, lab) in enumerate((('chi_eff', r'\chi_\mathrm{eff}'), ('chi_p', r'\chi_p'))):
+    for ax, key in zip(axes[row], ('mean', 'sd')):
+        for run in RUNS:
+            lo, med, hi = band(Q[run][name][key])
+            ax.fill_between(A.m_c, lo, hi, color=COL[run], alpha=0.25, lw=0)
+            ax.plot(A.m_c, med, color=COL[run], ls=LS[run], label=LAB[run])
+        ax.set_ylabel(rf'{key} ${lab}$ given $m_1$')
+axes[0, 0].axhline(0, color='0.5', lw=0.8, ls=':'); axes[0, 1].legend(**plot_style.LEG_KW)
+for ax in axes.ravel():
+    ax.set_xscale('log'); ax.set_xlim(A.MIN_M, A.MAX_M)
+for ax in axes[1]:
+    ax.set_xlabel(r'$m_1\,[M_\odot]$')
+fig.tight_layout(); plot_style.save(fig, f'compare_{NAME}_spin_moments_given_m1')
+
+rows = {}
+for m in (8., 12., 15., 18., 20., 25., 30., 35., 45., 60., 80., 100.):
+    im = int(np.argmin(np.abs(A.m_c - m)))
+    for key in ('sd', 'within', 'between'):
+        rows[(f'{A.m_c[im]:.1f}', key)] = {run: fmt(Q[run]['chi_eff'][key][:, im]) for run in RUNS}
+print('sd chi_eff given m1, and its within-q and between-q parts: median [5%, 95%] over draws')
+pd.DataFrame(rows).T"""),
+code(r"""fig, axes = plt.subplots(1, 3, figsize=(17, 4.5), sharey=True)
+for ax, key, lab in zip(axes, ('sd', 'within', 'between'), ('total', r'within $q$', r'between $q$ (spread of means)')):
+    for run in RUNS:
+        lo, med, hi = band(Q[run]['chi_eff'][key])
+        ax.fill_between(A.m_c, lo, hi, color=COL[run], alpha=0.25, lw=0)
+        ax.plot(A.m_c, med, color=COL[run], ls=LS[run], label=LAB[run])
+    ax.axvline(A.WIDTH_REF, color='0.5', lw=0.8, ls=':')
+    ax.text(0.04, 0.93, lab, transform=ax.transAxes, va='top')
+    ax.set_xscale('log'); ax.set_xlim(A.MIN_M, A.MAX_M); ax.set_ylim(0); ax.set_xlabel(r'$m_1\,[M_\odot]$')
+axes[0].set_ylabel(r'sd $\chi_\mathrm{eff}$ given $m_1$'); axes[-1].legend(loc='upper right', **plot_style.LEG_KW)
+fig.tight_layout(); plot_style.save(fig, f'compare_{NAME}_chieff_width_split')
+print(f'sd chi_eff given m1 minus its value at {A.WIDTH_REF:g} Msun (the 35 Msun peak), per draw')
+pd.concat({(run, k): A.width_contrasts(Q[run], key=k) for run in RUNS for k in ('sd', 'within', 'between')}, axis=1)"""),
 md(r"""## Spin distributions at fixed primary mass
 
 $p(\chi_\mathrm{eff} \mid m_1)$ and $p(\chi_p \mid m_1)$ in the $m_1$ bin nearest each mass, averaged over $q$ with

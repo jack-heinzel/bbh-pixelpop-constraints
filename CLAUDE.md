@@ -14,7 +14,9 @@ belong in mass-gap-investigation. See README.md for the model.
   (baseline), then `split` (G0(chi) + G1(m1, q, chi), separate amplitudes, separable G1 spectrum), then `gauss`
   (truncated 2D Gaussian whose mean, ln sd and atanh rho are Matern fields on (ln m1, q)). A two-component mixture
   with a Gaussian was discussed but is a channel/template, so it belongs in mass-gap-investigation unless the user
-  relaxes the rule above.
+  relaxes the rule above. Variants on Rusty (user, 2026-10-21): long chains only (no shorts), `submit_variants.sbatch`
+  (split, gauss at k = 10, chains 0 and 1). A Gaussian + linear-space perturbation mixture was raised again
+  (2026-10-21) and is on hold.
 - Catalog `gwtc5` (user, 2026-10-20, replacing `nrsur`): the O4b paper's August-rerun set (o4b_population/pixelpop-o4,
   FAR < 1/yr, 259 events: its rp.o4 directories, ignore list, NRSur > Mixed > SpinTaylor labels and VT), collected with
   pixelpop's variable-NPE loader (cap 20000) instead of upstream's downsampling; built by `collect/` (README). With GW231123; corrected likelihood, event
@@ -33,7 +35,8 @@ belong in mass-gap-investigation. See README.md for the model.
   cluster (ldas-pcdev12) `~/.conda/envs/gwjax313`; both jax 0.9.0 + CUDA 13, numpyro 0.21.0 (jax 0.12.0 makes ln L +
   gradient 2.5-3.8x slower on an A100, `bench.py`, 2026-10-20). The launch and collection scripts pick whichever exists. The node caps processes + threads at 500 per user: GPU jobs pin themselves
   (`run.py --cpus`, least busy cores) before jax is imported; CPU tests need `taskset` and the XLA single-thread flags.
-- At most two GPUs at once, one job per GPU. Never edit a shell script while it runs: launch frozen copies.
+- One job per GPU. On the LIGO cluster at most two GPUs at once; on Rusty up to 16 (the `gpu` QOS limit per user:
+  16 GPUs, 16 jobs, 288 CPUs, 4000 GB; user, 2026-10-21). Never edit a shell script while it runs: launch frozen copies.
 - Never `rm -f`/`rm -rf` variable or glob paths; never `pkill -f`/`pgrep -f` with self-matching patterns.
 - Compute the likelihood at the starting point before inference (`run.py --check-only`, same `--seed` as the run).
 - Report times in US Eastern (the node clock is Pacific).
@@ -76,4 +79,12 @@ belong in mass-gap-investigation. See README.md for the model.
   (`notebooks/analysis.py`); build them and execute the main notebooks with `sbatch post.sbatch` (job 7300264: 9 min on
   one GPU, 0.04-0.07 s per draw). Rusty login nodes cap each user at 1 CPU and 8 GB in total, so do this on a GPU node,
   not the login node. Older notebooks are in `notebooks/exploratory/`.
+- 2026-10-21 17:02-20:38 EDT (Rusty): variant long chains, `submit_variants.sbatch` (jobs 7300920, 7303103, 7303640):
+  split k = 10 chains 0, 1; gauss k = 10 chains 0, 1 (+ chain 2); gauss k = 100 chains 0, 1. Three of these froze
+  early in warmup (step size ~1e-2 -> ~1e-6, parameters stuck far from the posterior: gauss k = 10 chain 0, moved to
+  `results/ppc_gwtc5_k10_gauss/stuck_chain0/`; split chain 1; gauss k = 100 chain 0). The starting point's Var(ln L) /
+  min Neff does not predict which chains freeze. Gauss k = 10 notebooks use chain 1 (chain 2 pending). Notebook
+  finding: sd chi_eff given m1 (averaged over p(q | m1)) is broad at ~18-20 and >~45 Msun, narrow at the ~10 and ~33
+  peaks, mostly from the width at fixed q (low q), not from per-q mean shifts; the q ~ 1 slice hides it.
+  Notebooks run on the login node pinned (`taskset`), or jax exceeds the 256 processes + threads per user.
 
