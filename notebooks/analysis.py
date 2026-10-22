@@ -337,6 +337,80 @@ def width_contrasts(Q, ref=WIDTH_REF, at=WIDTH_AT, name='chi_eff', key='sd'):
     return pd.DataFrame(rows).T
 
 
+PEAK_WINDOWS = ((7., 14.), (25., 45.))
+
+
+def p_m1_peaks(r):
+    """The m1 bins where the median windowed p(m1) is largest within each of PEAK_WINDOWS (Msun)."""
+    med = np.median(r.p_lnm / m_c[None], 0)
+    return [float(m_c[np.argmax(np.where((m_c > a) & (m_c < b), med, -np.inf))]) for a, b in PEAK_WINDOWS]
+
+
+def summary_figure(runs, labels=None):
+    """Mass ratio and chi_eff width on a shared m1 axis, one column per run (namespaces from load_run), with shared
+    y ranges and colour scales across columns: (1) the windowed p(m1); (2) the median p(q | m1) with the mean q given
+    m1 (90% band); (3) the median chi_eff width at fixed (m1, q) with the 25-75% (solid) and 5-95% (dashed) quantiles
+    of the median p(q | m1); (4) sd(chi_eff | m1) and its within-q and between-q parts. Dotted lines: the p(m1) peaks
+    (p_m1_peaks); dashed: twice those masses. Cells with q m1 < 3 Msun are blank. Returns the figure and the peaks."""
+    import matplotlib.pyplot as plt
+    import plot_style
+    labels = labels or [r.run.replace('ppc_', '').replace('_', r'\_') for r in runs]
+    ok = q_c[None, :] * m_c[:, None] >= MIN_M                                        # (Bm, Bq): cells with support
+    m_edges = np.exp(lnm_edges)
+    D = []
+    for r in runs:
+        pq = r.p_mass / r.p_mass.sum(2, keepdims=True)                               # p(q | m1), per q bin
+        D.append(dict(p_m=r.p_lnm / m_c[None], pq=pq, mq=(pq * q_c).sum(2),
+                      img_q=np.where(ok, np.median(pq, 0) / dq, np.nan),
+                      img_w=np.where(ok, np.median(r.MOM[..., 1], 0), np.nan),
+                      Q=q_averaged_moments(r)['chi_eff'], peaks=p_m1_peaks(r)))
+    vq = max(np.nanpercentile(d['img_q'], 99.5) for d in D)
+    vw = max(np.nanpercentile(d['img_w'], 99) for d in D)
+    n = len(runs)
+    fig, axes = plt.subplots(4, n, figsize=(7.5 * n + 1, 14), sharex=True, sharey='row', squeeze=False,
+                             gridspec_kw={'height_ratios': [1, 1.4, 1.4, 1.1]})
+    for j, (d, lab) in enumerate(zip(D, labels)):
+        ax = axes[0, j]
+        lo, med, hi = band(d['p_m'])
+        ax.fill_between(m_c, lo, hi, color='C0', alpha=0.3, lw=0); ax.plot(m_c, med, color='C0')
+        ax.set_yscale('log')
+        ax.text(0.97, 0.93, lab, transform=ax.transAxes, ha='right', va='top')
+        ax = axes[1, j]
+        pc_q = ax.pcolormesh(m_edges, q_edges, d['img_q'].T, cmap='viridis', shading='flat', rasterized=True,
+                             vmin=0, vmax=vq)
+        lo, med, hi = band(d['mq'])
+        ax.fill_between(m_c, lo, hi, color='w', alpha=0.25, lw=0); ax.plot(m_c, med, color='w', lw=1.2)
+        ax = axes[2, j]
+        pc_w = ax.pcolormesh(m_edges, q_edges, d['img_w'].T, cmap='magma', shading='flat', rasterized=True,
+                             vmin=0, vmax=vw)
+        P = np.median(d['pq'], 0); cdf = np.cumsum(P / P.sum(1, keepdims=True), 1)
+        for (a, b), ls in (((0.25, 0.75), '-'), ((0.05, 0.95), '--')):
+            for f in (a, b):
+                ax.plot(m_c, [np.interp(f, c, q_edges[1:]) for c in cdf], color='w', lw=1, ls=ls)
+        ax = axes[3, j]
+        for key, col, ls, l in (('sd', 'C0', '-', 'total'), ('within', 'C2', '--', r'within $q$'),
+                                ('between', 'C3', ':', r'between $q$')):
+            lo, med, hi = band(d['Q'][key])
+            ax.fill_between(m_c, lo, hi, color=col, alpha=0.2, lw=0)
+            ax.plot(m_c, med, color=col, ls=ls, label=l)
+        for ax in axes[:, j]:
+            for m in d['peaks']:
+                ax.axvline(m, color='0.5', lw=0.9, ls=':')
+                ax.axvline(2 * m, color='0.5', lw=0.9, ls='--')
+        axes[-1, j].set_xscale('log'); axes[-1, j].set_xlim(MIN_M, MAX_M); axes[-1, j].set_xlabel(r'$m_1\,[M_\odot]$')
+    lo_all = min(np.percentile(band(d['p_m'])[0], 2) for d in D)
+    axes[0, 0].set_ylim(lo_all / 3, max(band(d['p_m'])[2].max() for d in D) * 3)
+    axes[1, 0].set_ylim(0, 1); axes[2, 0].set_ylim(0, 1); axes[3, 0].set_ylim(0)
+    axes[0, 0].set_ylabel(r'$p(m_1)\,[M_\odot^{-1}]$'); axes[1, 0].set_ylabel(r'$q$'); axes[2, 0].set_ylabel(r'$q$')
+    axes[3, 0].set_ylabel(r'sd $\chi_\mathrm{eff}$ given $m_1$')
+    axes[3, 0].legend(loc='upper left', **plot_style.LEG_KW)
+    cb = fig.colorbar(pc_q, cax=axes[1, -1].inset_axes([1.015, 0, 0.025, 1])); cb.set_label(r'$p(q \mid m_1)$')
+    cb = fig.colorbar(pc_w, cax=axes[2, -1].inset_axes([1.015, 0, 0.025, 1]))
+    cb.set_label(r'sd $\chi_\mathrm{eff}$ at $(m_1, q)$')
+    fig.tight_layout()
+    return fig, [d['peaks'] for d in D]
+
+
 if __name__ == '__main__':
     # python notebooks/analysis.py <run> [<chain> ...]: rebuild and cache the spin quantities of all (or the given)
     # chains. Pin it first (taskset, single-thread XLA flags; see build_run_nb.py), or run it on a GPU.

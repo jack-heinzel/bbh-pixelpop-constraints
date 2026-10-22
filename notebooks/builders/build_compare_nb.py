@@ -266,6 +266,17 @@ axes[0].set_ylabel(r'sd $\chi_\mathrm{eff}$ given $m_1$'); axes[-1].legend(loc='
 fig.tight_layout(); plot_style.save(fig, f'compare_{NAME}_chieff_width_split')
 print(f'sd chi_eff given m1 minus its value at {A.WIDTH_REF:g} Msun (the 35 Msun peak), per draw')
 pd.concat({(run, k): A.width_contrasts(Q[run], key=k) for run in RUNS for k in ('sd', 'within', 'between')}, axis=1)"""),
+md(r"""## Mass ratio and spin width, side by side
+
+One column per run, with shared $y$ ranges and colour scales (`analysis.summary_figure`): (1) the windowed $p(m_1)$;
+(2) the median $p(q \mid m_1)$ with the mean $q$ given $m_1$; (3) the median $\chi_\mathrm{eff}$ width at fixed
+$(m_1, q)$ with the 25–75% (solid) and 5–95% (dashed) quantiles of $p(q \mid m_1)$; (4) sd($\chi_\mathrm{eff} \mid m_1$)
+and its within-$q$ and between-$q$ parts. Dotted lines: each run's $p(m_1)$ peaks; dashed: twice those masses. Read
+panel 3 between the quantile lines: outside them there are few events and the width follows the prior."""),
+code(r"""fig, peaks = A.summary_figure([R[run] for run in RUNS], [LAB[run] for run in RUNS])
+for run, pk in zip(RUNS, peaks):
+    print(f'{run}: p(m1) peaks ' + ', '.join(f'{m:.1f}' for m in pk) + ' Msun')
+plot_style.save(fig, f'compare_{NAME}_mass_ratio_spin_summary')"""),
 md(r"""## Spin distributions at fixed primary mass
 
 $p(\chi_\mathrm{eff} \mid m_1)$ and $p(\chi_p \mid m_1)$ in the $m_1$ bin nearest each mass, averaged over $q$ with

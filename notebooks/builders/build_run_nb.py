@@ -423,56 +423,9 @@ $q$ given $m_1$ (90% band); (3) the $\chi_\mathrm{eff}$ width at fixed $(m_1, q)
 within-$q$ and between-$q$ parts. Dotted lines: the two $p(m_1)$ peaks (the maxima of the median $p(m_1)$ in
 $7$–$14$ and $25$–$45\,M_\odot$); dashed lines: twice those masses, where a first-generation primary that merged once
 would land. Cells with $q\,m_1 < 3\,M_\odot$ are blank (no support)."""),
-code(r"""pq = RES.p_mass / RES.p_mass.sum(2, keepdims=True)                 # p(q | m1), probability per q bin
-ok = q_c[None, :] * m_c[:, None] >= MIN_M                           # (Bm, Bq): cells with support
-m_edges = np.exp(lnm_edges)
-p_m = RES.p_lnm / m_c[None]                                         # p(m1)
-med_pm = np.median(p_m, 0)
-PEAKS = [m_c[np.argmax(np.where((m_c > a) & (m_c < b), med_pm, -np.inf))] for a, b in ((7., 14.), (25., 45.))]
-print('p(m1) peaks: ' + ', '.join(f'{m:.1f}' for m in PEAKS) + ' Msun; twice: ' + ', '.join(f'{2 * m:.1f}' for m in PEAKS))
-
-fig, axes = plt.subplots(4, 1, figsize=(8.5, 14), sharex=True, gridspec_kw={'height_ratios': [1, 1.4, 1.4, 1.1]})
-ax = axes[0]
-lo, med, hi = band(p_m)
-ax.fill_between(m_c, lo, hi, color='C0', alpha=0.3, lw=0); ax.plot(m_c, med, color='C0')
-ax.set_yscale('log'); ax.set_ylim(np.percentile(lo, 2) / 3, hi.max() * 3)
-ax.set_ylabel(r'$p(m_1)\,[M_\odot^{-1}]$')
-
-ax = axes[1]
-img = np.where(ok, np.median(pq, 0) / dq, np.nan)
-pc = ax.pcolormesh(m_edges, q_edges, img.T, cmap='viridis', shading='flat', rasterized=True,
-                   vmin=0, vmax=np.nanpercentile(img, 99.5))
-cb = fig.colorbar(pc, cax=ax.inset_axes([1.015, 0, 0.025, 1])); cb.set_label(r'$p(q \mid m_1)$')
-lo, med, hi = band((pq * q_c).sum(2))
-ax.fill_between(m_c, lo, hi, color='w', alpha=0.25, lw=0); ax.plot(m_c, med, color='w', lw=1.2)
-ax.set_ylabel(r'$q$'); ax.set_ylim(0, 1)
-
-ax = axes[2]
-img = np.where(ok, np.median(MOM[:, :, :, 1], 0), np.nan)
-pc = ax.pcolormesh(m_edges, q_edges, img.T, cmap='magma', shading='flat', rasterized=True,
-                   vmin=0, vmax=np.nanpercentile(img, 99))
-cb = fig.colorbar(pc, cax=ax.inset_axes([1.015, 0, 0.025, 1])); cb.set_label(r'sd $\chi_\mathrm{eff}$ at $(m_1, q)$')
-# where the population sits in q at each m1: the 25-75% (solid) and 5-95% (dashed) quantiles of the median p(q | m1)
-P = np.median(pq, 0); cdf = np.cumsum(P / P.sum(1, keepdims=True), 1)
-for (a, b), ls in (((0.25, 0.75), '-'), ((0.05, 0.95), '--')):
-    for f in (a, b):
-        ax.plot(m_c, [np.interp(f, c, q_edges[1:]) for c in cdf], color='w', lw=1, ls=ls)
-ax.set_ylabel(r'$q$'); ax.set_ylim(0, 1)
-
-ax = axes[3]
-for key, col, ls, lab in (('sd', 'C0', '-', 'total'), ('within', 'C2', '--', r'within $q$'),
-                          ('between', 'C3', ':', r'between $q$')):
-    lo, med, hi = band(Q['chi_eff'][key])
-    ax.fill_between(m_c, lo, hi, color=col, alpha=0.2, lw=0)
-    ax.plot(m_c, med, color=col, ls=ls, label=lab)
-ax.set_ylim(0); ax.set_ylabel(r'sd $\chi_\mathrm{eff}$ given $m_1$'); ax.legend(loc='upper left', **plot_style.LEG_KW)
-
-for ax in axes:
-    for m in PEAKS:
-        ax.axvline(m, color='0.5', lw=0.9, ls=':')
-        ax.axvline(2 * m, color='0.5', lw=0.9, ls='--')
-axes[-1].set_xscale('log'); axes[-1].set_xlim(MIN_M, MAX_M); axes[-1].set_xlabel(r'$m_1\,[M_\odot]$')
-fig.tight_layout()
+code(r"""fig, peaks = A.summary_figure([RES])                    # analysis.summary_figure (also used by the comparisons)
+print('p(m1) peaks: ' + ', '.join(f'{m:.1f}' for m in peaks[0]) + ' Msun; twice: '
+      + ', '.join(f'{2 * m:.1f}' for m in peaks[0]))
 plot_style.save(fig, f'{RUN}_mass_ratio_spin_summary')"""),
 md(r"""## Model-specific parameters
 
