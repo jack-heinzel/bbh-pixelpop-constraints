@@ -87,4 +87,10 @@ belong in mass-gap-investigation. See README.md for the model.
   finding: sd chi_eff given m1 (averaged over p(q | m1)) is broad at ~18-20 and >~45 Msun, narrow at the ~10 and ~33
   peaks, mostly from the width at fixed q (low q), not from per-q mean shifts; the q ~ 1 slice hides it.
   Notebooks run on the login node pinned (`taskset`), or jax exceeds the 256 processes + threads per user.
+- 2026-10-21/22 (Rusty): replacements as chain 2 (jobs 7303103, 7304010, 7304012; split chain 1 moved to
+  `results/ppc_gwtc5_k10_split/stuck_chain1/`, gauss k = 100 chain 0 wrote nothing). Healthy chains: split k = 10 chains
+  0, 2; gauss k = 10 chains 1, 2; gauss k = 100 chains 1, 2 (ln L -7301, -7298, -7300 vs field -7295). Notebooks and
+  `compare_gwtc5_spin_models` via `post.sbatch` (job 7308668). Gauss k = 100 matches gauss k = 10 (chi_eff widths within
+  ~0.01), so k = 10 misses no structure; all four models show the chi_eff width pattern above, split least confidently
+  (P ~ 0.85 vs 0.98-0.99 for gauss).
 
