@@ -361,6 +361,8 @@ _P_SPIN = r'p(\chi_\mathrm{eff}, \chi_p \mid m_1, q)'
 SPIN_MODEL_TITLES = {'field': rf'Flexible ${_P_SPIN}$', 'split': rf'Split ${_P_SPIN}$',
                      'gauss': rf'Gaussian ${_P_SPIN}$'}
 
+SUMMARY_M_GRID = (10., 30., 100.)        # summary_figure's vertical grid lines and labelled m1 ticks
+
 # the two mass-ratio ranges of summary_figure: unequal (where the broad-chi_eff systems sit) and near-equal masses
 SUMMARY_Q_RANGES = ((0.3, 0.65), (0.8, 1.0))
 
@@ -369,17 +371,19 @@ def p_m1_given_q_range(r, q_range):
     """p(m1 | q in [lo, hi]) per draw, (draws, Bm), density per Msun, from the windowed mass field (q bin centres)."""
     sel = (q_c >= q_range[0]) & (q_c <= q_range[1])
     joint = r.p_mass[:, :, sel].sum(2) * dq                                        # p(ln m1, q in range)
-    return joint / (joint.sum(1, keepdims=True) * dlnm) / m_c[None]
+    out = joint / (joint.sum(1, keepdims=True) * dlnm) / m_c[None]
+    return np.where(joint > 0, out, np.nan)                         # NaN where m2 > 3 Msun excludes the whole range
 
 
-def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES):
+def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M):
     """Mass ratio and chi_eff width on a shared m1 axis, one column per run (namespaces from load_run), with shared
     y ranges and colour scales across columns, three rows of equal height:
     (1) p(m1): the 90% interval over all q (black lines) and p(m1 | q in each of ``q_ranges``) (90% bands, medians);
     (2) the median p(q | m1), with the 90% (solid white) and 99% (dashed white) intervals of the mean q given m1;
     (3) sigma_chi_eff(m1), the sd of p(chi_eff | m1): over all q (black lines, 90%) and over each q range (bands).
-    Cells with q m1 < 3 Msun are blank. Columns are headed by ``labels`` (default: SPIN_MODEL_TITLES). Returns the
-    figure and each run's p(m1) peaks (p_m1_peaks; printed, not drawn)."""
+    Cells with q m1 < 3 Msun are blank, and so are the q-range curves where m2 > 3 Msun excludes the range. The m1
+    axis starts at ``m_min``, and the y ranges cover what is visible. Columns are headed by ``labels`` (default:
+    SPIN_MODEL_TITLES). Returns the figure and each run's p(m1) peaks (p_m1_peaks; printed, not drawn)."""
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
@@ -419,24 +423,30 @@ def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES):
         for (a, b), ls in (((5, 95), '-'), ((0.5, 99.5), '--')):
             for f in (a, b):
                 ax.plot(m_c, np.percentile(d['mq'], f, 0), color='w', lw=1, ls=ls)
-        axes[-1, j].set_xscale('log'); axes[-1, j].set_xlim(MIN_M, MAX_M); axes[-1, j].set_xlabel(r'$m_1\,[M_\odot]$')
-    lo_all = min(np.nanpercentile(np.nanpercentile(d['p_m'], 5, 0), 2) for d in D)
-    hi_all = max(np.nanmax(np.nanpercentile(y, 95, 0)) for d in D for y in [d['p_m']] + d['p_mq'])
+        for ax in axes[:, j]:                                     # grid at m1 = 10, 30, 100 (user, 2026-10-22)
+            for m in SUMMARY_M_GRID:
+                ax.axvline(m, color='0.6', lw=0.6, alpha=0.7, zorder=3)
+        axes[-1, j].set_xscale('log'); axes[-1, j].set_xlim(m_min, MAX_M); axes[-1, j].set_xlabel(r'$m_1\,[M_\odot]$')
+        axes[-1, j].set_xticks(SUMMARY_M_GRID, [f'${m:g}$' for m in SUMMARY_M_GRID])
+    vis = m_c >= m_min
+    lo_all = min(np.nanpercentile(np.nanpercentile(d['p_m'], 5, 0)[vis], 2) for d in D)
+    hi_all = max(np.nanmax(np.nanpercentile(y, 95, 0)[vis]) for d in D for y in [d['p_m']] + d['p_mq'])
     axes[0, 0].set_ylim(lo_all / 3, hi_all * 3)
-    axes[1, 0].set_ylim(0, 1); axes[2, 0].set_ylim(0)
+    sd_hi = max(np.nanmax(np.nanpercentile(y, 95, 0)[vis]) for d in D for y in [d['sd']] + d['sd_q'])
+    axes[1, 0].set_ylim(0, 1); axes[2, 0].set_ylim(0, 1.05 * sd_hi)
     axes[0, 0].set_ylabel(r'$p(m_1)\,[M_\odot^{-1}]$'); axes[1, 0].set_ylabel(r'$q$')
     axes[2, 0].set_ylabel(r'$\sigma_{\chi_\mathrm{eff}}(m_1)$')
-    # legends in every column: top and bottom rows top right, the p(q | m1) row bottom left
+    # legends in every column (user, 2026-10-22): top row top right, p(q | m1) row bottom left, bottom row top left
     handles = [Line2D([], [], color='k', lw=1)] + [(Patch(color=c, alpha=0.3, lw=0), Line2D([], [], color=c, lw=1.3))
                                                    for c in cols]
     names = ['all $q$ (90\\%)'] + [rng(*qr) for qr in q_ranges]
-    white = lambda ls: Line2D([], [], color='w', lw=1, ls=ls)
+    dark = lambda ls: Line2D([], [], color='k', lw=1, ls=ls)
     for j in range(n):
         axes[0, j].legend(handles, names, loc='upper right', **plot_style.LEG_KW)
-        axes[2, j].legend(handles, names, loc='upper right', **plot_style.LEG_KW)
-        axes[1, j].legend([white('-'), white('--')], [r'$\langle q \rangle$, 90\%', r'$\langle q \rangle$, 99\%'],
-                          loc='lower left', facecolor='0.3', edgecolor='0.6', labelcolor='w', framealpha=0.8,
-                          **plot_style.LEG_KW)
+        axes[2, j].legend(handles, names, loc='upper left', **plot_style.LEG_KW)
+        # standard light legend (user, 2026-10-22); the samples are black because white would not show on it
+        axes[1, j].legend([dark('-'), dark('--')], [r'$\langle q \rangle$, 90\%', r'$\langle q \rangle$, 99\%'],
+                          loc='lower left', **plot_style.LEG_KW)
     cb = fig.colorbar(pc_q, cax=axes[1, -1].inset_axes([1.015, 0, 0.025, 1])); cb.set_label(r'$p(q \mid m_1)$')
     fig.tight_layout()
     return fig, [d['peaks'] for d in D]
