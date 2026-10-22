@@ -3,7 +3,7 @@
 # notebooks/analysis.py) on one GPU, then execute the main notebooks. Submit from the repository:
 #     sbatch post.sbatch                                    (the runs below)
 #     RUNS=ppc_gwtc5_k10_gauss NOTEBOOKS=ppc_gwtc5_k10_gauss,compare_gwtc5_k10_field_vs_gauss sbatch post.sbatch
-# RUNS and NOTEBOOKS are lists separated by commas or spaces.
+# RUNS and NOTEBOOKS are lists separated by commas or spaces; NOTEBOOKS=- rebuilds without executing any.
 # Chains whose cache is complete are skipped. Slurm copies this script at submission, so editing it does not affect
 # queued or running jobs.
 #SBATCH --job-name=ppc-post
@@ -23,6 +23,7 @@ PY=~/venvs/gwjax313/bin/python
 RUNS=${RUNS:-ppc_gwtc5_k10 ppc_gwtc5_k5 ppc_gwtc5_k10_npe10000_short}
 NOTEBOOKS=${NOTEBOOKS:-ppc_gwtc5_k10 ppc_gwtc5_k5 compare_gwtc5_k5_vs_k10_long compare_gwtc5_k10_short_vs_long}
 RUNS=${RUNS//,/ }; NOTEBOOKS=${NOTEBOOKS//,/ }
+[ "$NOTEBOOKS" = "-" ] && NOTEBOOKS=        # NOTEBOOKS=-: rebuild only
 
 echo "$(date '+%F %H:%M') on $(hostname) ($(nvidia-smi --query-gpu=name --format=csv,noheader))"
 $PY - $RUNS <<'EOF' || exit 1
@@ -37,7 +38,7 @@ for run in sys.argv[1:]:
         p = A.post_path(run, f)
         if os.path.exists(p):
             with h5py.File(p, 'r') as g:
-                if g.attrs['n_draws'] >= n:
+                if g.attrs['n_draws'] >= n and all(k in g for k in A.REBUILT):
                     print('complete:', p, flush=True)
                     continue
         print('wrote', A.rebuild_chain(run, f), flush=True)

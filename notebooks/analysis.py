@@ -84,6 +84,10 @@ def summarize(S):
 
 
 # chi_eff slices for p(m1, q | chi_eff in S); their edges fall on spin-bin edges (width 0.02)
+# |chi_eff| below this is the 'core': MOM_CORE holds the chi_eff moments restricted to it (the flexible field puts
+# prior-like spikes at chi_eff -> -1 in some draws)
+CHI_CORE = 0.8
+
 CHI_EFF_SLICES = {r'0 < \chi_\mathrm{eff} < 0.1': lambda e: (e > 0) & (e < 0.1),
                   r'|\chi_\mathrm{eff}| < 0.2': lambda e: np.abs(e) < 0.2,
                   r'|\chi_\mathrm{eff}| > 0.2': lambda e: np.abs(e) > 0.2}
@@ -110,6 +114,7 @@ def _spin_fns(km, logW, spin_model):
     Vm = Vq = v_ax[:, :km]
     ec, pc, lW, logdV = jnp.asarray(e_c), jnp.asarray(p_c), jnp.asarray(logW), np.log(dlnm * dq)
     masks = jnp.asarray(np.stack([f(e_c) for f in CHI_EFF_SLICES.values()], -1).astype(float))    # (Be, n_slices)
+    core = jnp.asarray((np.abs(e_c) < CHI_CORE).astype(float))                                    # (Be,)
 
     def stats(slab_T, log_p_mass):
         lw = log_p_mass + logdV
@@ -123,10 +128,15 @@ def _spin_fns(km, logW, spin_model):
             mom = jnp.stack([me, jnp.sqrt(jnp.maximum(pe @ ec ** 2 - me ** 2, 0.)),
                              mp, jnp.sqrt(jnp.maximum(pq @ pc ** 2 - mp ** 2, 0.))], -1)
             wq = w_win[m] / jnp.maximum(w_win[m].sum(), 1e-300)                                # p(q | m1), windowed
+            # chi_eff restricted to |chi_eff| < CHI_CORE: mean, sd, and the probability outside it
+            pe_in = pe * core; inside = jnp.maximum(pe_in.sum(1), 1e-300)
+            mu_in = (pe_in @ ec) / inside
+            mom_core = jnp.stack([mu_in, jnp.sqrt(jnp.maximum((pe_in @ ec ** 2) / inside - mu_in ** 2, 0.)),
+                                  1. - pe_in.sum(1)], -1)
             return (jnp.einsum('q,qep->ep', w_raw[m], P), jnp.einsum('q,qep->ep', w_win[m], P), mom,
-                    wq @ pe, wq @ pq, pe @ masks)
-        raw, win, mom, pe_m, pp_m, sl = jax.lax.map(slab, jnp.arange(B), batch_size=10)
-        return raw.sum(0), win.sum(0), mom, pe_m, pp_m, sl
+                    wq @ pe, wq @ pq, pe @ masks, mom_core)
+        raw, win, mom, pe_m, pp_m, sl, mom_core = jax.lax.map(slab, jnp.arange(B), batch_size=10)
+        return raw.sum(0), win.sum(0), mom, pe_m, pp_m, sl, mom_core
 
     @jax.jit
     def field(white, lnsig, lognu, logr, log_p_mass):
@@ -152,7 +162,7 @@ def _spin_fns(km, logW, spin_model):
     return {'field': field, 'split': split, 'gauss': gauss}[spin_model], keys
 
 
-REBUILT = ('P_raw', 'P_win', 'MOM', 'PE_M', 'PP_M', 'SLICE')
+REBUILT = ('P_raw', 'P_win', 'MOM', 'PE_M', 'PP_M', 'SLICE', 'MOM_CORE')   # MOM_CORE: (mean, sd, P outside) at |chi_eff| < CHI_CORE
 POST_DIR = os.path.join(REPO, 'results', 'post_processing', 'for_plotting')
 
 
@@ -218,7 +228,7 @@ def load_rebuilt(run, files, n_draws):
         have = 0
         if os.path.exists(path):
             with h5py.File(path, 'r') as g:
-                have = g.attrs['n_draws']
+                have = g.attrs['n_draws'] if all(k in g for k in REBUILT) else 0     # older caches lack keys
         if have < n_draws:
             print(f'rebuilding spins of {run} {os.path.basename(f)} -> {path}', flush=True)
             rebuild_chain(run, f)
@@ -260,7 +270,7 @@ def load_run(run):
     # spins, windowed: rebuilt from the spin latents on every draw (the per-mass and chi_eff-slice quantities are not
     # saved by any model), cached in results/post_processing/for_plotting/<run>/
     reb = load_rebuilt(run, files, n_draws)
-    r.P_raw, r.P_win, r.MOM, r.PE_M, r.PP_M, r.SLICE = (reb[k] for k in REBUILT)
+    r.P_raw, r.P_win, r.MOM, r.PE_M, r.PP_M, r.SLICE, r.MOM_CORE = (reb[k] for k in REBUILT)
     r.rebuild_tv = float(reb['tv'].max())
     r.spin_source = (f'rebuilt from the saved spin latents on all {n_draws} draws per chain '
                      f'(results/post_processing/for_plotting/{run}/)')
@@ -302,14 +312,20 @@ def fmt(x):
     return f'{med:.3f} [{lo:.3f}, {hi:.3f}]'
 
 
-def q_averaged_moments(r, q_range=None, names=('chi_eff', 'chi_p')):
+def q_averaged_moments(r, q_range=None, names=('chi_eff', 'chi_p'), core=False):
     """Spin moments given m1 alone: the conditional averaged over the windowed p(q | m1), per draw and m1 bin.
     For chi_eff and chi_p: 'mean', 'sd' (of p(chi | m1)), and the two parts of sd^2 by the law of total variance,
     'within' = sqrt(E_q[sd(m1, q)^2]) (the width at fixed q) and 'between' = sqrt(Var_q[mean(m1, q)]) (the spread of
     the per-q means), so sd^2 = within^2 + between^2. Each is (draws, Bm). With ``q_range`` = (lo, hi), only the q
     bins with centres in [lo, hi] (p(chi | m1, q in range)); NaN where the range has no support. ``names`` limits
-    the spins computed. float32 throughout (two long runs must fit the login nodes' 8 GB)."""
+    the spins computed. float32 throughout (two long runs must fit the login nodes' 8 GB). With ``core``, chi_eff
+    only, restricted to |chi_eff| < CHI_CORE (r.MOM_CORE): each cell is weighted by its probability inside the core,
+    so this is p(chi_eff | m1, |chi_eff| < CHI_CORE)."""
+    if core:
+        names = ('chi_eff',)
     w = r.p_mass.astype(np.float32)
+    if core:
+        w *= 1 - r.MOM_CORE[..., 2]
     if q_range is not None:
         w *= ((q_c >= q_range[0]) & (q_c <= q_range[1]))[None, None]
     tot = w.sum(2, keepdims=True)
@@ -319,7 +335,7 @@ def q_averaged_moments(r, q_range=None, names=('chi_eff', 'chi_p')):
     for name, (i_mu, i_sd) in (('chi_eff', (0, 1)), ('chi_p', (2, 3))):
         if name not in names:
             continue
-        mu, sd = r.MOM[..., i_mu], r.MOM[..., i_sd]
+        mu, sd = (r.MOM_CORE[..., 0], r.MOM_CORE[..., 1]) if core else (r.MOM[..., i_mu], r.MOM[..., i_sd])
         mean = (wq * mu).sum(2)
         within2 = (wq * sd ** 2).sum(2)
         between2 = (wq * (mu - mean[..., None]) ** 2).sum(2)
@@ -375,12 +391,14 @@ def p_m1_given_q_range(r, q_range):
     return np.where(joint > 0, out, np.nan)                         # NaN where m2 > 3 Msun excludes the whole range
 
 
-def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M):
-    """Mass ratio and chi_eff width on a shared m1 axis, one column per run (namespaces from load_run), with shared
-    y ranges and colour scales across columns, three rows of equal height:
-    (1) p(m1): the 90% interval over all q (black lines) and p(m1 | q in each of ``q_ranges``) (90% bands, medians);
-    (2) the median p(q | m1), with the 90% (solid white) and 99% (dashed white) intervals of the mean q given m1;
-    (3) sigma_chi_eff(m1), the sd of p(chi_eff | m1): over all q (black lines, 90%) and over each q range (bands).
+def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M, show_mean=False, core=False):
+    """Mass ratio and chi_eff on a shared m1 axis, one column per run (namespaces from load_run or load_light), with
+    shared y ranges and colour scales across columns, rows of equal height:
+    p(m1): the 90% interval over all q (black lines) and p(m1 | q in each of ``q_ranges``) (90% bands, medians);
+    p(q | m1): the median, with the 90% (solid white) and 99% (dashed white) intervals of the mean q given m1;
+    with ``show_mean``, mu_chi_eff(m1), the mean of p(chi_eff | m1), drawn like the next row;
+    sigma_chi_eff(m1), the sd of p(chi_eff | m1): over all q (black lines, 90%) and over each q range (bands).
+    With ``core``, the chi_eff rows use |chi_eff| < CHI_CORE only (r.MOM_CORE, q_averaged_moments(core=True)).
     Cells with q m1 < 3 Msun are blank, and so are the q-range curves where m2 > 3 Msun excludes the range. The m1
     axis starts at ``m_min``, and the y ranges cover what is visible. Columns are headed by ``labels`` (default:
     SPIN_MODEL_TITLES). Returns the figure and each run's p(m1) peaks (p_m1_peaks; printed, not drawn)."""
@@ -393,34 +411,43 @@ def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M):
     m_edges = np.exp(lnm_edges)
     cols = [f'C{i}' for i in range(len(q_ranges))]
     rng = lambda a, b: rf'${a:g} < q < {b:g}$'
+    chi = lambda r, qr=None: q_averaged_moments(r, qr, names=('chi_eff',), core=core)['chi_eff']
     D = []
     for r in runs:
         pq = r.p_mass / r.p_mass.sum(2, keepdims=True)                               # p(q | m1), per q bin
+        allq, byq = chi(r), [chi(r, qr) for qr in q_ranges]
         D.append(dict(p_m=r.p_lnm / m_c[None], p_mq=[p_m1_given_q_range(r, qr) for qr in q_ranges],
                       mq=(pq * q_c).sum(2), img_q=np.where(ok, np.median(pq, 0) / dq, np.nan),
-                      sd=q_averaged_moments(r, names=('chi_eff',))['chi_eff']['sd'],
-                      sd_q=[q_averaged_moments(r, qr, names=('chi_eff',))['chi_eff']['sd'] for qr in q_ranges],
+                      mean=allq['mean'], mean_q=[x['mean'] for x in byq], sd=allq['sd'], sd_q=[x['sd'] for x in byq],
                       peaks=p_m1_peaks(r)))
-        del pq
+        del pq, allq, byq
     vq = max(np.nanpercentile(d['img_q'], 99.5) for d in D)
     q5 = lambda x: np.nanpercentile(x, [5, 50, 95], axis=0)
     # curves on bin centres, extended flat to the outer bin edges so they reach the axis ends (3 and 200 Msun)
     mx = np.concatenate([[m_edges[0]], m_c, [m_edges[-1]]])
     ext = lambda y: np.concatenate([y[..., :1], y, y[..., -1:]], -1)
+    cut = rf', $|\chi_\mathrm{{eff}}| < {CHI_CORE:g}$' if core else ''
+    rows = ['pm', 'pq'] + (['mean'] if show_mean else []) + ['sd']
     n = len(runs)
-    fig, axes = plt.subplots(3, n, figsize=(7.5 * n + 1, 11.5), sharex=True, sharey='row', squeeze=False)
+    fig, axes = plt.subplots(len(rows), n, figsize=(7.5 * n + 1, 3.83 * len(rows)), sharex=True, sharey='row',
+                             squeeze=False)
+    A_ = {k: axes[i] for i, k in enumerate(rows)}
     for j, (d, lab) in enumerate(zip(D, labels)):
-        for row, (allq, byq) in ((0, (d['p_m'], d['p_mq'])), (2, (d['sd'], d['sd_q']))):
-            ax = axes[row, j]
+        for key, allq, byq in (('pm', d['p_m'], d['p_mq']), ('mean', d['mean'], d['mean_q']), ('sd', d['sd'], d['sd_q'])):
+            if key not in A_:
+                continue
+            ax = A_[key][j]
             for y, col in zip(byq, cols):
                 lo, med, hi = ext(q5(y))
                 ax.fill_between(mx, lo, hi, color=col, alpha=0.3, lw=0)
                 ax.plot(mx, med, color=col, lw=1.3)
             lo, _, hi = ext(q5(allq))
             ax.plot(mx, lo, color='k', lw=1); ax.plot(mx, hi, color='k', lw=1)
-        axes[0, j].set_yscale('log')
-        axes[0, j].set_title(lab, pad=10)                         # column headers (user, 2026-10-22)
-        ax = axes[1, j]
+        if 'mean' in A_:
+            A_['mean'][j].axhline(0, color='0.5', lw=0.8, ls=':')
+        A_['pm'][j].set_yscale('log')
+        A_['pm'][j].set_title(lab, pad=10)                        # column headers (user, 2026-10-22)
+        ax = A_['pq'][j]
         pc_q = ax.pcolormesh(m_edges, q_edges, d['img_q'].T, cmap='viridis', shading='flat', rasterized=True,
                              vmin=0, vmax=vq)
         for (a, b), ls in (((5, 95), '-'), ((0.5, 99.5), '--')):
@@ -432,25 +459,32 @@ def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M):
         axes[-1, j].set_xscale('log'); axes[-1, j].set_xlim(m_min, MAX_M); axes[-1, j].set_xlabel(r'$m_1\,[M_\odot]$')
         axes[-1, j].set_xticks(SUMMARY_M_GRID, [f'${m:g}$' for m in SUMMARY_M_GRID])
     vis = m_c >= m_min
+    band_hi = lambda ys: max(np.nanmax(np.nanpercentile(y, 95, 0)[vis]) for d in D for y in ys(d))
+    band_lo = lambda ys: min(np.nanmin(np.nanpercentile(y, 5, 0)[vis]) for d in D for y in ys(d))
     lo_all = min(np.nanpercentile(np.nanpercentile(d['p_m'], 5, 0)[vis], 2) for d in D)
-    hi_all = max(np.nanmax(np.nanpercentile(y, 95, 0)[vis]) for d in D for y in [d['p_m']] + d['p_mq'])
-    axes[0, 0].set_ylim(lo_all / 3, hi_all * 3)
-    sd_hi = max(np.nanmax(np.nanpercentile(y, 95, 0)[vis]) for d in D for y in [d['sd']] + d['sd_q'])
-    axes[1, 0].set_ylim(0, 1); axes[2, 0].set_ylim(0, 1.05 * sd_hi)
-    axes[0, 0].set_ylabel(r'$p(m_1)\,[M_\odot^{-1}]$'); axes[1, 0].set_ylabel(r'$q$')
-    axes[2, 0].set_ylabel(r'$\sigma_{\chi_\mathrm{eff}}(m_1)$')
-    # legends in every column (user, 2026-10-22): top row top right, p(q | m1) row bottom left, bottom row top left
+    A_['pm'][0].set_ylim(lo_all / 3, band_hi(lambda d: [d['p_m']] + d['p_mq']) * 3)
+    A_['pq'][0].set_ylim(0, 1)
+    A_['sd'][0].set_ylim(0, 1.05 * band_hi(lambda d: [d['sd']] + d['sd_q']))
+    A_['pm'][0].set_ylabel(r'$p(m_1)\,[M_\odot^{-1}]$'); A_['pq'][0].set_ylabel(r'$q$')
+    A_['sd'][0].set_ylabel(r'$\sigma_{\chi_\mathrm{eff}}(m_1)$' + cut)
+    if 'mean' in A_:
+        lo_m, hi_m = band_lo(lambda d: [d['mean']] + d['mean_q']), band_hi(lambda d: [d['mean']] + d['mean_q'])
+        pad = 0.05 * (hi_m - lo_m)
+        A_['mean'][0].set_ylim(lo_m - pad, hi_m + pad)
+        A_['mean'][0].set_ylabel(r'$\mu_{\chi_\mathrm{eff}}(m_1)$' + cut)
+    # legends in every column (user, 2026-10-22): top row top right, p(q | m1) row bottom left, sigma row top left;
+    # the mean row repeats the sigma row's artists, so it has none
     handles = [Line2D([], [], color='k', lw=1)] + [(Patch(color=c, alpha=0.3, lw=0), Line2D([], [], color=c, lw=1.3))
                                                    for c in cols]
     names = ['all $q$ (90\\%)'] + [rng(*qr) for qr in q_ranges]
     dark = lambda ls: Line2D([], [], color='k', lw=1, ls=ls)
     for j in range(n):
-        axes[0, j].legend(handles, names, loc='upper right', **plot_style.LEG_KW)
-        axes[2, j].legend(handles, names, loc='upper left', **plot_style.LEG_KW)
+        A_['pm'][j].legend(handles, names, loc='upper right', **plot_style.LEG_KW)
+        A_['sd'][j].legend(handles, names, loc='upper left', **plot_style.LEG_KW)
         # standard light legend (user, 2026-10-22); the samples are black because white would not show on it
-        axes[1, j].legend([dark('-'), dark('--')], [r'$\langle q \rangle$, 90\%', r'$\langle q \rangle$, 99\%'],
-                          loc='lower left', **plot_style.LEG_KW)
-    cb = fig.colorbar(pc_q, cax=axes[1, -1].inset_axes([1.015, 0, 0.025, 1])); cb.set_label(r'$p(q \mid m_1)$')
+        A_['pq'][j].legend([dark('-'), dark('--')], [r'$\langle q \rangle$, 90\%', r'$\langle q \rangle$, 99\%'],
+                           loc='lower left', **plot_style.LEG_KW)
+    cb = fig.colorbar(pc_q, cax=A_['pq'][-1].inset_axes([1.015, 0, 0.025, 1])); cb.set_label(r'$p(q \mid m_1)$')
     fig.tight_layout()
     fig.subplots_adjust(hspace=0.06, wspace=0.04)                  # tighter than tight_layout (user, 2026-10-22)
     return fig, [d['peaks'] for d in D]
@@ -471,6 +505,8 @@ def load_light(run):
     del lp, mx
     r.p_lnm = r.p_mass.sum(2) * dq
     r.MOM = np.concatenate([h5py.File(post_path(run, f), 'r')['MOM'][:n_draws, ..., :2] for f in files])
+    if all('MOM_CORE' in h5py.File(post_path(run, f), 'r') for f in files):
+        r.MOM_CORE = np.concatenate([h5py.File(post_path(run, f), 'r')['MOM_CORE'][:n_draws] for f in files])
     return r
 
 
