@@ -419,11 +419,8 @@ md(r"""## Mass ratio and spin width together
 
 One figure on a shared $m_1$ axis (`analysis.summary_figure`): (1) $p(m_1)$: the 90% interval over all $q$ (black lines) and $p(m_1 \mid 0.3 < q < 0.65)$,
 $p(m_1 \mid 0.8 < q < 1)$ (90% bands, medians); (2) the median $p(q \mid m_1)$, with the 90% (solid) and 99% (dashed)
-intervals of the mean $\langle q \rangle$ given $m_1$; (3) the median $\chi_\mathrm{eff}$ width at fixed $(m_1, q)$,
-with the 25–75% (solid) and 5–95% (dashed) quantiles of $p(q \mid m_1)$; (4) $\sigma_{\chi_\mathrm{eff}}(m_1)$, the sd
-of $p(\chi_\mathrm{eff} \mid m_1)$, over all $q$ (black lines, 90%) and over the same two $q$ ranges (bands). Dotted
-lines: the $p(m_1)$ peaks; dashed: twice those masses. Read panel 3 between the quantile lines: outside them there are
-few events and the width follows the prior."""),
+intervals of the mean $\langle q \rangle$ given $m_1$; (3) $\sigma_{\chi_\mathrm{eff}}(m_1)$, the sd
+of $p(\chi_\mathrm{eff} \mid m_1)$, over all $q$ (black lines, 90%) and over the same two $q$ ranges (bands)."""),
 code(r"""fig, peaks = A.summary_figure([RES])                    # analysis.summary_figure (also used by the comparisons)
 print('p(m1) peaks: ' + ', '.join(f'{m:.1f}' for m in peaks[0]) + ' Msun; twice: '
       + ', '.join(f'{2 * m:.1f}' for m in peaks[0]))

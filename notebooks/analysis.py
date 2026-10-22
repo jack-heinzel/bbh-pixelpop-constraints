@@ -374,14 +374,12 @@ def p_m1_given_q_range(r, q_range):
 
 def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES):
     """Mass ratio and chi_eff width on a shared m1 axis, one column per run (namespaces from load_run), with shared
-    y ranges and colour scales across columns:
+    y ranges and colour scales across columns, three rows of equal height:
     (1) p(m1): the 90% interval over all q (black lines) and p(m1 | q in each of ``q_ranges``) (90% bands, medians);
     (2) the median p(q | m1), with the 90% (solid white) and 99% (dashed white) intervals of the mean q given m1;
-    (3) the median chi_eff width at fixed (m1, q), with the 25-75% (solid) and 5-95% (dashed) quantiles of the median
-        p(q | m1);
-    (4) sigma_chi_eff(m1), the sd of p(chi_eff | m1): over all q (black lines, 90%) and over each q range (bands).
-    Dotted lines: the p(m1) peaks (p_m1_peaks); dashed: twice those masses. Cells with q m1 < 3 Msun are blank.
-    Columns are headed by ``labels`` (default: SPIN_MODEL_TITLES). Returns the figure and the peaks."""
+    (3) sigma_chi_eff(m1), the sd of p(chi_eff | m1): over all q (black lines, 90%) and over each q range (bands).
+    Cells with q m1 < 3 Msun are blank. Columns are headed by ``labels`` (default: SPIN_MODEL_TITLES). Returns the
+    figure and each run's p(m1) peaks (p_m1_peaks; printed, not drawn)."""
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
@@ -394,20 +392,18 @@ def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES):
     D = []
     for r in runs:
         pq = r.p_mass / r.p_mass.sum(2, keepdims=True)                               # p(q | m1), per q bin
-        D.append(dict(p_m=r.p_lnm / m_c[None], p_mq=[p_m1_given_q_range(r, qr) for qr in q_ranges], pq=pq,
+        D.append(dict(p_m=r.p_lnm / m_c[None], p_mq=[p_m1_given_q_range(r, qr) for qr in q_ranges],
                       mq=(pq * q_c).sum(2), img_q=np.where(ok, np.median(pq, 0) / dq, np.nan),
-                      img_w=np.where(ok, np.median(r.MOM[..., 1], 0), np.nan),
                       sd=q_averaged_moments(r, names=('chi_eff',))['chi_eff']['sd'],
                       sd_q=[q_averaged_moments(r, qr, names=('chi_eff',))['chi_eff']['sd'] for qr in q_ranges],
                       peaks=p_m1_peaks(r)))
+        del pq
     vq = max(np.nanpercentile(d['img_q'], 99.5) for d in D)
-    vw = max(np.nanpercentile(d['img_w'], 99) for d in D)
     q5 = lambda x: np.nanpercentile(x, [5, 50, 95], axis=0)
     n = len(runs)
-    fig, axes = plt.subplots(4, n, figsize=(7.5 * n + 1, 14), sharex=True, sharey='row', squeeze=False,
-                             gridspec_kw={'height_ratios': [1.2, 1.4, 1.4, 1.1]})
+    fig, axes = plt.subplots(3, n, figsize=(7.5 * n + 1, 11.5), sharex=True, sharey='row', squeeze=False)
     for j, (d, lab) in enumerate(zip(D, labels)):
-        for row, (allq, byq) in ((0, (d['p_m'], d['p_mq'])), (3, (d['sd'], d['sd_q']))):
+        for row, (allq, byq) in ((0, (d['p_m'], d['p_mq'])), (2, (d['sd'], d['sd_q']))):
             ax = axes[row, j]
             for y, col in zip(byq, cols):
                 lo, med, hi = q5(y)
@@ -423,36 +419,46 @@ def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES):
         for (a, b), ls in (((5, 95), '-'), ((0.5, 99.5), '--')):
             for f in (a, b):
                 ax.plot(m_c, np.percentile(d['mq'], f, 0), color='w', lw=1, ls=ls)
-        ax = axes[2, j]
-        pc_w = ax.pcolormesh(m_edges, q_edges, d['img_w'].T, cmap='magma', shading='flat', rasterized=True,
-                             vmin=0, vmax=vw)
-        P = np.median(d['pq'], 0); cdf = np.cumsum(P / P.sum(1, keepdims=True), 1)
-        for (a, b), ls in (((0.25, 0.75), '-'), ((0.05, 0.95), '--')):
-            for f in (a, b):
-                ax.plot(m_c, [np.interp(f, c, q_edges[1:]) for c in cdf], color='w', lw=1, ls=ls)
-        for ax in axes[:, j]:
-            for m in d['peaks']:
-                ax.axvline(m, color='0.5', lw=0.9, ls=':')
-                ax.axvline(2 * m, color='0.5', lw=0.9, ls='--')
         axes[-1, j].set_xscale('log'); axes[-1, j].set_xlim(MIN_M, MAX_M); axes[-1, j].set_xlabel(r'$m_1\,[M_\odot]$')
     lo_all = min(np.nanpercentile(np.nanpercentile(d['p_m'], 5, 0), 2) for d in D)
     hi_all = max(np.nanmax(np.nanpercentile(y, 95, 0)) for d in D for y in [d['p_m']] + d['p_mq'])
     axes[0, 0].set_ylim(lo_all / 3, hi_all * 3)
-    axes[1, 0].set_ylim(0, 1); axes[2, 0].set_ylim(0, 1); axes[3, 0].set_ylim(0)
-    axes[0, 0].set_ylabel(r'$p(m_1)\,[M_\odot^{-1}]$'); axes[1, 0].set_ylabel(r'$q$'); axes[2, 0].set_ylabel(r'$q$')
-    axes[3, 0].set_ylabel(r'$\sigma_{\chi_\mathrm{eff}}(m_1)$')
+    axes[1, 0].set_ylim(0, 1); axes[2, 0].set_ylim(0)
+    axes[0, 0].set_ylabel(r'$p(m_1)\,[M_\odot^{-1}]$'); axes[1, 0].set_ylabel(r'$q$')
+    axes[2, 0].set_ylabel(r'$\sigma_{\chi_\mathrm{eff}}(m_1)$')
+    # legends in every column: top and bottom rows top right, the p(q | m1) row bottom left
     handles = [Line2D([], [], color='k', lw=1)] + [(Patch(color=c, alpha=0.3, lw=0), Line2D([], [], color=c, lw=1.3))
                                                    for c in cols]
     names = ['all $q$ (90\\%)'] + [rng(*qr) for qr in q_ranges]
-    axes[0, 0].legend(handles, names, loc='lower left', **plot_style.LEG_KW)
-    axes[1, -1].legend([Line2D([], [], color='w', lw=1), Line2D([], [], color='w', lw=1, ls='--')],
-                       [r'$\langle q \rangle$ 90\%', r'$\langle q \rangle$ 99\%'], loc='lower right',
-                       facecolor='0.3', labelcolor='w', **plot_style.LEG_KW)
+    white = lambda ls: Line2D([], [], color='w', lw=1, ls=ls)
+    for j in range(n):
+        axes[0, j].legend(handles, names, loc='upper right', **plot_style.LEG_KW)
+        axes[2, j].legend(handles, names, loc='upper right', **plot_style.LEG_KW)
+        axes[1, j].legend([white('-'), white('--')], [r'$\langle q \rangle$, 90\%', r'$\langle q \rangle$, 99\%'],
+                          loc='lower left', facecolor='0.3', edgecolor='0.6', labelcolor='w', framealpha=0.8,
+                          **plot_style.LEG_KW)
     cb = fig.colorbar(pc_q, cax=axes[1, -1].inset_axes([1.015, 0, 0.025, 1])); cb.set_label(r'$p(q \mid m_1)$')
-    cb = fig.colorbar(pc_w, cax=axes[2, -1].inset_axes([1.015, 0, 0.025, 1]))
-    cb.set_label(r'sd $\chi_\mathrm{eff}$ at $(m_1, q)$')
     fig.tight_layout()
     return fig, [d['peaks'] for d in D]
+
+def load_light(run):
+    """What summary_figure needs, without load_run's full set of derived arrays (two long runs then fit the login
+    nodes' 8 GB): the windowed mass field and the chi_eff moments per cell (MOM[..., :2]; chi_p is left out, so
+    q_averaged_moments needs names=('chi_eff',)). Needs the rebuilt spin cache (load_run or python analysis.py <run>)."""
+    files = sorted(glob.glob(os.path.join(REPO, 'results', run, 'chain_*_samples.h5')))
+    with h5py.File(files[0], 'r') as h:
+        spin_model = spin_model_of(h)
+    n_draws = min(len(h5py.File(f, 'r')['log_likelihood']) for f in files)
+    lp = np.concatenate([h5py.File(f, 'r')['log_p_mass'][:n_draws] for f in files]).astype(float) + mass_window()[None]
+    mx = lp.max((1, 2), keepdims=True)
+    lp -= np.log(np.exp(lp - mx).sum((1, 2), keepdims=True) * dlnm * dq) + mx
+    r = SimpleNamespace(run=run, spin_model=spin_model, k=int(re.search(r'_k(\d+)', run).group(1)), n_draws=n_draws,
+                        p_mass=np.exp(lp).astype(np.float32))
+    del lp, mx
+    r.p_lnm = r.p_mass.sum(2) * dq
+    r.MOM = np.concatenate([h5py.File(post_path(run, f), 'r')['MOM'][:n_draws, ..., :2] for f in files])
+    return r
+
 
 if __name__ == '__main__':
     # python notebooks/analysis.py <run> [<chain> ...]: rebuild and cache the spin quantities of all (or the given)
