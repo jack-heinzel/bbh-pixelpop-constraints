@@ -404,17 +404,20 @@ def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M):
         del pq
     vq = max(np.nanpercentile(d['img_q'], 99.5) for d in D)
     q5 = lambda x: np.nanpercentile(x, [5, 50, 95], axis=0)
+    # curves on bin centres, extended flat to the outer bin edges so they reach the axis ends (3 and 200 Msun)
+    mx = np.concatenate([[m_edges[0]], m_c, [m_edges[-1]]])
+    ext = lambda y: np.concatenate([y[..., :1], y, y[..., -1:]], -1)
     n = len(runs)
     fig, axes = plt.subplots(3, n, figsize=(7.5 * n + 1, 11.5), sharex=True, sharey='row', squeeze=False)
     for j, (d, lab) in enumerate(zip(D, labels)):
         for row, (allq, byq) in ((0, (d['p_m'], d['p_mq'])), (2, (d['sd'], d['sd_q']))):
             ax = axes[row, j]
             for y, col in zip(byq, cols):
-                lo, med, hi = q5(y)
-                ax.fill_between(m_c, lo, hi, color=col, alpha=0.3, lw=0)
-                ax.plot(m_c, med, color=col, lw=1.3)
-            lo, _, hi = q5(allq)
-            ax.plot(m_c, lo, color='k', lw=1); ax.plot(m_c, hi, color='k', lw=1)
+                lo, med, hi = ext(q5(y))
+                ax.fill_between(mx, lo, hi, color=col, alpha=0.3, lw=0)
+                ax.plot(mx, med, color=col, lw=1.3)
+            lo, _, hi = ext(q5(allq))
+            ax.plot(mx, lo, color='k', lw=1); ax.plot(mx, hi, color='k', lw=1)
         axes[0, j].set_yscale('log')
         axes[0, j].set_title(lab, pad=10)                         # column headers (user, 2026-10-22)
         ax = axes[1, j]
@@ -422,7 +425,7 @@ def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M):
                              vmin=0, vmax=vq)
         for (a, b), ls in (((5, 95), '-'), ((0.5, 99.5), '--')):
             for f in (a, b):
-                ax.plot(m_c, np.percentile(d['mq'], f, 0), color='w', lw=1, ls=ls)
+                ax.plot(mx, ext(np.percentile(d['mq'], f, 0)), color='w', lw=1, ls=ls)
         for ax in axes[:, j]:                                     # grid at m1 = 10, 30, 100 (user, 2026-10-22)
             for m in SUMMARY_M_GRID:
                 ax.axvline(m, color='0.6', lw=0.6, alpha=0.7, zorder=3)
@@ -449,6 +452,7 @@ def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M):
                           loc='lower left', **plot_style.LEG_KW)
     cb = fig.colorbar(pc_q, cax=axes[1, -1].inset_axes([1.015, 0, 0.025, 1])); cb.set_label(r'$p(q \mid m_1)$')
     fig.tight_layout()
+    fig.subplots_adjust(hspace=0.06, wspace=0.04)                  # tighter than tight_layout (user, 2026-10-22)
     return fig, [d['peaks'] for d in D]
 
 def load_light(run):
