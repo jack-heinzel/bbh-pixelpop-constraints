@@ -429,9 +429,16 @@ def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M, sh
     cut = rf', $|\chi_\mathrm{{eff}}| < {CHI_CORE:g}$' if core else ''
     rows = ['pm', 'pq'] + (['mean'] if show_mean else []) + ['sd']
     n = len(runs)
-    fig, axes = plt.subplots(len(rows), n, figsize=(7.5 * n + 1, 3.83 * len(rows)), sharex=True, sharey='row',
-                             squeeze=False)
+    fig, axes = plt.subplots(len(rows), n, figsize=(7.5 * n + 1, 3.83 * len(rows)), sharex=True, squeeze=False)
     A_ = {k: axes[i] for i, k in enumerate(rows)}
+    # shared y within each row, except the mean row: each column gets its own range there (user, 2026-10-22: the
+    # Gaussian's means are too narrow to resolve on the flexible model's range), with tick labels on the right
+    for key in rows:
+        for ax in A_[key][1:]:
+            if key == 'mean':
+                ax.tick_params(labelleft=False, labelright=True)
+            else:
+                ax.sharey(A_[key][0]); ax.tick_params(labelleft=False)
     for j, (d, lab) in enumerate(zip(D, labels)):
         for key, allq, byq in (('pm', d['p_m'], d['p_mq']), ('mean', d['mean'], d['mean_q']), ('sd', d['sd'], d['sd_q'])):
             if key not in A_:
@@ -460,7 +467,6 @@ def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M, sh
         axes[-1, j].set_xticks(SUMMARY_M_GRID, [f'${m:g}$' for m in SUMMARY_M_GRID])
     vis = m_c >= m_min
     band_hi = lambda ys: max(np.nanmax(np.nanpercentile(y, 95, 0)[vis]) for d in D for y in ys(d))
-    band_lo = lambda ys: min(np.nanmin(np.nanpercentile(y, 5, 0)[vis]) for d in D for y in ys(d))
     lo_all = min(np.nanpercentile(np.nanpercentile(d['p_m'], 5, 0)[vis], 2) for d in D)
     A_['pm'][0].set_ylim(lo_all / 3, band_hi(lambda d: [d['p_m']] + d['p_mq']) * 3)
     A_['pq'][0].set_ylim(0, 1)
@@ -468,9 +474,12 @@ def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M, sh
     A_['pm'][0].set_ylabel(r'$p(m_1)\,[M_\odot^{-1}]$'); A_['pq'][0].set_ylabel(r'$q$')
     A_['sd'][0].set_ylabel(r'$\sigma_{\chi_\mathrm{eff}}(m_1)$' + cut)
     if 'mean' in A_:
-        lo_m, hi_m = band_lo(lambda d: [d['mean']] + d['mean_q']), band_hi(lambda d: [d['mean']] + d['mean_q'])
-        pad = 0.05 * (hi_m - lo_m)
-        A_['mean'][0].set_ylim(lo_m - pad, hi_m + pad)
+        for j, d in enumerate(D):                                  # per-column range
+            ys = [d['mean']] + d['mean_q']
+            lo_m = min(np.nanmin(np.nanpercentile(y, 5, 0)[vis]) for y in ys)
+            hi_m = max(np.nanmax(np.nanpercentile(y, 95, 0)[vis]) for y in ys)
+            pad = 0.05 * (hi_m - lo_m)
+            A_['mean'][j].set_ylim(lo_m - pad, hi_m + pad)
         A_['mean'][0].set_ylabel(r'$\mu_{\chi_\mathrm{eff}}(m_1)$' + cut)
     # legends in every column (user, 2026-10-22): top row top right, p(q | m1) row bottom left, sigma row top left;
     # the mean row repeats the sigma row's artists, so it has none
