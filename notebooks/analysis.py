@@ -88,6 +88,21 @@ def summarize(S):
 # prior-like spikes at chi_eff -> -1 in some draws)
 CHI_CORE = 0.8
 
+# (m1, q) regions for the 2D spin distributions (REGION in the cache; spin_region_figure): every M x Q pair, in
+# REGION_LIST order; membership by bin centre. 50-75 is a wider alternative to 55-65 (similar ln m1 width to 8-12).
+REGION_M = ((8., 12.), (16., 22.), (30., 40.), (55., 65.), (50., 75.))
+REGION_Q = ((0.3, 0.65), (0.8, 1.0))
+REGION_LIST = [(mr, qr) for mr in REGION_M for qr in REGION_Q]
+
+
+def region_weights():
+    """(Bm, n_regions, Bq) 0/1: which (m1, q) bins (by centre) belong to each of REGION_LIST."""
+    W = np.zeros((B, len(REGION_LIST), B))
+    for r, ((m0, m1), (q0, q1)) in enumerate(REGION_LIST):
+        W[(m_c >= m0) & (m_c <= m1), r] = ((q_c >= q0) & (q_c <= q1))[None]
+    return W
+
+
 CHI_EFF_SLICES = {r'0 < \chi_\mathrm{eff} < 0.1': lambda e: (e > 0) & (e < 0.1),
                   r'|\chi_\mathrm{eff}| < 0.2': lambda e: np.abs(e) < 0.2,
                   r'|\chi_\mathrm{eff}| > 0.2': lambda e: np.abs(e) > 0.2}
@@ -115,6 +130,7 @@ def _spin_fns(km, logW, spin_model):
     ec, pc, lW, logdV = jnp.asarray(e_c), jnp.asarray(p_c), jnp.asarray(logW), np.log(dlnm * dq)
     masks = jnp.asarray(np.stack([f(e_c) for f in CHI_EFF_SLICES.values()], -1).astype(float))    # (Be, n_slices)
     core = jnp.asarray((np.abs(e_c) < CHI_CORE).astype(float))                                    # (Be,)
+    RW = jnp.asarray(region_weights())                                                            # (Bm, n_reg, Bq)
 
     def stats(slab_T, log_p_mass):
         lw = log_p_mass + logdV
@@ -133,10 +149,11 @@ def _spin_fns(km, logW, spin_model):
             mu_in = (pe_in @ ec) / inside
             mom_core = jnp.stack([mu_in, jnp.sqrt(jnp.maximum((pe_in @ ec ** 2) / inside - mu_in ** 2, 0.)),
                                   1. - pe_in.sum(1)], -1)
+            region = jnp.einsum('rq,q,qep->rep', RW[m], w_win[m], P)       # this m1 bin's share of each region
             return (jnp.einsum('q,qep->ep', w_raw[m], P), jnp.einsum('q,qep->ep', w_win[m], P), mom,
-                    wq @ pe, wq @ pq, pe @ masks, mom_core)
-        raw, win, mom, pe_m, pp_m, sl, mom_core = jax.lax.map(slab, jnp.arange(B), batch_size=10)
-        return raw.sum(0), win.sum(0), mom, pe_m, pp_m, sl, mom_core
+                    wq @ pe, wq @ pq, pe @ masks, mom_core, region)
+        raw, win, mom, pe_m, pp_m, sl, mom_core, region = jax.lax.map(slab, jnp.arange(B), batch_size=10)
+        return raw.sum(0), win.sum(0), mom, pe_m, pp_m, sl, mom_core, region.sum(0)
 
     @jax.jit
     def field(white, lnsig, lognu, logr, log_p_mass):
@@ -162,7 +179,9 @@ def _spin_fns(km, logW, spin_model):
     return {'field': field, 'split': split, 'gauss': gauss}[spin_model], keys
 
 
-REBUILT = ('P_raw', 'P_win', 'MOM', 'PE_M', 'PP_M', 'SLICE', 'MOM_CORE')   # MOM_CORE: (mean, sd, P outside) at |chi_eff| < CHI_CORE
+# MOM_CORE: (mean, sd, P outside) at |chi_eff| < CHI_CORE; REGION: (n_regions, Be, Bp) per-bin probabilities of
+# p(chi_eff, chi_p, region), windowed mass weights, REGION_LIST order (sum = P(region); normalize for p(chi | region))
+REBUILT = ('P_raw', 'P_win', 'MOM', 'PE_M', 'PP_M', 'SLICE', 'MOM_CORE', 'REGION')
 POST_DIR = os.path.join(REPO, 'results', 'post_processing', 'for_plotting')
 
 
@@ -195,7 +214,8 @@ def rebuild_chain(run, chain_file, n_draws=None, log_every=100, block=25):
               else 1)
         n = len(h['log_likelihood']) if n_draws is None else n_draws
         fn, keys = _spin_fns(km, logW, spin_model)
-        g.attrs.update(n_draws=n, spin_model=spin_model, k=km, source=chain_file)
+        g.attrs.update(n_draws=n, spin_model=spin_model, k=km, source=chain_file,
+                       regions=np.array([[*mr, *qr] for mr, qr in REGION_LIST]))    # REGION's (m0, m1, q0, q1)
         out = None
         tv = g.create_dataset('tv', (n,))
         for b in range(0, n, block):
@@ -218,11 +238,14 @@ def rebuild_chain(run, chain_file, n_draws=None, log_every=100, block=25):
     return path
 
 
-def load_rebuilt(run, files, n_draws):
-    """The rebuilt spin quantities of every chain, first n_draws draws each, rebuilding any chain whose file is
-    missing or shorter than n_draws (slow on CPU: about 1 s per draw; ``python notebooks/analysis.py <run>`` does it
-    ahead of time)."""
-    out = {k: [] for k in REBUILT + ('tv',)}
+LOADED = tuple(k for k in REBUILT if k != 'REGION')     # what load_run reads (REGION: ~0.8 GB per run, load_regions)
+
+
+def load_rebuilt(run, files, n_draws, keys=LOADED + ('tv',)):
+    """The rebuilt spin quantities ``keys`` of every chain, first n_draws draws each, rebuilding any chain whose file
+    is missing, shorter than n_draws or without every REBUILT key (slow on CPU: about 1 s per draw; post.sbatch or
+    ``python notebooks/analysis.py <run>`` does it ahead of time on a GPU)."""
+    out = {k: [] for k in keys}
     for f in files:
         path = post_path(run, f)
         have = 0
@@ -270,7 +293,7 @@ def load_run(run):
     # spins, windowed: rebuilt from the spin latents on every draw (the per-mass and chi_eff-slice quantities are not
     # saved by any model), cached in results/post_processing/for_plotting/<run>/
     reb = load_rebuilt(run, files, n_draws)
-    r.P_raw, r.P_win, r.MOM, r.PE_M, r.PP_M, r.SLICE, r.MOM_CORE = (reb[k] for k in REBUILT)
+    r.P_raw, r.P_win, r.MOM, r.PE_M, r.PP_M, r.SLICE, r.MOM_CORE = (reb[k] for k in LOADED)
     r.rebuild_tv = float(reb['tv'].max())
     r.spin_source = (f'rebuilt from the saved spin latents on all {n_draws} draws per chain '
                      f'(results/post_processing/for_plotting/{run}/)')
@@ -391,7 +414,8 @@ def p_m1_given_q_range(r, q_range):
     return np.where(joint > 0, out, np.nan)                         # NaN where m2 > 3 Msun excludes the whole range
 
 
-def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M, show_mean=False, core=False):
+def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M, show_mean=False, core=False,
+                   mean_asinh=None):
     """Mass ratio and chi_eff on a shared m1 axis, one column per run (namespaces from load_run or load_light), with
     shared y ranges and colour scales across columns, rows of equal height:
     p(m1): the 90% interval over all q (black lines) and p(m1 | q in each of ``q_ranges``) (90% bands, medians);
@@ -399,9 +423,12 @@ def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M, sh
     with ``show_mean``, mu_chi_eff(m1), the mean of p(chi_eff | m1), drawn like the next row;
     sigma_chi_eff(m1), the sd of p(chi_eff | m1): over all q (black lines, 90%) and over each q range (bands).
     With ``core``, the chi_eff rows use |chi_eff| < CHI_CORE only (r.MOM_CORE, q_averaged_moments(core=True)).
+    The mean row has its own y range per column, or with ``mean_asinh`` = w a shared asinh(mu / w) scale (linear for
+    |mu| < w, logarithmic beyond), which shows the narrow and the wide columns on one axis.
     Cells with q m1 < 3 Msun are blank, and so are the q-range curves where m2 > 3 Msun excludes the range. The m1
     axis starts at ``m_min``, and the y ranges cover what is visible. Columns are headed by ``labels`` (default:
     SPIN_MODEL_TITLES). Returns the figure and each run's p(m1) peaks (p_m1_peaks; printed, not drawn)."""
+    import matplotlib
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
@@ -435,7 +462,7 @@ def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M, sh
     # Gaussian's means are too narrow to resolve on the flexible model's range), with tick labels on the right
     for key in rows:
         for ax in A_[key][1:]:
-            if key == 'mean':
+            if key == 'mean' and not mean_asinh:
                 ax.tick_params(labelleft=False, labelright=True)
             else:
                 ax.sharey(A_[key][0]); ax.tick_params(labelleft=False)
@@ -473,7 +500,19 @@ def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M, sh
     A_['sd'][0].set_ylim(0, 1.05 * band_hi(lambda d: [d['sd']] + d['sd_q']))
     A_['pm'][0].set_ylabel(r'$p(m_1)\,[M_\odot^{-1}]$'); A_['pq'][0].set_ylabel(r'$q$')
     A_['sd'][0].set_ylabel(r'$\sigma_{\chi_\mathrm{eff}}(m_1)$' + cut)
-    if 'mean' in A_:
+    if 'mean' in A_ and mean_asinh:                                # shared asinh scale (user, 2026-10-23)
+        ys = [y for d in D for y in [d['mean']] + d['mean_q']]
+        lo_m = min(np.nanmin(np.nanpercentile(y, 5, 0)[vis]) for y in ys)
+        hi_m = max(np.nanmax(np.nanpercentile(y, 95, 0)[vis]) for y in ys)
+        ticks = [t for t in (-1, -0.5, -0.2, -0.1, -0.05, -0.02, 0, 0.02, 0.05, 0.1, 0.2, 0.5, 1)
+                 if lo_m * 1.1 <= t <= hi_m * 1.1 or t == 0]
+        for ax in A_['mean']:
+            ax.set_yscale('asinh', linear_width=mean_asinh)
+            ax.set_yticks(ticks, [f'${t:g}$' for t in ticks])
+            ax.yaxis.set_minor_locator(matplotlib.ticker.NullLocator())
+        A_['mean'][0].set_ylim(lo_m * 1.1, hi_m * 1.1)
+        A_['mean'][0].set_ylabel(r'$\mu_{\chi_\mathrm{eff}}(m_1)$' + cut)
+    elif 'mean' in A_:
         for j, d in enumerate(D):                                  # per-column range
             ys = [d['mean']] + d['mean_q']
             lo_m = min(np.nanmin(np.nanpercentile(y, 5, 0)[vis]) for y in ys)
@@ -517,6 +556,124 @@ def load_light(run):
     if all('MOM_CORE' in h5py.File(post_path(run, f), 'r') for f in files):
         r.MOM_CORE = np.concatenate([h5py.File(post_path(run, f), 'r')['MOM_CORE'][:n_draws] for f in files])
     return r
+
+
+def load_regions(run):
+    """p(chi_eff, chi_p | m1, q in each of REGION_LIST) per draw, as a namespace: ``P`` (draws, n_regions, Be, Bp),
+    per-bin probabilities normalized within each region (NaN where the region has no support), ``share``
+    (draws, n_regions), the region's probability under the windowed mass distribution, and ``regions``."""
+    files = sorted(glob.glob(os.path.join(REPO, 'results', run, 'chain_*_samples.h5')))
+    with h5py.File(files[0], 'r') as h:
+        spin_model = spin_model_of(h)
+    n_draws = min(len(h5py.File(f, 'r')['log_likelihood']) for f in files)
+    P = []
+    for f in files:
+        with h5py.File(post_path(run, f), 'r') as g:
+            if 'REGION' not in g:
+                raise KeyError(f'{post_path(run, f)} has no REGION: rebuild the cache (post.sbatch)')
+            stored = [tuple(x) for x in g.attrs['regions']]
+            if stored != [(*mr, *qr) for mr, qr in REGION_LIST]:
+                raise ValueError(f'{post_path(run, f)} was built for other regions: {stored}')
+            P.append(g['REGION'][:n_draws])
+    P = np.concatenate(P)
+    share = P.sum((2, 3))
+    P /= np.where(share > 0, share, np.nan)[..., None, None]
+    return SimpleNamespace(run=run, spin_model=spin_model, k=int(re.search(r'_k(\d+)', run).group(1)), P=P,
+                           share=share, regions=list(REGION_LIST))
+
+
+# spin_region_figure: the slices drawn in the side panels (single bins, as in the m1-chi_eff figures)
+REGION_CHI_P_SLICES = (0.2, 0.5)          # top panels: p(chi_eff, chi_p = v | region) against chi_eff
+REGION_CHI_EFF_SLICES = (0.0, 0.2)        # right panels: p(chi_eff = v, chi_p | region) against chi_p
+REGION_CHI_EFF_RANGE = (-0.7, 0.7)
+
+
+def spin_region_figure(R, m_regions=REGION_M[:4], q_regions=REGION_Q[::-1], title=None):
+    """The joint p(chi_eff, chi_p | m1 in M, q in Q) of one run (load_regions), one block per region: columns over
+    ``m_regions``, rows over ``q_regions`` (default: 0.8 < q < 1 on top). Each block: the median 2D density over draws
+    (shared log colour scale), and above / right of it slices at single chi_p / chi_eff bins (REGION_CHI_P_SLICES,
+    REGION_CHI_EFF_SLICES; median and 90% band over draws, same units as the colour scale), marked on the heatmap by
+    dashed lines in the slice colours. The corner gives the region and its probability P(region) (median and 90%)."""
+    import matplotlib.pyplot as plt
+    from matplotlib.colors import LogNorm
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    import plot_style
+    dens = R.P / (de * dp)                                                           # (draws, n_reg, Be, Bp)
+    idx = {reg: i for i, reg in enumerate(R.regions)}
+    blocks = [[idx[(mr, qr)] for mr in m_regions] for qr in q_regions]
+    med = {i: np.nanmedian(dens[:, i], 0) for row in blocks for i in row}
+    vmax = max(np.nanmax(m) for m in med.values()); vmin = vmax * 3e-3
+    inbin = lambda edges, v: int(np.clip(np.searchsorted(edges, v, side='right') - 1, 0, len(edges) - 2))
+    ip = [inbin(p_edges, v) for v in REGION_CHI_P_SLICES]                # the bin containing each value
+    ie = [inbin(e_edges, v) for v in REGION_CHI_EFF_SLICES]
+    g2 = lambda x: f'{x:.2g}'
+    col_p, col_e = ('C0', 'C1'), ('C2', 'C3')
+    q5 = lambda x: np.nanpercentile(x, [5, 50, 95], axis=0)
+    step = lambda y: np.repeat(y, 2)
+    nr, nc = len(q_regions), len(m_regions)
+    fig = plt.figure(figsize=(4.6 * nc + 1.2, 4.6 * nr + (0.5 if title else 0)))
+    gs = fig.add_gridspec(nr, nc, wspace=0.12, hspace=0.12, left=0.05, right=0.92, bottom=0.07,
+                          top=0.93 if title else 0.98)
+    for a, row in enumerate(blocks):
+        for b, i in enumerate(row):
+            sub = gs[a, b].subgridspec(2, 2, width_ratios=[3, 1.2], height_ratios=[1.2, 3], hspace=0.06, wspace=0.06)
+            ax_m, ax_t, ax_r, ax_c = (fig.add_subplot(sub[1, 0]), fig.add_subplot(sub[0, 0]), fig.add_subplot(sub[1, 1]),
+                                      fig.add_subplot(sub[0, 1]))
+            img = np.where(med[i] > 0, med[i], np.nan)
+            pcm = ax_m.pcolormesh(e_edges, p_edges, img.T, norm=LogNorm(vmin=vmin, vmax=vmax), cmap='inferno',
+                                  shading='flat', rasterized=True)
+            ax_m.set_xlim(*REGION_CHI_EFF_RANGE); ax_m.set_ylim(0, 1)
+            ax_m.tick_params(which='both', direction='out')
+            for j, c in zip(ip, col_p):
+                ax_m.axhline(p_c[j], color=c, lw=1, ls='--')
+            for j, c in zip(ie, col_e):
+                ax_m.axvline(e_c[j], color=c, lw=1, ls='--')
+            ex = np.repeat(e_edges, 2)[1:-1]
+            for j, c in zip(ip, col_p):                                      # top: along chi_eff at fixed chi_p
+                lo, md, hi = q5(dens[:, i, :, j])
+                ax_t.fill_between(ex, np.maximum(step(lo), vmin * 1e-3), step(hi), color=c, alpha=0.3, lw=0)
+                ax_t.plot(ex, step(md), color=c, lw=1.5)
+            px = np.repeat(p_edges, 2)[1:-1]
+            for j, c in zip(ie, col_e):                                      # right: along chi_p at fixed chi_eff
+                lo, md, hi = q5(dens[:, i, j, :])
+                ax_r.fill_betweenx(px, np.maximum(step(lo), vmin * 1e-3), step(hi), color=c, alpha=0.3, lw=0)
+                ax_r.plot(step(md), px, color=c, lw=1.5)
+            ax_t.set_yscale('log'); ax_t.set_ylim(vmin, vmax * 3); ax_t.set_xlim(*REGION_CHI_EFF_RANGE)
+            ax_r.set_xscale('log'); ax_r.set_xlim(vmin, vmax * 3); ax_r.set_ylim(0, 1)
+            ax_t.tick_params(labelbottom=False); ax_r.tick_params(labelleft=False)
+            for ax in (ax_t, ax_r):
+                ax.grid(True, which='major', color='0.85', lw=0.6)
+                ax.set_axisbelow(True)
+            if a < nr - 1:
+                ax_m.tick_params(labelbottom=False)
+            else:
+                ax_m.set_xlabel(r'$\chi_\mathrm{eff}$')
+            if b > 0:
+                ax_m.tick_params(labelleft=False); ax_t.tick_params(labelleft=False)
+            else:
+                ax_m.set_ylabel(r'$\chi_p$')
+            ax_r.tick_params(labelbottom=a == nr - 1)
+            (m0, m1), (q0, q1) = R.regions[i]
+            lo, md, hi = np.percentile(R.share[:, i], [5, 50, 95])
+            ax_c.axis('off')
+            ax_c.text(0.5, 0.5, rf'$m_1 \in [{m0:g}, {m1:g}]\,M_\odot$' '\n' rf'$q \in [{q0:g}, {q1:g}]$' '\n'
+                      rf'$P = {g2(md)}^{{+{g2(hi - md)}}}_{{-{g2(md - lo)}}}$',
+                      transform=ax_c.transAxes, ha='center', va='center', fontsize=12)
+            if a == 0 and b == 0:
+                hp = [(Patch(color=c, alpha=0.3, lw=0), Line2D([], [], color=c, lw=1.5)) for c in col_p]
+                ax_t.legend(hp, [rf'$\chi_p \in [{p_edges[j]:.2f}, {p_edges[j + 1]:.2f}]$' for j in ip],
+                            loc='lower center', ncol=2,
+                            columnspacing=0.8, **dict(plot_style.LEG_KW, fontsize=11))
+                he = [(Patch(color=c, alpha=0.3, lw=0), Line2D([], [], color=c, lw=1.5)) for c in col_e]
+                ax_r.legend(he, [rf'$\chi_\mathrm{{eff}} \in [{e_edges[j]:.2f}, {e_edges[j + 1]:.2f}]$' for j in ie],
+                            loc='upper right',
+                            **dict(plot_style.LEG_KW, fontsize=11))
+    cax = fig.add_axes([0.935, 0.2, 0.012, 0.6])
+    cb = fig.colorbar(pcm, cax=cax); cb.set_label(r'$p(\chi_\mathrm{eff}, \chi_p \mid m_1, q)$')
+    if title:
+        fig.suptitle(title, y=0.985)
+    return fig
 
 
 if __name__ == '__main__':
