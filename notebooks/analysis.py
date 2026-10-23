@@ -92,7 +92,8 @@ CHI_CORE = 0.8
 # REGION_LIST order; membership by bin centre. 50-75 is a wider alternative to 55-65 (similar ln m1 width to 8-12).
 REGION_M = ((8., 12.), (16., 22.), (30., 40.), (55., 65.), (50., 75.))
 REGION_Q = ((0.3, 0.65), (0.8, 1.0))
-REGION_LIST = [(mr, qr) for mr in REGION_M for qr in REGION_Q]
+M_ALL, Q_ALL = (0., 1e4), (0., 1.)        # 'all m1' / 'all q': the totals rows and columns of spin_region_figure
+REGION_LIST = [(mr, qr) for mr in REGION_M + (M_ALL,) for qr in REGION_Q + (Q_ALL,)]
 
 
 def region_weights():
@@ -238,6 +239,16 @@ def rebuild_chain(run, chain_file, n_draws=None, log_every=100, block=25):
     return path
 
 
+def cache_complete(path, n_draws):
+    """True if the cache file at ``path`` has n_draws draws, every REBUILT key and the current REGION_LIST."""
+    if not os.path.exists(path):
+        return False
+    with h5py.File(path, 'r') as g:
+        regions = [tuple(x) for x in g.attrs.get('regions', [])]
+        return (g.attrs['n_draws'] >= n_draws and all(k in g for k in REBUILT)
+                and regions == [(*mr, *qr) for mr, qr in REGION_LIST])
+
+
 LOADED = tuple(k for k in REBUILT if k != 'REGION')     # what load_run reads (REGION: ~0.8 GB per run, load_regions)
 
 
@@ -248,11 +259,7 @@ def load_rebuilt(run, files, n_draws, keys=LOADED + ('tv',)):
     out = {k: [] for k in keys}
     for f in files:
         path = post_path(run, f)
-        have = 0
-        if os.path.exists(path):
-            with h5py.File(path, 'r') as g:
-                have = g.attrs['n_draws'] if all(k in g for k in REBUILT) else 0     # older caches lack keys
-        if have < n_draws:
+        if not cache_complete(path, n_draws):
             print(f'rebuilding spins of {run} {os.path.basename(f)} -> {path}', flush=True)
             rebuild_chain(run, f)
         with h5py.File(path, 'r') as g:
@@ -588,12 +595,16 @@ REGION_CHI_EFF_SLICES = (0.0, 0.2)        # right panels: p(chi_eff = v, chi_p |
 REGION_CHI_EFF_RANGE = (-0.7, 0.7)
 
 
-def spin_region_figure(R, m_regions=REGION_M[:4], q_regions=REGION_Q[::-1], title=None):
+def spin_region_figure(R, m_regions=REGION_M[:4], q_regions=REGION_Q[::-1], title=None, totals=True, transpose=False):
     """The joint p(chi_eff, chi_p | m1 in M, q in Q) of one run (load_regions), one block per region: columns over
-    ``m_regions``, rows over ``q_regions`` (default: 0.8 < q < 1 on top). Each block: the median 2D density over draws
-    (shared log colour scale), and above / right of it slices at single chi_p / chi_eff bins (REGION_CHI_P_SLICES,
-    REGION_CHI_EFF_SLICES; median and 90% band over draws, same units as the colour scale), marked on the heatmap by
-    dashed lines in the slice colours. The corner gives the region and its probability P(region) (median and 90%)."""
+    ``m_regions``, rows over ``q_regions`` (default: 0.8 < q < 1 above 0.3 < q < 0.65). With ``totals``, a first row
+    over all q (p(chi | m1 in M)) and a first column over all m1 (p(chi | q in Q)), the top-left block being the
+    whole population, set off by dashed lines. Each block: the median 2D density over draws (shared log colour scale),
+    and above / right of it slices at single chi_p / chi_eff bins (REGION_CHI_P_SLICES, REGION_CHI_EFF_SLICES; median
+    and 90% band over draws, same units as the colour scale), marked on the heatmap by dashed lines in the slice
+    colours. The corner gives P(q in Q | m1 in M) (median and 90%); P(m1 in M) in the totals row and P(q in Q) in
+    the totals column. Columns and rows are titled by their ranges. ``transpose``: rows over m1, columns over q (a
+    portrait page)."""
     import matplotlib.pyplot as plt
     from matplotlib.colors import LogNorm
     from matplotlib.lines import Line2D
@@ -601,22 +612,34 @@ def spin_region_figure(R, m_regions=REGION_M[:4], q_regions=REGION_Q[::-1], titl
     import plot_style
     dens = R.P / (de * dp)                                                           # (draws, n_reg, Be, Bp)
     idx = {reg: i for i, reg in enumerate(R.regions)}
-    blocks = [[idx[(mr, qr)] for mr in m_regions] for qr in q_regions]
+    cols_m = ([M_ALL] if totals else []) + list(m_regions)
+    rows_q = ([Q_ALL] if totals else []) + list(q_regions)
+    # the grid: (row key, column key) -> (m1 range, q range); keys are ('m', range) or ('q', range)
+    row_keys, col_keys = ([('m', m) for m in cols_m], [('q', q) for q in rows_q]) if transpose else \
+        ([('q', q) for q in rows_q], [('m', m) for m in cols_m])
+    reg = lambda rk, ck: (rk[1], ck[1]) if rk[0] == 'm' else (ck[1], rk[1])
+    blocks = [[idx[reg(rk, ck)] for ck in col_keys] for rk in row_keys]
     med = {i: np.nanmedian(dens[:, i], 0) for row in blocks for i in row}
     vmax = max(np.nanmax(m) for m in med.values()); vmin = vmax * 3e-3
     inbin = lambda edges, v: int(np.clip(np.searchsorted(edges, v, side='right') - 1, 0, len(edges) - 2))
     ip = [inbin(p_edges, v) for v in REGION_CHI_P_SLICES]                # the bin containing each value
     ie = [inbin(e_edges, v) for v in REGION_CHI_EFF_SLICES]
     g2 = lambda x: f'{x:.2g}'
-    col_p, col_e = ('C0', 'C1'), ('C2', 'C3')
+    pm = lambda x: (lambda lo, md, hi: rf'${g2(md)}^{{+{g2(hi - md)}}}_{{-{g2(md - lo)}}}$')(*np.percentile(x, [5, 50, 95]))
+    col_p = col_e = ('C0', 'C3')                     # blue, red for both slice sets (user, 2026-10-23)
     q5 = lambda x: np.nanpercentile(x, [5, 50, 95], axis=0)
     step = lambda y: np.repeat(y, 2)
-    nr, nc = len(q_regions), len(m_regions)
-    fig = plt.figure(figsize=(4.6 * nc + 1.2, 4.6 * nr + (0.5 if title else 0)))
-    gs = fig.add_gridspec(nr, nc, wspace=0.12, hspace=0.12, left=0.05, right=0.92, bottom=0.07,
-                          top=0.93 if title else 0.98)
-    for a, row in enumerate(blocks):
-        for b, i in enumerate(row):
+    m_title = lambda mr: r'all $m_1$' if mr == M_ALL else rf'$m_1 \in [{mr[0]:g}, {mr[1]:g}]\,M_\odot$'
+    q_title = lambda qr: r'all $q$' if qr == Q_ALL else rf'$q \in [{qr[0]:.2g}, {qr[1]:.2g}]$'.replace('[1,', '[1.0,').replace(', 1]', ', 1.0]')
+    nr, nc = len(row_keys), len(col_keys)
+    title_of = lambda k: m_title(k[1]) if k[0] == 'm' else q_title(k[1])
+    fig = plt.figure(figsize=(4.6 * nc + 1.6, 4.6 * nr + (0.8 if title else 0.4)))
+    lft, rgt = (0.1, 0.88) if transpose else (0.07, 0.92)
+    gs = fig.add_gridspec(nr, nc, wspace=0.16, hspace=0.16, left=lft, right=rgt, bottom=0.04 if transpose else 0.06,
+                          top=(0.95 if transpose else 0.92) if title else (0.97 if transpose else 0.95))
+    for a, (rk, row) in enumerate(zip(row_keys, blocks)):
+        for b, (ck, i) in enumerate(zip(col_keys, row)):
+            mr, qr = reg(rk, ck)
             sub = gs[a, b].subgridspec(2, 2, width_ratios=[3, 1.2], height_ratios=[1.2, 3], hspace=0.06, wspace=0.06)
             ax_m, ax_t, ax_r, ax_c = (fig.add_subplot(sub[1, 0]), fig.add_subplot(sub[0, 0]), fig.add_subplot(sub[1, 1]),
                                       fig.add_subplot(sub[0, 1]))
@@ -641,7 +664,7 @@ def spin_region_figure(R, m_regions=REGION_M[:4], q_regions=REGION_Q[::-1], titl
                 ax_r.plot(step(md), px, color=c, lw=1.5)
             ax_t.set_yscale('log'); ax_t.set_ylim(vmin, vmax * 3); ax_t.set_xlim(*REGION_CHI_EFF_RANGE)
             ax_r.set_xscale('log'); ax_r.set_xlim(vmin, vmax * 3); ax_r.set_ylim(0, 1)
-            ax_t.tick_params(labelbottom=False); ax_r.tick_params(labelleft=False)
+            ax_t.tick_params(labelbottom=False); ax_r.tick_params(labelleft=False, labelbottom=a == nr - 1)
             for ax in (ax_t, ax_r):
                 ax.grid(True, which='major', color='0.85', lw=0.6)
                 ax.set_axisbelow(True)
@@ -653,26 +676,38 @@ def spin_region_figure(R, m_regions=REGION_M[:4], q_regions=REGION_Q[::-1], titl
                 ax_m.tick_params(labelleft=False); ax_t.tick_params(labelleft=False)
             else:
                 ax_m.set_ylabel(r'$\chi_p$')
-            ax_r.tick_params(labelbottom=a == nr - 1)
-            (m0, m1), (q0, q1) = R.regions[i]
-            lo, md, hi = np.percentile(R.share[:, i], [5, 50, 95])
+            # corner: the probability that goes with this block
             ax_c.axis('off')
-            ax_c.text(0.5, 0.5, rf'$m_1 \in [{m0:g}, {m1:g}]\,M_\odot$' '\n' rf'$q \in [{q0:g}, {q1:g}]$' '\n'
-                      rf'$P = {g2(md)}^{{+{g2(hi - md)}}}_{{-{g2(md - lo)}}}$',
-                      transform=ax_c.transAxes, ha='center', va='center', fontsize=12)
+            if mr == M_ALL and qr == Q_ALL:
+                txt = ''
+            elif qr == Q_ALL:
+                txt = r'$P(m_1 \in M)$' '\n' + pm(R.share[:, i])
+            elif mr == M_ALL:
+                txt = r'$P(q \in Q)$' '\n' + pm(R.share[:, i])
+            else:
+                txt = r'$P(q \in Q \mid m_1 \in M)$' '\n' + pm(R.share[:, i] / R.share[:, idx[(mr, Q_ALL)]])
+            ax_c.text(0.5, 0.45, txt, transform=ax_c.transAxes, ha='center', va='center', fontsize=10)
+            if a == 0:
+                ax_t.set_title(title_of(ck), pad=8, fontsize=15)             # column titles (user, 2026-10-23)
             if a == 0 and b == 0:
                 hp = [(Patch(color=c, alpha=0.3, lw=0), Line2D([], [], color=c, lw=1.5)) for c in col_p]
-                ax_t.legend(hp, [rf'$\chi_p \in [{p_edges[j]:.2f}, {p_edges[j + 1]:.2f}]$' for j in ip],
-                            loc='lower center', ncol=2,
+                ax_t.legend(hp, [rf'$\chi_p = {v:g}$' for v in REGION_CHI_P_SLICES], loc='lower center', ncol=2,
                             columnspacing=0.8, **dict(plot_style.LEG_KW, fontsize=11))
                 he = [(Patch(color=c, alpha=0.3, lw=0), Line2D([], [], color=c, lw=1.5)) for c in col_e]
-                ax_r.legend(he, [rf'$\chi_\mathrm{{eff}} \in [{e_edges[j]:.2f}, {e_edges[j + 1]:.2f}]$' for j in ie],
-                            loc='upper right',
+                ax_r.legend(he, [rf'$\chi_\mathrm{{eff}} = {v:g}$' for v in REGION_CHI_EFF_SLICES], loc='upper right',
                             **dict(plot_style.LEG_KW, fontsize=11))
-    cax = fig.add_axes([0.935, 0.2, 0.012, 0.6])
+    bottoms, tops, lefts, rights = gs.get_grid_positions(fig)
+    for a, rk in enumerate(row_keys):                                        # row titles (user, 2026-10-23)
+        fig.text(lefts[0] - (0.06 if transpose else 0.045), 0.5 * (bottoms[a] + tops[a]), title_of(rk), rotation=90,
+                 ha='center', va='center', fontsize=15)
+    if totals:                                                               # dashed lines around the totals
+        x = 0.5 * (rights[0] + lefts[1]); y = 0.5 * (bottoms[0] + tops[1])
+        for xy in (([x, x], [bottoms[-1] - 0.02, tops[0] + 0.03]), ([lefts[0] - 0.03, rights[-1] + 0.01], [y, y])):
+            fig.add_artist(Line2D(*xy, transform=fig.transFigure, color='0.4', lw=1.2, ls='--'))
+    cax = fig.add_axes([rgt + 0.02, 0.2, 0.012 if not transpose else 0.018, 0.6])
     cb = fig.colorbar(pcm, cax=cax); cb.set_label(r'$p(\chi_\mathrm{eff}, \chi_p \mid m_1, q)$')
     if title:
-        fig.suptitle(title, y=0.985)
+        fig.suptitle(title, y=0.99)
     return fig
 
 

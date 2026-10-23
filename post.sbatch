@@ -36,11 +36,9 @@ for run in sys.argv[1:]:
         with h5py.File(f, 'r') as h:
             n = len(h['log_likelihood'])
         p = A.post_path(run, f)
-        if os.path.exists(p):
-            with h5py.File(p, 'r') as g:
-                if g.attrs['n_draws'] >= n and all(k in g for k in A.REBUILT):
-                    print('complete:', p, flush=True)
-                    continue
+        if A.cache_complete(p, n):                # draws, every REBUILT key and the current REGION_LIST
+            print('complete:', p, flush=True)
+            continue
         print('wrote', A.rebuild_chain(run, f), flush=True)
 EOF
 for nb in $NOTEBOOKS; do
