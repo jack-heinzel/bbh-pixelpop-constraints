@@ -593,6 +593,7 @@ def load_regions(run):
 REGION_CHI_P_SLICES = (0.2, 0.5)          # top panels: p(chi_eff, chi_p = v | region) against chi_eff
 REGION_CHI_EFF_SLICES = (0.0, 0.2)        # right panels: p(chi_eff = v, chi_p | region) against chi_p
 REGION_CHI_EFF_RANGE = (-0.7, 0.7)
+REGION_DENSITY_MIN = 1e-2               # floor of the colour scale and of the slice axes (user, 2026-10-23)
 
 
 def spin_region_figure(R, m_regions=REGION_M[:4], q_regions=REGION_Q[::-1], title=None, totals=True, transpose=False):
@@ -620,7 +621,7 @@ def spin_region_figure(R, m_regions=REGION_M[:4], q_regions=REGION_Q[::-1], titl
     reg = lambda rk, ck: (rk[1], ck[1]) if rk[0] == 'm' else (ck[1], rk[1])
     blocks = [[idx[reg(rk, ck)] for ck in col_keys] for rk in row_keys]
     med = {i: np.nanmedian(dens[:, i], 0) for row in blocks for i in row}
-    vmax = max(np.nanmax(m) for m in med.values()); vmin = vmax * 3e-3
+    vmax = max(np.nanmax(m) for m in med.values()); vmin = REGION_DENSITY_MIN
     inbin = lambda edges, v: int(np.clip(np.searchsorted(edges, v, side='right') - 1, 0, len(edges) - 2))
     ip = [inbin(p_edges, v) for v in REGION_CHI_P_SLICES]                # the bin containing each value
     ie = [inbin(e_edges, v) for v in REGION_CHI_EFF_SLICES]
