@@ -30,8 +30,9 @@
 \input{acronyms}
 
 % math macros
-\newcommand{\Msun}{\ensuremath{M_{\odot}}}
+\newcommand{\Msun}{\ensuremath{\mathrm{M}_{\odot}}}
 \newcommand{\chieff}{\ensuremath{\chi_{\mathrm{eff}}}}
+\newcommand{\chip}{\ensuremath{\chi_{\mathrm{p}}}}
 \newcommand{\mchirp}{\ensuremath{\mathcal{M}_c}}
 
 \newcommand{\red}[1]{{\color{Red} #1}}
@@ -64,13 +65,66 @@ abstracto petronum
 
 \section{Introduction}
 
+Gravitational waves are providing a new window into the astrophysics of binary black hole formation. The LIGO \cite{}, Virgo \cite{} and KAGRA \cite{} observatory network has now cataloged over 250 binary black hole merger detections, and the constraints on the masses, spins, and merger redshift on the catalog  enables a characterization on the population. 
+
+To date, population-level measurements over the rapidly-increasing catalog size has lead to a growing phenomenological understanding of the demographics of binary black hole mergers, if not yet a first-principles understanding based on the astrophysical formation processes. We know that the black hole mass function is highly structured: a prominent peak at $\sim 10\Msun$, a feature at $\sim 30-35\Msun$ which may represent a local peak or a steepening in the mass function, an a long tail extending into the theorized \ac{PISN} mass gap. We know that a majority of black hole spins are small, but a fraction of merging \acp{BH} have rapid spins; similarly, the majority of black hole spin tilts tend to be aligned relative to the orbital angular momentum, but a nonzero fraction have anti-aligned black hole spins. Many of these population-level constraints have been confirmed with individual well-measured events as well. 
+
+
+Historically, parametric models, which make strong assumptions about the nature of the binary population, have driven population-level discoveries in the field. Typically, these constraints assumed there was no correlations between the \ac{BH} parameters, for instance, parametric models assumed there was no difference in the mass ratio distribution over the primary mass spectrum (the mass of the heavier \ac{BH} in the binary). Indeed, these approximations tended to be valid because any astrophysical correlations tended to be too small to be detectable in the small catalog sizes that gravitational wave astronomy was dealing with. 
+However, the complete collection of binary black hole detections now numbers in the hundreds, and so population features previously too subtle are now emerging in the data. 
+
+In this paper, we report the observation of a highly correlated binary mass distribution, with prominent peaks at $\sim 10\Msun$ and $\sim 35\Msun$ for mass ratios $q\sim 1$ close to one, and a secondary pair of peaks at $\sim 18\Msun$ and $\sim 60\Msun$ for mass ratios $q\sim 0.5$. We observe that these mass features bifurcate based on their spin properties as well: the $\sim 10\Msun$ and $\sim 35\Msun$ have small spins, while the $\sim 18\Msun$ and $\sim 60\Msun$ peaks tend to have large, isotropically oriented spins. 
+
 
 \section{Methods}
 
-We do a few things. 
+We consider a pair of highly flexible models. The first model we present is a four-dimensional, nonparametric model for the correlated space of primary mass, mass ratio, and the effective aligned spin $\chieff$ and effective precessing spin $\chip$. Specifically, we build a nonparametric model for $p(m_1, q)$ using a Mat\'ern field in \PixelPop \cite{}, and construct a correlated conditional model for $p(\chieff, \chip \mid m_1, q)$ using a separate Mat\'ern field. We model the comoving merger rate as evolving according to a simple powerlaw in redshift \cite[e.g.][]{Fishbach:2018edt}, uncorrelated with masses or spins. \jh{We should consider a model which correlates redshift too!} 
+
+Our second model is the Gaussian $\chieff, \chip$ model, where we directly model the mean and covariance matrix of the bivariate Gaussian as their own Mat\'ern fields. Specifically, 
+\begin{equation}
+    p(\chieff, \chip \mid m_1, q) = \mathcal{N}\left[
+    \vec{\mu}(m_1, q), 
+    C(m_1, q)
+    \right]
+\end{equation}
+where
+\begin{align}
+    \vec{\mu}(m_1, q) &= \begin{bmatrix}
+    \mu_{\chieff}(m_1, q) \\ 
+    \mu_{\chip}(m_1, q)
+    \end{bmatrix}
+    \\
+    C(m_1, q) &= \begin{bmatrix}
+    \sigma^2_{\chieff}(m_1, q) & \rho(m_1, q)\sigma_{\chieff}(m_1, q)\sigma_{\chip}(m_1, q) \\ 
+    \rho(m_1, q)\sigma_{\chieff}(m_1, q)\sigma_{\chip}(m_1, q) & \sigma^2_{\chip}(m_1, q)
+    \end{bmatrix}.
+\end{align}
+We enforce the bivariate Gaussian model is defined only on the physical domain, defined in Eq. 12 of \citet{iwaya_analytic_2025}. 
+
+more more more
 
 \section{Mass peaks}
 
+\begin{figure*}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/summary_mean.pdf}
+    \caption{Caption}
+    \label{fig:placeholder}
+\end{figure*}
+
+\begin{figure*}
+    \centering
+    \includegraphics[height=\textheight]{draft/plots/spin_regions_flexible_T.pdf}
+    \caption{Caption}
+    \label{fig:placeholder}
+\end{figure*}
+
+\begin{figure*}
+    \centering
+    \includegraphics[height=\textheight]{draft/plots/spin_regions_gaussian_T.pdf}
+    \caption{Caption}
+    \label{fig:placeholder}
+\end{figure*}
 
 \section{Spin behavior}
 
