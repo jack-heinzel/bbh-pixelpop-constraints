@@ -2,7 +2,7 @@
  reprint,
  amsmath,amssymb,
  aps,
- prd,
+ prl,
  nofootinbib,nobibnotes,
 ]{revtex4-2}
 
@@ -28,6 +28,13 @@
 
 
 \input{acronyms}
+
+% numbers: copies of ../macros/*.tex (notebooks/draft_figures.sh macros); use in math mode, e.g. $\peakTenMuFlex\,\Msun$.
+% Found from draft/ or from the repository root.
+\newcommand{\inputmacros}[1]{\IfFileExists{macros/#1.tex}{\input{macros/#1}}{\input{draft/macros/#1}}}
+\inputmacros{peak_fits}
+\inputmacros{joint_fits}
+\inputmacros{peak_pairs}
 
 % math macros
 \newcommand{\Msun}{\ensuremath{\mathrm{M}_{\odot}}}

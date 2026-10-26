@@ -1,7 +1,8 @@
 #!/bin/bash
 # Redraw the figures used in draft/ from the spin cache and copy them into draft/plots/ under their short names.
 # Runs on a login node (one pinned core, < 3 GB); the cache must be complete (post.sbatch).
-#     bash notebooks/draft_figures.sh [summary|regions|all]      (default: all)
+#     bash notebooks/draft_figures.sh [summary|regions|macros|all]      (default: all)
+# macros: copies the LaTeX number macros (macros/*_fits.tex, macros/peak_pairs.tex) to draft/macros/.
 cd "$(dirname "$0")/.."
 module load texlive/20240312 2>/dev/null       # plot_style uses usetex
 PY="taskset -c ${CORE:-5} $HOME/venvs/gwjax313/bin/python"
@@ -25,5 +26,9 @@ if [ "$what" = regions ] || [ "$what" = all ]; then
         cp plots/ppc_gwtc5_k10_spin_regions$t.pdf draft/plots/spin_regions_flexible$t.pdf
         cp plots/ppc_gwtc5_k100_gauss_spin_regions$t.pdf draft/plots/spin_regions_gaussian$t.pdf
     done
+fi
+if [ "$what" = macros ] || [ "$what" = all ]; then
+    mkdir -p draft/macros
+    cp macros/peak_fits.tex macros/joint_fits.tex macros/peak_pairs.tex draft/macros/
 fi
 echo "draft figures done"
