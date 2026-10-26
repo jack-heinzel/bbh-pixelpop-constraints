@@ -78,7 +78,7 @@ In this paper, we report the observation of a highly correlated binary mass dist
 
 \section{Methods}
 
-We consider a pair of highly flexible models. The first model we present is a four-dimensional, nonparametric model for the correlated space of primary mass, mass ratio, and the effective aligned spin $\chieff$ and effective precessing spin $\chip$. Specifically, we build a nonparametric model for $p(m_1, q)$ using a Mat\'ern field in \PixelPop \cite{}, and construct a correlated conditional model for $p(\chieff, \chip \mid m_1, q)$ using a separate Mat\'ern field. We model the comoving merger rate as evolving according to a simple powerlaw in redshift \cite[e.g.][]{Fishbach:2018edt}, uncorrelated with masses or spins. \jh{We should consider a model which correlates redshift too!} 
+We consider a pair of flexible models. The first model we present is a four-dimensional, nonparametric model for the correlated space of primary mass, mass ratio, and the effective aligned spin $\chieff$ and effective precessing spin $\chip$. Specifically, we build a nonparametric model for $p(m_1, q)$ using a Mat\'ern field in \PixelPop \cite{}, and construct a correlated conditional model for $p(\chieff, \chip \mid m_1, q)$ using a separate Mat\'ern field. We model the comoving merger rate as evolving according to a simple powerlaw in redshift \cite[e.g.][]{Fishbach:2018edt}, uncorrelated with masses or spins. \jh{We should consider a model which correlates redshift too!} 
 
 Our second model is the Gaussian $\chieff, \chip$ model, where we directly model the mean and covariance matrix of the bivariate Gaussian as their own Mat\'ern fields. Specifically, 
 \begin{equation}
@@ -103,13 +103,18 @@ We enforce the bivariate Gaussian model is defined only on the physical domain, 
 
 more more more
 
+\subsection{define matern conditional model}
+
 \section{Mass peaks}
+
+We show the collection of main results in Fig.~\ref{fig: main result}. For mass ratios close to 1, $q\in [0.8,1]$, the primary mass spectrum has a peak at $\sim 10\Msun$ \jh{fit Gaussian to its location}, and a peak at $\sim 30-35\Msun$ \jh{fit a Gaussian to its location too.}
+
 
 \begin{figure*}
     \centering
     \includegraphics[width=\linewidth]{draft/plots/summary_mean.pdf}
     \caption{Caption}
-    \label{fig:placeholder}
+    \label{fig: main result}
 \end{figure*}
 
 \begin{figure*}
@@ -125,6 +130,16 @@ more more more
     \caption{Caption}
     \label{fig:placeholder}
 \end{figure*}
+
+\subsection{Peak locations: consistent with dynamical \ac{BBH}?}
+
+\jh{It looks tentatively that the 20M peak might be slightly too high mass?}
+
+For each potential peak in the mass spectrum, we fit a Gaussian plus powerlaw in a window around the potential peak. Specifically, given a window $m_1\in[m_{\rm min}, m_{\rm max}]$ we fit a model
+\begin{equation}
+    p(m_1, q \mid \Lambda) = \eta \, PL(m_1\mid \alpha, m_{\rm min}, m_{\rm max}) + (1-\eta)\mathcal{N}_{[m_{\rm min}, m_{\rm max}]}(m_1 \mid \mu, \sigma)
+\end{equation}
+
 
 \section{Spin behavior}
 
