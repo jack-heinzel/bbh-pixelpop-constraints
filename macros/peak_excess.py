@@ -167,7 +167,7 @@ def macros(res):
 
 def draw_panel(ax, entries, labels):
     """One window x q slice: the excess d(m1) per run (first run filled 90% / 99% bands and median, second run lines),
-    the 90% range of the peak location (shaded) and its median (dotted), and P_loc per run in the corner."""
+    the median peak location (dotted), and P_loc per run in the corner."""
     texts = []
     for i, (e, col) in enumerate(zip(entries, RUN_STYLE)):
         if e is None:
@@ -181,9 +181,7 @@ def draw_panel(ax, entries, labels):
         else:
             for y, ls, lw in ((p05, '--', 0.7), (p995, '--', 0.7), (p5, '-', 0.9), (p95, '-', 0.9)):
                 ax.step(m, y, where='mid', color=col, ls=ls, lw=lw)
-        lo, md, hi = np.percentile(e['m_hat'], [5, 50, 95])
-        ax.axvspan(lo, hi, color=col, alpha=0.08, lw=0, zorder=0)
-        ax.axvline(md, color=col, ls=':', lw=0.8, zorder=1)
+        ax.axvline(np.median(e['m_hat']), color=col, ls=':', lw=0.8, zorder=1)
         texts.append((rf'$P_{{\rm loc}} = {e["P_loc"]:.2f}$', col))
     ax.axhline(0, color='k', ls='--', lw=0.7)
     for k, (s, col) in enumerate(texts):
