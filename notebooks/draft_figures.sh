@@ -1,0 +1,29 @@
+#!/bin/bash
+# Redraw the figures used in draft/ from the spin cache and copy them into draft/plots/ under their short names.
+# Runs on a login node (one pinned core, < 3 GB); the cache must be complete (post.sbatch).
+#     bash notebooks/draft_figures.sh [summary|regions|all]      (default: all)
+cd "$(dirname "$0")/.."
+module load texlive/20240312 2>/dev/null       # plot_style uses usetex
+PY="taskset -c ${CORE:-5} $HOME/venvs/gwjax313/bin/python"
+RUNS="ppc_gwtc5_k10 ppc_gwtc5_k100_gauss"
+NAME=gwtc5_field_vs_gauss_k100
+S=plots/compare_${NAME}_mass_ratio_spin_summary
+what=${1:-all}
+
+if [ "$what" = summary ] || [ "$what" = all ]; then
+    $PY notebooks/summary_fig.py $NAME $RUNS --m-min 5 || exit 1
+    $PY notebooks/summary_fig.py $NAME $RUNS --m-min 5 --mean-asinh 0.03 --core || exit 1
+    cp ${S}_m5.pdf draft/plots/summary.pdf
+    cp ${S}_mean_asinh0.03_core_m5.pdf draft/plots/summary_mean.pdf
+fi
+if [ "$what" = regions ] || [ "$what" = all ]; then
+    for run in $RUNS; do
+        $PY notebooks/spin_region_fig.py $run || exit 1
+        $PY notebooks/spin_region_fig.py $run --transpose || exit 1
+    done
+    for t in "" _T; do
+        cp plots/ppc_gwtc5_k10_spin_regions$t.pdf draft/plots/spin_regions_flexible$t.pdf
+        cp plots/ppc_gwtc5_k100_gauss_spin_regions$t.pdf draft/plots/spin_regions_gaussian$t.pdf
+    done
+fi
+echo "draft figures done"

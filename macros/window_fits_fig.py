@@ -128,8 +128,7 @@ def plane_figure(post, prior, ykey='qmean'):
             xy = np.vstack([np.log(s['mu']), s[ykey]])
             density = bounded_kde(xy, lo, hi)
             ax.contour(np.exp(X), Y, density(grid).reshape(X.shape), levels=sorted(hpd_levels(density, xy, fracs)),
-                       colors=col, linewidths=lws[::-1] if len(lws) > 1 else lws,
-                       linestyles=lss[::-1] if len(lss) > 1 else lss)
+                       colors=col, linewidths=lws, linestyles=lss)        # levels ascending: 90% first
     ax.set_xscale('log'); ax.set_xlim(4, 110); ax.set_ylim(0, 1)
     ax.set_xticks([5, 10, 20, 50, 100]); ax.set_xticklabels(['5', '10', '20', '50', '100'])
     ax.set_xlabel(r'peak location $\mu\,[M_\odot]$'); ax.set_ylabel(PLANE_Y[ykey])
