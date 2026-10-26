@@ -1,7 +1,7 @@
 """Paper figures at journal column widths (user, 2026-10-26), drawn at their final size with small fonts instead of shrinking the summary
 figure:
 
-    python notebooks/paper_figs.py [mass|chi|m2|all] [--core] [--mean-asinh W]
+    python notebooks/paper_figs.py [mass|chi|m2|spin|book|all] [--core] [--mean-asinh W]
         -> plots/mass_ratio_m1.pdf         Fig. 1: p(m1 | q range) above p(q | m1), the flexible run, one column
            plots/chi_eff_mean_m1.pdf       mu_chi_eff(m1), one row per spin model, one column
            plots/chi_eff_sd_m1.pdf         sigma_chi_eff(m1), one row per spin model, one column
@@ -10,6 +10,10 @@ figure:
                                            2026-10-26); one column
            plots/m2_m1_windows.pdf         p(m2 | m1 in a window around each peak), one row per spin model; one
                                            column
+           plots/spin_peak_regions.pdf     Fig. 2: p(chi_eff, chi_p) in the four peak regions, the flexible model's
+                                           median (heatmap) and the Gaussian model's (contours); two columns
+           plots/peak_bookkeeping.pdf      Fig. 3: (a) peak location against mean q (joint fits, bounded KDE);
+                                           (b) fit-free retained fraction for both pairs; one column
 
 The panels are drawn as in analysis.summary_figure (90% bands and medians per q range, black lines for all q; p(q | m1)
 median with the 90% / 99% intervals of <q>), on m1 from M_MIN to 200 Msun. --core: the chi_eff rows use
@@ -24,6 +28,7 @@ os.environ.setdefault('JAX_PLATFORMS', 'cpu')
 os.environ.setdefault('XLA_FLAGS', '--xla_cpu_multi_thread_eigen=false intra_op_parallelism_threads=1')
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, os.path.dirname(HERE)); sys.path.insert(0, HERE)
+sys.path.insert(0, os.path.join(os.path.dirname(HERE), 'macros'))
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -196,6 +201,105 @@ def m2_given_m1_figure(R):
     return fig
 
 
+# Fig. 2: the four peak regions (m1 range, q range, label), in the plan's order (draft/main.tex)
+SPIN_PEAK_REGIONS = (((8., 12.), (0.8, 1.0)), ((30., 40.), (0.8, 1.0)), ((16., 22.), (0.3, 0.65)),
+                     ((55., 65.), (0.3, 0.65)))
+
+
+def region_medians(run, regions):
+    """Median over draws of p(chi_eff, chi_p | region) (density) for each of ``regions`` (members of
+    analysis.REGION_LIST), reading only those regions from the spin cache."""
+    import glob
+    import h5py
+    files = sorted(glob.glob(os.path.join(A.REPO, 'results', run, 'chain_*_samples.h5')))
+    n = min(len(h5py.File(f, 'r')['log_likelihood']) for f in files)
+    idx = [A.REGION_LIST.index(reg) for reg in regions]
+    order = np.argsort(idx)
+    P = np.concatenate([h5py.File(A.post_path(run, f), 'r')['REGION'][:n, sorted(idx)] for f in files])
+    P = P[:, np.argsort(order)].astype(float)                              # back to the order of ``regions``
+    P /= P.sum((2, 3), keepdims=True)
+    return np.median(P, 0) / (A.de * A.dp)
+
+
+def hpd_levels_2d(img, fracs):
+    """Density levels of the 2D density ``img`` (on equal cells) enclosing ``fracs`` of its probability."""
+    d = np.sort(np.nan_to_num(img).ravel())[::-1]
+    c = np.cumsum(d) / d.sum()
+    return sorted(d[np.searchsorted(c, f)] for f in fracs)
+
+
+def spin_peaks_figure():
+    """Fig. 2: one panel per peak region: the flexible model's median p(chi_eff, chi_p | region) (log colour scale,
+    shared) and the Gaussian model's 50% / 90% regions (contours)."""
+    from matplotlib.colors import LogNorm
+    Mf = region_medians('ppc_gwtc5_k10', SPIN_PEAK_REGIONS)
+    Mg = region_medians('ppc_gwtc5_k100_gauss', SPIN_PEAK_REGIONS)
+    vmax, vmin = np.nanmax(Mf), A.REGION_DENSITY_MIN
+    fig, axes = plt.subplots(1, len(SPIN_PEAK_REGIONS), figsize=(TWO_COL, 2.05), sharey=True)
+    for ax, (mr, qr), f, g in zip(axes, SPIN_PEAK_REGIONS, Mf, Mg):
+        pcm = ax.pcolormesh(A.e_edges, A.p_edges, np.where(f > 0, f, np.nan).T, norm=LogNorm(vmin=vmin, vmax=vmax),
+                            cmap='inferno', shading='flat', rasterized=True)
+        ax.contour(A.e_c, A.p_c, g.T, levels=hpd_levels_2d(g, (0.9, 0.5)), colors='c', linewidths=(0.7, 1.0),
+                   linestyles=('--', '-'))
+        ax.set_xlim(*A.REGION_CHI_EFF_RANGE); ax.set_ylim(0, 1)
+        ax.tick_params(which='both', direction='out')
+        ax.set_xlabel(r'$\chi_\mathrm{eff}$')
+        ax.text(0.04, 0.96, rf'$m_1 \in [{mr[0]:g}, {mr[1]:g}]\,M_\odot$' '\n' rf'$q \in [{qr[0]:g}, {qr[1]:g}]$',
+                transform=ax.transAxes, va='top', ha='left', color='w', fontsize=7)
+    axes[0].set_ylabel(r'$\chi_p$')
+    handles = [Line2D([], [], color='c', lw=1.0), Line2D([], [], color='c', lw=0.7, ls='--')]
+    axes[-1].legend(handles, ['Gaussian, 50\\%', 'Gaussian, 90\\%'], loc='lower right', labelcolor='w', **LEG)
+    fig.tight_layout(rect=(0, 0, 0.93, 1)); fig.subplots_adjust(wspace=0.06)
+    cax = fig.add_axes([0.935, axes[0].get_position().y0, 0.012, axes[0].get_position().height])
+    cb = fig.colorbar(pcm, cax=cax); cb.set_label(r'$p(\chi_\mathrm{eff}, \chi_p \mid m_1, q)$', fontsize=7)
+    cb.ax.tick_params(direction='out')
+    return fig
+
+
+def bookkeeping_figure():
+    """Fig. 3: (a) each peak's location against the mean q of its peak (joint fits; reflection-bounded KDE, 90% solid
+    and 50% dashed; both spin models); (b) the fit-free retained fraction mu_hi / M_lo for both pairs."""
+    import window_fits_fig as W
+    import peak_pairs as PP
+    from peak_fits import PEAKS
+    post, _ = W.load()
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(ONE_COL, 4.5), gridspec_kw=dict(height_ratios=(1.3, 1)))
+    colours = {'Flexible': 'C0', 'Gaussian': 'C3'}
+    for name, (_, win, _) in PEAKS.items():
+        lo, hi = (np.log(win[0]), 0.), (np.log(win[1]), 1.)
+        X, Y = np.meshgrid(np.linspace(lo[0], hi[0], 120), np.linspace(0, 1, 120))
+        grid = np.vstack([X.ravel(), Y.ravel()])
+        for run, (label, _) in W.RUNS.items():
+            st = post[run][name]
+            xy = np.vstack([np.log(st['mu']), st['qmean']])
+            dens = W.bounded_kde(xy, lo, hi)
+            a1.contour(np.exp(X), Y, dens(grid).reshape(X.shape), levels=sorted(W.hpd_levels(dens, xy)),
+                       colors=colours[label], linewidths=(1.0, 0.7), linestyles=('-', '--'))
+    m1_axis(a1, True); a1.set_xlim(4, 110)
+    a1.set_xlabel(r'peak location $\mu\,[M_\odot]$'); a1.set_ylabel(r'mean $q$ of the peak'); a1.set_ylim(0, 1)
+    a1.legend([Line2D([], [], color=c, lw=1.0) for c in colours.values()], list(colours), loc='lower left', **LEG)
+    bins = np.linspace(0.6, 1.5, 46)
+    pair_col = {('10', '20'): 'C2', ('35', '60'): 'C1'}
+    for run, (label, _) in PP.RUN_LABELS.items():
+        for pair, col in pair_col.items():
+            st = PP.pair_stats(run, *pair)
+            a2.hist(st['retained_mode'], bins=bins, density=True, histtype='step', color=col, lw=1.0,
+                    ls='-' if label == 'Flexible' else '--')
+    a2.axvline(PP.RETAINED, color='k', lw=0.8, ls=':')
+    a2.axvspan(1., bins[-1], color='0.92', zorder=0, lw=0)
+    a2.set_xlim(bins[0], bins[-1]); a2.set_yticks([])
+    a2.set_xlabel(r'retained fraction $m_{1,\mathrm{hi}} / M_\mathrm{lo}$'); a2.set_ylabel('density')
+    handles = ([Line2D([], [], color=c, lw=1.0) for c in pair_col.values()] +
+               [Line2D([], [], color='0.3', lw=1.0), Line2D([], [], color='0.3', lw=1.0, ls='--')])
+    labels = [r'$\sim 10 \to \sim 20\,M_\odot$', r'$\sim 35 \to \sim 60\,M_\odot$', 'Flexible', 'Gaussian']
+    a2.legend(handles, labels, loc='upper right', **LEG)
+    for ax, t in ((a1, '(a)'), (a2, '(b)')):
+        ax.text(0.97 if ax is a1 else 0.03, 0.96, t, transform=ax.transAxes, va='top',
+                ha='right' if ax is a1 else 'left')
+    fig.tight_layout(); fig.subplots_adjust(hspace=0.38)
+    return fig
+
+
 def chi_data(r, core):
     chi = lambda qr=None: A.q_averaged_moments(r, qr, names=('chi_eff',), core=core)['chi_eff']
     allq, byq = chi(), [chi(qr) for qr in A.SUMMARY_Q_RANGES]
@@ -236,15 +340,21 @@ def chi_figure(D, stats, core, asinh):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'm2', 'all'))
+    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'm2', 'spin', 'book', 'all'))
     ap.add_argument('--core', action='store_true')
     ap.add_argument('--mean-asinh', type=float, default=0.03)
     args = ap.parse_args()
-    R = {run: A.load_light(run) for run in (RUNS if args.what != 'mass' else list(RUNS)[:1])}
-    plot_style.apply(); plt.rcParams.update(SMALL_RC)       # after pixelpop's import (in load_light)
+    need = {'mass': list(RUNS)[:1], 'chi': list(RUNS), 'm2': list(RUNS), 'all': list(RUNS)}.get(args.what, [])
+    R = {run: A.load_light(run) for run in need}
+    import pixelpop  # noqa: F401  (its import resets matplotlib's rcParams; import it before the style)
+    plot_style.apply(); plt.rcParams.update(SMALL_RC)
     core = '_core' if args.core else ''
     if args.what in ('mass', 'all'):
         plot_style.save(mass_figure(R['ppc_gwtc5_k10']), 'mass_ratio_m1')
+    if args.what in ('spin', 'all'):
+        plot_style.save(spin_peaks_figure(), 'spin_peak_regions')
+    if args.what in ('book', 'all'):
+        plot_style.save(bookkeeping_figure(), 'peak_bookkeeping')
     if args.what in ('m2', 'all'):
         plot_style.save(m2_figure(R), 'm2_q_ranges')
         plot_style.save(m2_given_m1_figure(R), 'm2_m1_windows')

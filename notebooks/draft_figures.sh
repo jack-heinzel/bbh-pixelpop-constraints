@@ -1,7 +1,8 @@
 #!/bin/bash
 # Redraw the figures used in draft/ from the spin cache and copy them into draft/plots/ under their short names.
 # Runs on a login node (one pinned core, < 3 GB); the cache must be complete (post.sbatch).
-#     bash notebooks/draft_figures.sh [summary|regions|macros|all]      (default: all)
+#     bash notebooks/draft_figures.sh [summary|regions|macros|paper|all]      (default: all)
+# paper: notebooks/paper_figs.py (the column-width paper figures), copied to draft/plots/ under the same names.
 # macros: copies the LaTeX number macros (macros/*_fits.tex, macros/peak_pairs.tex) to draft/macros/.
 cd "$(dirname "$0")/.."
 module load texlive/20240312 2>/dev/null       # plot_style uses usetex
@@ -30,5 +31,12 @@ fi
 if [ "$what" = macros ] || [ "$what" = all ]; then
     mkdir -p draft/macros
     cp macros/peak_fits.tex macros/joint_fits.tex macros/peak_pairs.tex draft/macros/
+fi
+if [ "$what" = paper ] || [ "$what" = all ]; then
+    $PY notebooks/paper_figs.py all || exit 1
+    for f in mass_ratio_m1 chi_eff_sd_m1 chi_eff_mean_m1 chi_eff_mean_sd_m1 spin_peak_regions peak_bookkeeping \
+             m2_q_ranges m2_m1_windows; do
+        cp plots/$f.pdf draft/plots/$f.pdf
+    done
 fi
 echo "draft figures done"

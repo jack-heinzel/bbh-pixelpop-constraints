@@ -139,18 +139,18 @@ more more more
 We show the collection of main results in Fig.~\ref{fig: main result}. For mass ratios close to 1, $q\in [0.8,1]$, the primary mass spectrum has a peak at $\sim 10\Msun$ \jh{fit Gaussian to its location}, and a peak at $\sim 30-35\Msun$ \jh{fit a Gaussian to its location too.}
 
 
-\begin{figure*}
+\begin{figure}
     \centering
-    \includegraphics[width=\linewidth]{draft/plots/summary_mean.pdf}
-    \caption{\red{Fig.~1 proposal: Flexible model only, one column, three rows: $p(m_1 \mid q)$ for the $q$ ranges; $p(q \mid m_1)$; $\sigma_{\chieff}(m_1)$. Redraw at $3.4 \times \sim 5.5$\,in with 8--9\,pt fonts ($\approx$270 words). The Gaussian column moves to the SM with the same layout (alternative: overlay it as lines on the Flexible bands). To decide: legend placement at one-column width; whether the $\mu_{\chieff}$ row earns its space (probably SM); colour-bar width; shared $x$ labels.}}
+    \includegraphics[width=\linewidth]{draft/plots/mass_ratio_m1.pdf}
+    \caption{\red{Draft caption. Top: the primary-mass distribution $p(m_1)$ over all mass ratios (black lines: 90\% interval) and restricted to $0.3 < q < 0.65$ (blue) and $0.8 < q < 1$ (orange) (90\% bands and medians), for the flexible spin model. Bottom: the median $p(q \mid m_1)$, with the 90\% (solid) and 99\% (dashed) intervals of the mean mass ratio $\langle q \rangle$ at each $m_1$; cells with $m_2 < 3\,\Msun$ are blank. Near-equal-mass peaks at $\sim$10 and $\sim$33\,\Msun; $q \approx 0.5$ structure at $\sim$21 and $\sim$59\,\Msun. Gridlines at 10, 30, 100\,\Msun. (\texttt{plots/mass\_ratio\_m1.pdf}, one column, $\approx$270 words.)}}
     \label{fig: main result}
-\end{figure*}
+\end{figure}
 
 \begin{figure*}
     \centering
-    \includegraphics[height=\textheight]{draft/plots/spin_regions_flexible_T.pdf}
-    \caption{\red{Fig.~2 proposal: only the four peak regions, (8--12, $q \sim 1$), (30--40, $q \sim 1$), (16--22, $q \sim 0.5$), (55--65, $q \sim 0.5$), as one row of four $(\chieff, \chip)$ panels, two columns wide ($7.0 \times \sim 1.9$\,in, $\approx$150--200 words). Gaussian model as contours on the Flexible heatmap, or a second row. Drop the slice side panels here (keep the full grid in the SM). To decide: shared vs.\ per-panel colour scale; contour levels for the model comparison; panel labels (mass and $q$ range in one corner).}}
-    \label{fig:placeholder}
+    \includegraphics[width=\linewidth]{draft/plots/spin_peak_regions.pdf}
+    \caption{\red{Draft caption. The joint spin distribution $p(\chieff, \chip \mid m_1, q)$ in the four peak regions: the two near-equal-mass peaks ($m_1 \in [8, 12]$ and $[30, 40]\,\Msun$, $q \in [0.8, 1]$) and the two $q \approx 0.5$ peaks ($m_1 \in [16, 22]$ and $[55, 65]\,\Msun$, $q \in [0.3, 0.65]$). Heatmap: the flexible spin model's median density (shared logarithmic colour scale); contours: the Gaussian spin model's 50\% (solid) and 90\% (dashed) regions. The near-equal-mass peaks have narrow, slightly positive $\chieff$; the $q \approx 0.5$ peaks have broad, nearly symmetric $\chieff$ and larger $\chip$. The blank corner is outside the physical $(\chieff, \chip)$ range. (\texttt{plots/spin\_peak\_regions.pdf}, two columns, $\approx$150--200 words; the full grids move to the SM.)}}
+    \label{fig: spin peaks}
 \end{figure*}
 
 \begin{figure*}
@@ -171,6 +171,13 @@ We show the collection of main results in Fig.~\ref{fig: main result}. For mass 
 
 \jh{It looks tentatively that the 20M peak might be slightly too high mass?}
 
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/peak_bookkeeping.pdf}
+    \caption{\red{Draft caption. (a) Each peak's location $\mu$ against the mean mass ratio of the peak, from Gaussian + power-law fits to $p(m_1, q)$ in a window around each peak with no $q$ range imposed, per posterior draw; 90\% (solid) and 50\% (dashed) regions (boundary-corrected KDE) for the flexible (blue) and Gaussian (red) spin models. Two families: near-equal mass at $\sim$10 and $\sim$32\,\Msun, $q \approx 0.5$ at $\sim$21 and $\sim$59\,\Msun. (b) The retained fraction $m_{1,\rm hi}/M_{\rm lo}$: the mode of $p(m_1 \mid 0.3 < q < 0.65)$ at the higher peak over the mode of the total mass $M = m_1(1+q)$ of the lower peak ($0.8 < q < 1$), per draw (fit-free). Dotted: 0.95 ($\sim$5\% radiated); shaded: $> 1$. $35 \to 60$: $\pairThirtyFiveSixtyRetainedModeFlex$; $10 \to 20$: $\pairTenTwentyRetainedModeFlex$. (\texttt{plots/peak\_bookkeeping.pdf}, one column, $\approx$130 words.)}}
+    \label{fig: bookkeeping}
+\end{figure}
+
 For each potential peak in the mass spectrum, we fit a Gaussian plus powerlaw in a window around the potential peak. Specifically, given a window $m_1\in[m_{\rm min}, m_{\rm max}]$ we fit a model
 \begin{equation}
     p(m_1, q \mid \Lambda) = \eta \, PL(m_1\mid \alpha, m_{\rm min}, m_{\rm max}) + (1-\eta)\mathcal{N}_{[m_{\rm min}, m_{\rm max}]}(m_1 \mid \mu, \sigma)
@@ -185,6 +192,13 @@ For each potential peak in the mass spectrum, we fit a Gaussian plus powerlaw in
 \item Fig.~2: the $(\chieff, \chip)$ distribution in each of the four peak regions.
 \item Robust across the spin models (field, split, Gaussian $k = 10$ and 100); details in the SM.
 \end{itemize}}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/chi_eff_sd_m1.pdf}
+    \caption{\red{Draft caption. The width of the effective-spin distribution at each primary mass, $\sigma_{\chieff}(m_1)$ (the standard deviation of $p(\chieff \mid m_1)$), over all mass ratios (black lines: 90\% interval) and for $0.3 < q < 0.65$ (blue) and $0.8 < q < 1$ (orange) (90\% bands and medians), for the flexible (top) and Gaussian (bottom) spin models. The width is small at the near-equal-mass peaks ($\sim$10 and $\sim$33\,\Msun) and large at $\sim$18--20 and $\gtrsim 45\,\Msun$, driven by the low-$q$ systems. The mean, $\mu_{\chieff}(m_1)$, is in the SM (\texttt{chi\_eff\_mean\_m1.pdf}). (\texttt{plots/chi\_eff\_sd\_m1.pdf}, one column.)}}
+    \label{fig: chi_eff width}
+\end{figure}
 
 
 
