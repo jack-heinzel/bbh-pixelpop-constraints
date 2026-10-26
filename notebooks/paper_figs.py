@@ -354,7 +354,7 @@ def talk_figure(r):
     snorm = LogNorm(vmin=A.REGION_DENSITY_MIN, vmax=np.nanmax(np.median(Df, 0)))
     n = len(SPIN_PEAK_REGIONS)
     fig = plt.figure(figsize=(13.33, 7.5))
-    gs = fig.add_gridspec(n, 3, width_ratios=(2.2, 0.9, 1.35), left=0.05, right=0.95, bottom=0.07, top=0.96,
+    gs = fig.add_gridspec(n, 3, width_ratios=(2.2, 0.9, 1.35), left=0.05, right=0.95, bottom=0.12, top=0.96,
                           wspace=0.32, hspace=0.18)
     ax0 = fig.add_subplot(gs[:, 0])
     pc = ax0.pcolormesh(m_edges, A.q_edges, med.T, norm=mnorm, cmap='viridis', shading='flat', rasterized=True)
@@ -368,7 +368,7 @@ def talk_figure(r):
     for k, ((mr, qr), D, g) in enumerate(zip(SPIN_PEAK_REGIONS, Df, Mg)):
         # the region on the main panel, and a zoom around it
         ax0.add_patch(Rectangle((mr[0], qr[0]), mr[1] - mr[0], qr[1] - qr[0], fill=False, ec=colours[k], lw=1.2))
-        ax0.text(mr[1], qr[1] + 0.01, f'({"abcd"[k]})', color='w', fontsize=9, ha='right', va='bottom')
+        ax0.text(mr[0], qr[0] - 0.012, f'({"abcd"[k]})', fontsize=9, ha='left', va='top', bbox=LABEL_BOX)
         zm = (mr[0] / 1.5, mr[1] * 1.5); zq = (max(0, qr[0] - 0.2), min(1, qr[1] + 0.2))
         az = fig.add_subplot(gs[k, 1])
         az.pcolormesh(m_edges, A.q_edges, med.T, norm=mnorm, cmap='viridis', shading='flat', rasterized=True)
@@ -382,20 +382,19 @@ def talk_figure(r):
         if k == n - 1:
             az.set_xlabel(r'$m_1\,[M_\odot]$')
         az.set_ylabel(r'$q$')
-        for (xa, ya), (xb, yb) in (((mr[1], qr[1]), (0, 1)), ((mr[1], qr[0]), (0, 0))):
-            fig.add_artist(ConnectionPatch((xa, ya), (xb, yb), coordsA='data', coordsB='axes fraction', axesA=ax0,
-                                           axesB=az, color='0.4', lw=0.7))
+        fig.add_artist(ConnectionPatch((mr[1], 0.5 * (qr[0] + qr[1])), (0, 0.5), coordsA='data',
+                                       coordsB='axes fraction', axesA=ax0, axesB=az, color='0.85', lw=0.9,
+                                       arrowstyle='->'))
         ax_m, pcs = spin_block(fig, gs[k, 2], D, g, mr, qr, snorm, xlabel=k == n - 1, fontsize=8)
         fig.add_artist(ConnectionPatch((1, 0.5), (0, 0.5), coordsA='axes fraction', coordsB='axes fraction', axesA=az,
                                        axesB=ax_m, color='0.4', lw=0.7, arrowstyle='->'))
-    pos = fig.axes[-1].get_position()
-    cax = fig.add_axes([0.957, 0.07, 0.008, 0.89])
+    cax = fig.add_axes([0.957, 0.12, 0.008, 0.84])
     cb2 = fig.colorbar(pcs, cax=cax); cb2.set_label(r'$p(\chi_\mathrm{eff}, \chi_p \mid m_1, q)$, flexible median')
     cb2.ax.tick_params(direction='out')
     h2, n2 = slice_legend_handles()
     handles = [Line2D([], [], color='c', lw=1.0), Line2D([], [], color='c', lw=0.7, ls='--')] + h2
     fig.legend(handles, ['Gaussian, 50\\%', 'Gaussian, 90\\%'] + n2, loc='lower center', ncol=4,
-               bbox_to_anchor=(0.73, 0.0), **LEG)
+               bbox_to_anchor=(0.73, 0.005), **LEG)
     return fig
 
 
