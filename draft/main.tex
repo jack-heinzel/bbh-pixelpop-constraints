@@ -63,14 +63,20 @@
 
 \begin{abstract}
 abstracto petronum
+
+\red{Abstract ($\le 600$ characters), one sentence each: the data (259 events, GWTC-5 / O4b); the method (nonparametric, no templates); the result (near-equal-mass peaks at $\jointTenMuFlex\,\Msun$ and $\jointThirtyFiveMuFlex\,\Msun$; $q\approx 0.5$ peaks at $\jointTwentyMuFlex\,\Msun$ and $\jointSixtyMuFlex\,\Msun$, about twice the mass, with broad $\chieff$ there); the meaning (consistent with hierarchical mergers; tentative; the full O4 sample will decide).}
 \end{abstract}
 
 \maketitle
+
+\red{\textbf{PRL length plan.} About 3750 words for text plus captions (figures and tables converted to words); abstract $\le 600$ characters; a justification statement at submission; methods detail and robustness checks go in the Supplemental Material (SM), which does not count. Budget: Fig.~1 $\sim$270 words (one column), Fig.~2 $\sim$150--200, Fig.~3 $\sim$130, Table~I $\sim$100; figures plus table $\sim$650--900, leaving $\sim$2850--3100 words for text and captions. Sharper title option: \emph{Template-free evidence for hierarchical structure in the binary black hole mass, mass-ratio and spin distribution} (only if the significance wording supports \lq\lq evidence''; otherwise \lq\lq hints of'').}
 
 % Gravitational waves are emerging as a powerful probe of the astrophysics of massive stars and the dynamics of dense stellar environments.
 % The LIGO \cite{LIGOScientific:2014pky, Capote:2024rmo, LIGO:2024kkz}, Virgo \cite{VIRGO:2014yos}, and KAGRA \cite{KAGRA:2020tym} (LVK) gravitational-wave (GW) detectors 
 
 \section{Introduction}
+
+\red{Target $\sim$500 words. The current text is good but long for PRL: trim the second and third paragraphs to about half. Fill the empty citations (LIGO, Virgo, KAGRA, GWTC catalogues, \PixelPop). End with the result paragraph.}
 
 Gravitational waves are providing a new window into the astrophysics of binary black hole formation. The LIGO \cite{}, Virgo \cite{} and KAGRA \cite{} observatory network has now cataloged over 250 binary black hole merger detections, and the constraints on the masses, spins, and merger redshift on the catalog  enables a characterization on the population. 
 
@@ -84,6 +90,15 @@ In this paper, we report the observation of a highly correlated binary mass dist
 
 
 \section{Methods}
+
+\red{Target $\sim$400 words; details in the SM.
+\begin{itemize}
+\item Data: the catalogue (GWTC-5, 259 events, FAR $< 1/$yr), at most 20000 PE samples per event, injections and VT.
+\item Mass: \PixelPop Mat\'ern field on $(\ln m_1, q)$, with $m_2 > 3\,\Msun$.
+\item Spins: the conditional $(\chieff, \chip)$ field ($k = 10$ mass modes), and the Gaussian model whose parameters are Mat\'ern fields (the current equations; move the covariance matrix to the SM to save space).
+\item Redshift: a power law. The correlated-redshift note becomes a sentence in the outlook.
+\item Sampling: NUTS, chains, the likelihood correction, the $N_{\rm eff}$ floor.
+\end{itemize}}
 
 We consider a pair of flexible models. The first model we present is a four-dimensional, nonparametric model for the correlated space of primary mass, mass ratio, and the effective aligned spin $\chieff$ and effective precessing spin $\chip$. Specifically, we build a nonparametric model for $p(m_1, q)$ using a Mat\'ern field in \PixelPop \cite{}, and construct a correlated conditional model for $p(\chieff, \chip \mid m_1, q)$ using a separate Mat\'ern field. We model the comoving merger rate as evolving according to a simple powerlaw in redshift \cite[e.g.][]{Fishbach:2018edt}, uncorrelated with masses or spins. \jh{We should consider a model which correlates redshift too!} 
 
@@ -114,31 +129,45 @@ more more more
 
 \section{Mass peaks}
 
+\red{Results: mass structure, target $\sim$700 words.
+\begin{itemize}
+\item Fig.~\ref{fig: main result}: $p(m_1 \mid q)$ in $q$ ranges and $p(q \mid m_1)$. Two families: near-equal mass at $\sim$10 and $\sim$33\,\Msun; $q \approx 0.5$ at $\sim$21 and $\sim$59\,\Msun.
+\item Table~I: $\mu$, $\sigma$, mean $q$ and peak fraction for each of the four peaks (joint-fit macros, Flexible only; Gaussian values in an SM table), with the 1D-fit $\mu$ for comparison.
+\item The peaks are measured: the $\mu$ intervals are 3--9 times narrower than the prior's (SM figure).
+\end{itemize}}
+
 We show the collection of main results in Fig.~\ref{fig: main result}. For mass ratios close to 1, $q\in [0.8,1]$, the primary mass spectrum has a peak at $\sim 10\Msun$ \jh{fit Gaussian to its location}, and a peak at $\sim 30-35\Msun$ \jh{fit a Gaussian to its location too.}
 
 
 \begin{figure*}
     \centering
     \includegraphics[width=\linewidth]{draft/plots/summary_mean.pdf}
-    \caption{Caption}
+    \caption{\red{Fig.~1 proposal: Flexible model only, one column, three rows: $p(m_1 \mid q)$ for the $q$ ranges; $p(q \mid m_1)$; $\sigma_{\chieff}(m_1)$. Redraw at $3.4 \times \sim 5.5$\,in with 8--9\,pt fonts ($\approx$270 words). The Gaussian column moves to the SM with the same layout (alternative: overlay it as lines on the Flexible bands). To decide: legend placement at one-column width; whether the $\mu_{\chieff}$ row earns its space (probably SM); colour-bar width; shared $x$ labels.}}
     \label{fig: main result}
 \end{figure*}
 
 \begin{figure*}
     \centering
     \includegraphics[height=\textheight]{draft/plots/spin_regions_flexible_T.pdf}
-    \caption{Caption}
+    \caption{\red{Fig.~2 proposal: only the four peak regions, (8--12, $q \sim 1$), (30--40, $q \sim 1$), (16--22, $q \sim 0.5$), (55--65, $q \sim 0.5$), as one row of four $(\chieff, \chip)$ panels, two columns wide ($7.0 \times \sim 1.9$\,in, $\approx$150--200 words). Gaussian model as contours on the Flexible heatmap, or a second row. Drop the slice side panels here (keep the full grid in the SM). To decide: shared vs.\ per-panel colour scale; contour levels for the model comparison; panel labels (mass and $q$ range in one corner).}}
     \label{fig:placeholder}
 \end{figure*}
 
 \begin{figure*}
     \centering
     \includegraphics[height=\textheight]{draft/plots/spin_regions_gaussian_T.pdf}
-    \caption{Caption}
+    \caption{\red{Move to the SM: full spin-region grid for the Gaussian model.}}
     \label{fig:placeholder}
 \end{figure*}
 
 \subsection{Peak locations: consistent with dynamical \ac{BBH}?}
+
+\red{Mass bookkeeping, target $\sim$400 words.
+\begin{itemize}
+\item Fig.~3: retained fraction $\mu_{\rm hi}/M_{\rm lo}$. One column, two stacked panels: (a) the $(\mu, \text{mean } q)$ plane without the prior contours (prior comparison in the SM); (b) the retained-fraction histograms for both pairs in one panel, fit-free only, with the 0.95 line ($3.4 \times \sim 4.5$\,in, $\approx$130 words).
+\item $35 \to 60$: $\pairThirtyFiveSixtyRetainedModeFlex$, consistent with $\sim$5\% radiated.
+\item $10 \to 20$: $\pairTenTwentyRetainedModeFlex$, with 0.95 at the $\pairTenTwentyQuantileRetainedModeFlex$ quantile: a mild tension. Possible readings: the dynamical first-generation spectrum differs from the (field-dominated, $\chieff > 0$) 10\,\Msun peak, or pairing is selective. This model cannot separate the channels (SM: $\chieff$ slices).
+\end{itemize}}
 
 \jh{It looks tentatively that the 20M peak might be slightly too high mass?}
 
@@ -150,8 +179,45 @@ For each potential peak in the mass spectrum, we fit a Gaussian plus powerlaw in
 
 \section{Spin behavior}
 
+\red{Target $\sim$500 words.
+\begin{itemize}
+\item Fig.~\ref{fig: main result}, bottom row: $\sigma_{\chieff}(m_1)$ is broad at $\sim$18--20 and $> 45\,\Msun$, narrow at the near-equal-mass peaks; it comes from the width at fixed $q$ (low $q$).
+\item Fig.~2: the $(\chieff, \chip)$ distribution in each of the four peak regions.
+\item Robust across the spin models (field, split, Gaussian $k = 10$ and 100); details in the SM.
+\end{itemize}}
 
 
+
+
+\section{Significance and outlook}
+
+\red{Target $\sim$350 words.
+\begin{itemize}
+\item Tentative, stated plainly. Posterior-only significance measures do not work in a model this flexible (random prior fields give fitted peaks 70--85\% of the time; SM).
+\item A calibrated $p$-value needs mock catalogues (planned).
+\item Forecast: $\sim$2--4$\times$ more events (the full O4 sample) for a decisive test.
+\item Next: correlate redshift; channel-mixture interpretation (companion paper).
+\end{itemize}}
+
+\red{\textbf{Supplemental Material (planned).}
+\begin{enumerate}
+\item Data: event list, PE sample selection, injections; the likelihood correction and $N_{\rm eff}$ floor.
+\item Models and priors (Mat\'ern fields, spin models, \texttt{split}) and sampler settings; the chains that froze and their replacements.
+\item Robustness: $k = 5$ vs.\ $k = 10$; Gaussian $k = 100$ vs.\ $k = 10$; split; the short (NPE 10000) chains.
+\item The window fits: 1D and joint fits, their diagnostics, and the comparison with the prior.
+\item Full spin-region grids for both models.
+\item The fit-free total-mass measurement; the $\chieff$-slice check and why the model cannot separate the channels.
+\item Significance: why posterior-only measures fail here; the plan for mock catalogues.
+\item Leave-one-out on influential events (GW231123, the high-spin low-$N_{\rm eff}$ events), if run.
+\end{enumerate}}
+
+\red{\textbf{Housekeeping.}
+\begin{itemize}
+\item Figure paths: \texttt{draft/plots/...} do not resolve when compiling in \texttt{draft/}; use \texttt{plots/...} (\texttt{\textbackslash graphicspath} already includes \texttt{plots}) and \texttt{\textbackslash bibliography\{main\}}.
+\item Duplicate \texttt{\textbackslash label\{fig:placeholder\}}s.
+\item \texttt{notebooks/draft\_figures.sh}: add the redrawn PRL figures and Fig.~3.
+\item Run \texttt{bash notebooks/draft\_figures.sh macros} after any refit, so the numbers in \texttt{draft/macros/} stay current.
+\end{itemize}}
 
 \bibliography{draft/main}
 
