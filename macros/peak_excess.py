@@ -2,7 +2,8 @@
 
     python macros/peak_excess.py [<run> ...]      (default: paper_figs.RUNS, ppc_gwtc5_k10 ppc_gwtc5_k100_gauss)
         -> macros/peak_excess.tex, results/post_processing/peak_excess.csv,
-           plots/peak_excess.pdf (every peak x every q slice), plots/peak_excess_own_q.pdf (each peak in its own q range)
+           plots/peak_excess.pdf (every peak x every q slice), plots/peak_excess_own_q.pdf (each peak in its own q range),
+           plots/peak_excess_fits_<model>[_own_q].pdf (one spin model each, with the joint fits as dashed lines)
 
 The method of ~/public_html/o4c_population/pixelpop-o4c/post_processing/sept_reruns/bbh_m1m2.ipynb (`peak_locations`,
 `peak_significance`), on the (ln m1, q) plane: for each draw, take p(ln m1, q in Q), the windowed mass field
@@ -31,6 +32,11 @@ Two departures from the notebook:
   the cut cannot make a rising edge; the window used is printed and written to the CSV, and flagged where it was
   shortened. Over all q the cut is part of the population at every m1 (q < 3 / m1 is always removed), so all bins are
   kept there, as in the notebook's marginal; its excess at the low-mass end includes the cut's shape.
+
+The fit figures (user, 2026-10-26) put the joint (m1, q) Gaussian + power-law fits of macros/joint_fits.py (per draw,
+results/post_processing/<run>_joint_fits.npz) through the same chord subtraction: each draw's fitted density is
+integrated over the panel's q slice (truncated Gaussians in q, analytic), evaluated on the same m1 bins, and its own
+chord subtracted; draws without a fitted peak are left out.
 
 Needs only the chains' log_p_mass (no spin cache). Runs on a Rusty login node, pinned (taskset; < 1 GB per run).
 """
@@ -165,11 +171,39 @@ def macros(res):
     print(f'wrote {path}')
 
 
-def draw_panel(ax, entries, labels):
+def fit_slice_density(F, m, q_range, window):
+    """ln of each fitted joint model (rows of F, joint_fits columns) integrated over q in q_range, at m1 values m,
+    per unit ln m1 up to a constant (draws, len(m)); NaN rows where the fit has no peak."""
+    from scipy.special import ndtr
+    lnA, mu, sigma, mu_q, sd_q, lnB, alpha, mu_b, sd_b = (F[:, k][:, None] for k in range(9))
+    qmin = A.MIN_M / m[None]
+    lo, hi = np.maximum(q_range[0], qmin), np.minimum(q_range[1], 1.)
+
+    def frac(mq, sq):                                                  # P(q in [lo, hi]) under TN on [qmin, 1]
+        z = ndtr((1 - mq) / sq) - ndtr((qmin - mq) / sq)
+        return np.clip(ndtr((hi - mq) / sq) - ndtr((lo - mq) / sq), 0, None) / np.maximum(z, 1e-300)
+    m_ref = 0.5 * (window[0] + window[1])
+    peak = np.exp(lnA - 0.5 * ((m[None] - mu) / sigma) ** 2) * frac(mu_q, sd_q)
+    bkg = np.exp(lnB - alpha * np.log(m[None] / m_ref)) * frac(mu_b, sd_b)
+    with np.errstate(divide='ignore'):
+        return np.log(m[None] * (peak + bkg))
+
+
+def fit_excess(run, name, q_range, e):
+    """The chord excess of the joint fits for one window and q slice, on the bins of ``e`` (draws with a peak)."""
+    from joint_fits import npz_path
+    F = np.load(npz_path(run))[name]
+    F = F[np.all(np.isfinite(F), 1)]
+    lf = fit_slice_density(F, e['m'], q_range, PEAKS[name][1])
+    t = (A.lnm_c[e['idx']] - A.lnm_c[e['idx'][0]]) / (A.lnm_c[e['idx'][-1]] - A.lnm_c[e['idx'][0]])
+    return lf - (lf[:, :1] * (1 - t) + lf[:, -1:] * t)
+
+
+def draw_panel(ax, entries, labels, colours=RUN_STYLE, fit=None):
     """One window x q slice: the excess d(m1) per run (first run filled 90% / 99% bands and median, second run lines),
     the median peak location (dotted), and P_loc per run in the corner."""
     texts = []
-    for i, (e, col) in enumerate(zip(entries, RUN_STYLE)):
+    for i, (e, col) in enumerate(zip(entries, colours)):
         if e is None:
             continue
         m, d = e['m'], e['d']
@@ -183,9 +217,16 @@ def draw_panel(ax, entries, labels):
                 ax.step(m, y, where='mid', color=col, ls=ls, lw=lw)
         ax.axvline(np.median(e['m_hat']), color=col, ls=':', lw=0.8, zorder=1)
         texts.append((rf'$P_{{\rm loc}} = {e["P_loc"]:.2f}$', col))
-    ax.axhline(0, color='k', ls='--', lw=0.7)
+    if fit is not None and entries[0] is not None:                 # the joint fits through the same subtraction
+        f5, f50, f95 = np.nanpercentile(fit, [5, 50, 95], axis=0)
+        m = entries[0]['m']
+        ax.step(m, f50, where='mid', color='k', ls='--', lw=0.9, zorder=4)
+        for y in (f5, f95):
+            ax.step(m, y, where='mid', color='k', ls='--', lw=0.5, zorder=4)
+    ax.axhline(0, color='0.5', ls=':', lw=0.7)
     for k, (s, col) in enumerate(texts):
-        ax.text(0.04, 0.93 - 0.11 * k, s, transform=ax.transAxes, va='top', ha='left', color=col, fontsize=6.5)
+        ax.text(0.04, 0.93 - 0.13 * k, s, transform=ax.transAxes, va='top', ha='left', color=col, fontsize=6.5,
+                zorder=5, bbox=dict(boxstyle='round,pad=0.2', facecolor='w', alpha=0.9, edgecolor='none'))
     e0 = next((e for e in entries if e is not None), None)
     if e0 is not None:
         from matplotlib.ticker import FixedLocator, FuncFormatter, NullLocator
@@ -255,6 +296,57 @@ def figures(res):
     plt.close(fig)
 
 
+def fit_figures(res):
+    """Per spin model: the excess grid and the own-q column, with the joint fits through the same subtraction."""
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    import paper_figs as P
+    import plot_style
+    ylab = r'$\ln p - \ln p_{\rm PL}$'
+    for run, col in zip(list(res)[:2], RUN_STYLE):
+        label = P.RUNS.get(run, run)
+        fits = {(name, qs): (fit_excess(run, name, Q_SLICES[qs], res[run][(name, qs)])
+                             if res[run][(name, qs)] is not None else None)
+                for name in PEAKS for qs in Q_SLICES}
+        handles = [(Patch(color=col, alpha=0.3, lw=0), Line2D([], [], color=col)), Patch(color=col, alpha=0.15, lw=0),
+                   Line2D([], [], color='k', ls='--', lw=0.9), Line2D([], [], color='k', ls='--', lw=0.5)]
+        names = [f'{label}, 90\\%', f'{label}, 99\\%', 'window fits (peak + PL), median', 'window fits, 90\\%']
+        for grid in (True, False):
+            if grid:
+                fig, axes = plt.subplots(len(PEAKS), len(Q_SLICES), figsize=(P.TWO_COL, 1.45 * len(PEAKS) + 0.5),
+                                         sharey='row')
+                cells = [(axes[i, j], name, qs) for i, name in enumerate(PEAKS) for j, qs in enumerate(Q_SLICES)]
+            else:
+                fig, axes = plt.subplots(len(PEAKS), 1, figsize=(P.ONE_COL, 1.25 * len(PEAKS) + 0.6))
+                cells = [(ax, name, own_slice(name)) for ax, name in zip(axes, PEAKS)]
+            for ax, name, qs in cells:
+                draw_panel(ax, [res[run][(name, qs)]], [label], colours=(col,), fit=fits[(name, qs)])
+                win = PEAKS[name][1]
+                if grid:
+                    i, j = list(PEAKS).index(name), list(Q_SLICES).index(qs)
+                    if qs == own_slice(name):
+                        for sp in ax.spines.values():
+                            sp.set_linewidth(1.2)
+                    if i == 0:
+                        ax.text(0.5, 1.04, Q_LABELS[qs], transform=ax.transAxes, ha='center', va='bottom')
+                    if j == 0:
+                        ax.set_ylabel(f'{PEAK_LABELS[name]}, ${win[0]:g}$--${win[1]:g}$\n{ylab}')
+                    if i == len(PEAKS) - 1:
+                        ax.set_xlabel(r'$m_1\,[M_\odot]$')
+                else:
+                    ax.text(0.97, 0.93, f'{PEAK_LABELS[name]}, {Q_LABELS[qs]}', transform=ax.transAxes, va='top',
+                            ha='right', bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.5))
+                    ax.set_ylabel(ylab)
+            if not grid:
+                axes[-1].set_xlabel(r'$m_1\,[M_\odot]$')
+            top = 1 - (0.35 if grid else 0.5) / fig.get_figheight()
+            fig.tight_layout(rect=(0, 0, 1, top)); fig.subplots_adjust(hspace=0.35 if grid else 0.4, wspace=0.08)
+            fig.legend(handles, names, loc='upper center', bbox_to_anchor=(0.5, 1.0), ncol=4 if grid else 2, **P.LEG)
+            plot_style.save(fig, f'peak_excess_fits_{label.lower()}' + ('' if grid else '_own_q'))
+            plt.close(fig)
+
+
 def main(runs):
     import paper_figs as P
     runs = runs or list(P.RUNS)
@@ -269,6 +361,7 @@ def main(runs):
         print(df[[c for c in cols if c in df]].to_string(index=False, float_format=lambda v: f'{v:.3f}'))
     macros(res)
     figures(res)
+    fit_figures(res)
 
 
 if __name__ == '__main__':
