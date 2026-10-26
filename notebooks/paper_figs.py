@@ -1,7 +1,7 @@
 """Paper figures at journal column widths (user, 2026-10-26), drawn at their final size with small fonts instead of shrinking the summary
 figure:
 
-    python notebooks/paper_figs.py [mass|chi|m2|spin|book|all] [--core] [--mean-asinh W]
+    python notebooks/paper_figs.py [mass|chi|m2|spin|book|talk|all] [--core] [--mean-asinh W]
         -> plots/mass_ratio_m1.pdf         Fig. 1: p(m1 | q range) above p(q | m1), the flexible run, one column
            plots/chi_eff_mean_m1.pdf       mu_chi_eff(m1), one row per spin model, one column
            plots/chi_eff_sd_m1.pdf         sigma_chi_eff(m1), one row per spin model, one column
@@ -12,6 +12,8 @@ figure:
                                            column
            plots/spin_peak_regions.pdf     Fig. 2: p(chi_eff, chi_p) in the four peak regions, the flexible model's
                                            median (heatmap) and the Gaussian model's (contours); two columns
+           plots/spin_peak_regions_slices.pdf   Fig. 2 with slice panels (median and 90% over draws)
+           plots/mass_spin_zoom_talk.pdf   for talks: median p(m1, q), zooms on the peak regions, their spin blocks
            plots/peak_bookkeeping.pdf      Fig. 3: (a) peak location against mean q (joint fits, bounded KDE);
                                            (b) fit-free retained fraction for both pairs; one column
 
@@ -206,19 +208,23 @@ SPIN_PEAK_REGIONS = (((8., 12.), (0.8, 1.0)), ((30., 40.), (0.8, 1.0)), ((16., 2
                      ((55., 65.), (0.3, 0.65)))
 
 
-def region_medians(run, regions):
-    """Median over draws of p(chi_eff, chi_p | region) (density) for each of ``regions`` (members of
-    analysis.REGION_LIST), reading only those regions from the spin cache."""
+def region_draws(run, regions):
+    """p(chi_eff, chi_p | region) per draw (density, float32, (draws, n_regions, Be, Bp)) for each of ``regions``
+    (members of analysis.REGION_LIST), reading only those regions from the spin cache."""
     import glob
     import h5py
     files = sorted(glob.glob(os.path.join(A.REPO, 'results', run, 'chain_*_samples.h5')))
     n = min(len(h5py.File(f, 'r')['log_likelihood']) for f in files)
     idx = [A.REGION_LIST.index(reg) for reg in regions]
-    order = np.argsort(idx)
     P = np.concatenate([h5py.File(A.post_path(run, f), 'r')['REGION'][:n, sorted(idx)] for f in files])
-    P = P[:, np.argsort(order)].astype(float)                              # back to the order of ``regions``
+    P = P[:, np.argsort(np.argsort(idx))].astype(np.float32)               # back to the order of ``regions``
     P /= P.sum((2, 3), keepdims=True)
-    return np.median(P, 0) / (A.de * A.dp)
+    return P / np.float32(A.de * A.dp)
+
+
+def region_medians(run, regions):
+    """Median over draws of region_draws."""
+    return np.median(region_draws(run, regions), 0)
 
 
 def hpd_levels_2d(img, fracs):
@@ -228,31 +234,168 @@ def hpd_levels_2d(img, fracs):
     return sorted(d[np.searchsorted(c, f)] for f in fracs)
 
 
-def spin_peaks_figure():
+LABEL_BOX = dict(boxstyle='round,pad=0.25', facecolor='w', alpha=0.85, edgecolor='none')
+SLICE_COLOURS = ('C0', 'C3')                     # as analysis.spin_region_figure (blue, red)
+
+
+def region_label(mr, qr):
+    return rf'$m_1 \in [{mr[0]:g}, {mr[1]:g}]\,M_\odot$' '\n' rf'$q \in [{qr[0]:g}, {qr[1]:g}]$'
+
+
+def spin_heatmap(ax, med_f, med_g, norm, slices=False):
+    """The flexible model's median p(chi_eff, chi_p) (heatmap) and the Gaussian model's 50% / 90% regions; with
+    ``slices``, dashed lines at the slice values (analysis.REGION_CHI_P_SLICES, REGION_CHI_EFF_SLICES)."""
+    pcm = ax.pcolormesh(A.e_edges, A.p_edges, np.where(med_f > 0, med_f, np.nan).T, norm=norm, cmap='inferno',
+                        shading='flat', rasterized=True)
+    ax.contour(A.e_c, A.p_c, med_g.T, levels=hpd_levels_2d(med_g, (0.9, 0.5)), colors='c', linewidths=(0.7, 1.0),
+               linestyles=('--', '-'))
+    if slices:
+        for v, c in zip(A.REGION_CHI_P_SLICES, SLICE_COLOURS):
+            ax.axhline(A.p_c[_bin(A.p_edges, v)], color=c, lw=0.8, ls='--')
+        for v, c in zip(A.REGION_CHI_EFF_SLICES, SLICE_COLOURS):
+            ax.axvline(A.e_c[_bin(A.e_edges, v)], color=c, lw=0.8, ls='--')
+    ax.set_xlim(*A.REGION_CHI_EFF_RANGE); ax.set_ylim(0, 1)
+    ax.tick_params(which='both', direction='out')
+    return pcm
+
+
+def _bin(edges, v):
+    return int(np.clip(np.searchsorted(edges, v, side='right') - 1, 0, len(edges) - 2))
+
+
+def spin_block(fig, spec, Df, med_g, mr, qr, norm, label=True, ylabel=True, xlabel=True, fontsize=7):
+    """A heatmap with slice panels above (along chi_eff at fixed chi_p) and to the right (along chi_p at fixed
+    chi_eff): the flexible model's median and 90% band over draws (Df: draws, Be, Bp) in the slice colours."""
+    sub = spec.subgridspec(2, 2, width_ratios=(3, 1.1), height_ratios=(1.1, 3), hspace=0.05, wspace=0.05)
+    ax_m, ax_t, ax_r = fig.add_subplot(sub[1, 0]), fig.add_subplot(sub[0, 0]), fig.add_subplot(sub[1, 1])
+    pcm = spin_heatmap(ax_m, np.median(Df, 0), med_g, norm, slices=True)
+    lo_d, hi_d = norm.vmin, norm.vmax * 2
+    for v, c in zip(A.REGION_CHI_P_SLICES, SLICE_COLOURS):
+        lo, md, hi = np.percentile(Df[:, :, _bin(A.p_edges, v)], [5, 50, 95], axis=0)
+        ax_t.fill_between(A.e_c, np.maximum(lo, lo_d), np.maximum(hi, lo_d), color=c, alpha=0.3, lw=0)
+        ax_t.plot(A.e_c, np.maximum(md, lo_d), color=c, lw=0.8)
+    for v, c in zip(A.REGION_CHI_EFF_SLICES, SLICE_COLOURS):
+        lo, md, hi = np.percentile(Df[:, _bin(A.e_edges, v), :], [5, 50, 95], axis=0)
+        ax_r.fill_betweenx(A.p_c, np.maximum(lo, lo_d), np.maximum(hi, lo_d), color=c, alpha=0.3, lw=0)
+        ax_r.plot(np.maximum(md, lo_d), A.p_c, color=c, lw=0.8)
+    ax_t.set_yscale('log'); ax_t.set_ylim(lo_d, hi_d); ax_t.set_xlim(ax_m.get_xlim())
+    ax_r.set_xscale('log'); ax_r.set_xlim(lo_d, hi_d); ax_r.set_ylim(0, 1)
+    ax_t.tick_params(labelbottom=False, labelleft=False, which='both')
+    ax_r.tick_params(labelleft=False, labelbottom=False, which='both')
+    if xlabel:
+        ax_m.set_xlabel(r'$\chi_\mathrm{eff}$')
+    else:
+        ax_m.tick_params(labelbottom=False)
+    if ylabel:
+        ax_m.set_ylabel(r'$\chi_p$')
+    else:
+        ax_m.tick_params(labelleft=False)
+    if label:
+        ax_m.text(0.04, 0.96, region_label(mr, qr), transform=ax_m.transAxes, va='top', ha='left', fontsize=fontsize,
+                  bbox=LABEL_BOX)
+    return ax_m, pcm
+
+
+def slice_legend_handles():
+    return ([Line2D([], [], color=c, lw=0.8, ls='--') for c in SLICE_COLOURS],
+            [rf'$\chi_p = {a:g}$, $\chi_\mathrm{{eff}} = {b:g}$' for a, b in zip(A.REGION_CHI_P_SLICES,
+                                                                               A.REGION_CHI_EFF_SLICES)])
+
+
+def spin_peaks_figure(slices=False):
     """Fig. 2: one panel per peak region: the flexible model's median p(chi_eff, chi_p | region) (log colour scale,
-    shared) and the Gaussian model's 50% / 90% regions (contours)."""
+    shared) and the Gaussian model's 50% / 90% regions (contours). ``slices``: each panel with slice panels (median
+    and 90% over draws) above and to the right, as analysis.spin_region_figure."""
     from matplotlib.colors import LogNorm
-    Mf = region_medians('ppc_gwtc5_k10', SPIN_PEAK_REGIONS)
+    Df = region_draws('ppc_gwtc5_k10', SPIN_PEAK_REGIONS)
     Mg = region_medians('ppc_gwtc5_k100_gauss', SPIN_PEAK_REGIONS)
-    vmax, vmin = np.nanmax(Mf), A.REGION_DENSITY_MIN
-    fig, axes = plt.subplots(1, len(SPIN_PEAK_REGIONS), figsize=(TWO_COL, 2.05), sharey=True)
-    for ax, (mr, qr), f, g in zip(axes, SPIN_PEAK_REGIONS, Mf, Mg):
-        pcm = ax.pcolormesh(A.e_edges, A.p_edges, np.where(f > 0, f, np.nan).T, norm=LogNorm(vmin=vmin, vmax=vmax),
-                            cmap='inferno', shading='flat', rasterized=True)
-        ax.contour(A.e_c, A.p_c, g.T, levels=hpd_levels_2d(g, (0.9, 0.5)), colors='c', linewidths=(0.7, 1.0),
-                   linestyles=('--', '-'))
-        ax.set_xlim(*A.REGION_CHI_EFF_RANGE); ax.set_ylim(0, 1)
-        ax.tick_params(which='both', direction='out')
-        ax.set_xlabel(r'$\chi_\mathrm{eff}$')
-        ax.text(0.04, 0.96, rf'$m_1 \in [{mr[0]:g}, {mr[1]:g}]\,M_\odot$' '\n' rf'$q \in [{qr[0]:g}, {qr[1]:g}]$',
-                transform=ax.transAxes, va='top', ha='left', color='w', fontsize=7)
-    axes[0].set_ylabel(r'$\chi_p$')
+    Mf = np.median(Df, 0)
+    norm = LogNorm(vmin=A.REGION_DENSITY_MIN, vmax=np.nanmax(Mf))
     handles = [Line2D([], [], color='c', lw=1.0), Line2D([], [], color='c', lw=0.7, ls='--')]
-    axes[-1].legend(handles, ['Gaussian, 50\\%', 'Gaussian, 90\\%'], loc='lower right', labelcolor='w', **LEG)
-    fig.tight_layout(rect=(0, 0, 0.93, 1)); fig.subplots_adjust(wspace=0.06)
-    cax = fig.add_axes([0.935, axes[0].get_position().y0, 0.012, axes[0].get_position().height])
+    names = ['Gaussian, 50\\%', 'Gaussian, 90\\%']
+    if not slices:
+        fig, axes = plt.subplots(1, len(SPIN_PEAK_REGIONS), figsize=(TWO_COL, 2.05), sharey=True)
+        for ax, (mr, qr), f, g in zip(axes, SPIN_PEAK_REGIONS, Mf, Mg):
+            pcm = spin_heatmap(ax, f, g, norm)
+            ax.set_xlabel(r'$\chi_\mathrm{eff}$')
+            ax.text(0.04, 0.96, region_label(mr, qr), transform=ax.transAxes, va='top', ha='left', fontsize=7,
+                    bbox=LABEL_BOX)
+        axes[0].set_ylabel(r'$\chi_p$')
+        axes[-1].legend(handles, names, loc='lower right', labelcolor='w', **LEG)
+        fig.tight_layout(rect=(0, 0, 0.93, 1)); fig.subplots_adjust(wspace=0.06)
+        ref = axes[0]
+    else:
+        fig = plt.figure(figsize=(TWO_COL, 2.45))
+        gs = fig.add_gridspec(1, len(SPIN_PEAK_REGIONS), left=0.065, right=0.915, bottom=0.17, top=0.86, wspace=0.12)
+        for k, ((mr, qr), D, g) in enumerate(zip(SPIN_PEAK_REGIONS, Df, Mg)):
+            ref, pcm = spin_block(fig, gs[0, k], D, g, mr, qr, norm, ylabel=k == 0, fontsize=6)
+        h2, n2 = slice_legend_handles()
+        fig.legend(handles + h2, names + n2, loc='upper center', ncol=4, bbox_to_anchor=(0.5, 1.0), **LEG)
+    pos = ref.get_position()
+    cax = fig.add_axes([0.935, pos.y0, 0.012, pos.height])
     cb = fig.colorbar(pcm, cax=cax); cb.set_label(r'$p(\chi_\mathrm{eff}, \chi_p \mid m_1, q)$', fontsize=7)
     cb.ax.tick_params(direction='out')
+    return fig
+
+
+def talk_figure(r):
+    """For talks: the flexible run's median p(m1, q) (left) with each peak region boxed and joined to a zoom of it
+    (middle), and each zoom joined to that region's spin block with slices (right)."""
+    from matplotlib.colors import LogNorm
+    from matplotlib.patches import ConnectionPatch, Rectangle
+    plt.rcParams.update({'font.size': 10, 'axes.labelsize': 10, 'xtick.labelsize': 8, 'ytick.labelsize': 8,
+                         'legend.fontsize': 8})
+    ok = A.q_c[None, :] * A.m_c[:, None] >= A.MIN_M
+    med = np.where(ok, np.median(r.p_mass, 0), np.nan)                     # per d ln m1 dq
+    m_edges = np.exp(A.lnm_edges)
+    mnorm = LogNorm(vmin=np.nanmax(med) * 1e-3, vmax=np.nanmax(med))
+    Df = region_draws('ppc_gwtc5_k10', SPIN_PEAK_REGIONS)
+    Mg = region_medians('ppc_gwtc5_k100_gauss', SPIN_PEAK_REGIONS)
+    snorm = LogNorm(vmin=A.REGION_DENSITY_MIN, vmax=np.nanmax(np.median(Df, 0)))
+    n = len(SPIN_PEAK_REGIONS)
+    fig = plt.figure(figsize=(13.33, 7.5))
+    gs = fig.add_gridspec(n, 3, width_ratios=(2.2, 0.9, 1.35), left=0.05, right=0.95, bottom=0.07, top=0.96,
+                          wspace=0.32, hspace=0.18)
+    ax0 = fig.add_subplot(gs[:, 0])
+    pc = ax0.pcolormesh(m_edges, A.q_edges, med.T, norm=mnorm, cmap='viridis', shading='flat', rasterized=True)
+    ax0.set_xscale('log'); ax0.set_xlim(M_MIN, A.MAX_M); ax0.set_ylim(0, 1)
+    ax0.set_xticks((5, 10, 20, 50, 100, 200), ['$5$', '$10$', '$20$', '$50$', '$100$', '$200$'])
+    ax0.set_xlabel(r'$m_1\,[M_\odot]$'); ax0.set_ylabel(r'$q$')
+    ax0.tick_params(which='both', direction='out')
+    cb = fig.colorbar(pc, ax=ax0, location='top', fraction=0.04, pad=0.02, aspect=40)
+    cb.set_label(r'median $p(\ln m_1, q)$'); cb.ax.tick_params(direction='out')
+    colours = ('w', 'w', 'w', 'w')
+    for k, ((mr, qr), D, g) in enumerate(zip(SPIN_PEAK_REGIONS, Df, Mg)):
+        # the region on the main panel, and a zoom around it
+        ax0.add_patch(Rectangle((mr[0], qr[0]), mr[1] - mr[0], qr[1] - qr[0], fill=False, ec=colours[k], lw=1.2))
+        ax0.text(mr[1], qr[1] + 0.01, f'({"abcd"[k]})', color='w', fontsize=9, ha='right', va='bottom')
+        zm = (mr[0] / 1.5, mr[1] * 1.5); zq = (max(0, qr[0] - 0.2), min(1, qr[1] + 0.2))
+        az = fig.add_subplot(gs[k, 1])
+        az.pcolormesh(m_edges, A.q_edges, med.T, norm=mnorm, cmap='viridis', shading='flat', rasterized=True)
+        az.add_patch(Rectangle((mr[0], qr[0]), mr[1] - mr[0], qr[1] - qr[0], fill=False, ec='w', lw=1.2))
+        az.set_xscale('log'); az.set_xlim(*zm); az.set_ylim(*zq)
+        az.xaxis.set_major_locator(matplotlib.ticker.FixedLocator(np.unique(np.round(np.geomspace(*zm, 3)))))
+        az.xaxis.set_major_formatter(matplotlib.ticker.FuncFormatter(lambda v, _: f'${v:g}$'))
+        az.xaxis.set_minor_locator(matplotlib.ticker.NullLocator())
+        az.tick_params(which='both', direction='out')
+        az.text(0.03, 0.95, f'({"abcd"[k]})', transform=az.transAxes, va='top', ha='left', fontsize=9, bbox=LABEL_BOX)
+        if k == n - 1:
+            az.set_xlabel(r'$m_1\,[M_\odot]$')
+        az.set_ylabel(r'$q$')
+        for (xa, ya), (xb, yb) in (((mr[1], qr[1]), (0, 1)), ((mr[1], qr[0]), (0, 0))):
+            fig.add_artist(ConnectionPatch((xa, ya), (xb, yb), coordsA='data', coordsB='axes fraction', axesA=ax0,
+                                           axesB=az, color='0.4', lw=0.7))
+        ax_m, pcs = spin_block(fig, gs[k, 2], D, g, mr, qr, snorm, xlabel=k == n - 1, fontsize=8)
+        fig.add_artist(ConnectionPatch((1, 0.5), (0, 0.5), coordsA='axes fraction', coordsB='axes fraction', axesA=az,
+                                       axesB=ax_m, color='0.4', lw=0.7, arrowstyle='->'))
+    pos = fig.axes[-1].get_position()
+    cax = fig.add_axes([0.957, 0.07, 0.008, 0.89])
+    cb2 = fig.colorbar(pcs, cax=cax); cb2.set_label(r'$p(\chi_\mathrm{eff}, \chi_p \mid m_1, q)$, flexible median')
+    cb2.ax.tick_params(direction='out')
+    h2, n2 = slice_legend_handles()
+    handles = [Line2D([], [], color='c', lw=1.0), Line2D([], [], color='c', lw=0.7, ls='--')] + h2
+    fig.legend(handles, ['Gaussian, 50\\%', 'Gaussian, 90\\%'] + n2, loc='lower center', ncol=4,
+               bbox_to_anchor=(0.73, 0.0), **LEG)
     return fig
 
 
@@ -340,11 +483,12 @@ def chi_figure(D, stats, core, asinh):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'm2', 'spin', 'book', 'all'))
+    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'm2', 'spin', 'book', 'talk', 'all'))
     ap.add_argument('--core', action='store_true')
     ap.add_argument('--mean-asinh', type=float, default=0.03)
     args = ap.parse_args()
-    need = {'mass': list(RUNS)[:1], 'chi': list(RUNS), 'm2': list(RUNS), 'all': list(RUNS)}.get(args.what, [])
+    need = {'mass': list(RUNS)[:1], 'chi': list(RUNS), 'm2': list(RUNS), 'talk': list(RUNS)[:1],
+            'all': list(RUNS)}.get(args.what, [])
     R = {run: A.load_light(run) for run in need}
     import pixelpop  # noqa: F401  (its import resets matplotlib's rcParams; import it before the style)
     plot_style.apply(); plt.rcParams.update(SMALL_RC)
@@ -353,6 +497,10 @@ def main():
         plot_style.save(mass_figure(R['ppc_gwtc5_k10']), 'mass_ratio_m1')
     if args.what in ('spin', 'all'):
         plot_style.save(spin_peaks_figure(), 'spin_peak_regions')
+        plot_style.save(spin_peaks_figure(slices=True), 'spin_peak_regions_slices')
+    if args.what in ('talk', 'all'):
+        plot_style.save(talk_figure(R['ppc_gwtc5_k10']), 'mass_spin_zoom_talk')
+        plt.rcParams.update(SMALL_RC)
     if args.what in ('book', 'all'):
         plot_style.save(bookkeeping_figure(), 'peak_bookkeeping')
     if args.what in ('m2', 'all'):
