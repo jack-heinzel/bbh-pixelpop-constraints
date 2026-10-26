@@ -1,0 +1,277 @@
+"""Peak significance as the excess over a local power law, per posterior draw, in the fit windows (PEAKS).
+
+    python macros/peak_excess.py [<run> ...]      (default: paper_figs.RUNS, ppc_gwtc5_k10 ppc_gwtc5_k100_gauss)
+        -> macros/peak_excess.tex, results/post_processing/peak_excess.csv,
+           plots/peak_excess.pdf (every peak x every q slice), plots/peak_excess_own_q.pdf (each peak in its own q range)
+
+The method of ~/public_html/o4c_population/pixelpop-o4c/post_processing/sept_reruns/bbh_m1m2.ipynb (`peak_locations`,
+`peak_significance`), on the (ln m1, q) plane: for each draw, take p(ln m1, q in Q), the windowed mass field
+(m2 > 3 Msun) summed over the q bins whose centres lie in Q. In a peak's m1 window, draw the chord in (ln m1, ln p)
+from the window's first bin to its last, a local power law, and take the excess
+
+    d(m1) = ln p(ln m1, q in Q) - chord(ln m1).
+
+d is the same for p(ln m1) and p(m1) (they differ by -ln m1, linear in ln m1, which the chord absorbs), and for any
+normalization of p within Q. Reported per window and q slice (macros/peak_significance.md, section 1):
+
+* the peak location m_hat (the interior bin of largest d) and height d_max = max d, per draw;
+* P_loc, the notebook's local significance: the fraction of draws with d > 0 at m_star, one fixed bin, the interior bin
+  where the median of d over draws is largest (the notebook fixes a peak mass by hand instead);
+* F_int, the signed integrated excess, sum over the window's bins of (p - exp(chord)) / sum of p, and P(F_int > 0).
+
+These are posterior probabilities, not p-values: a featureless density with noise gives d > 0 about half the time,
+and the windows were chosen after seeing the field (see macros/peak_significance.md, section 3, for the null).
+
+Two departures from the notebook:
+
+* The chord joins bin centres. The notebook pairs bin edges with the column of the bin to their left, so its excess
+  is exactly 0 in the window's first bin; here both end bins sit on the chord and the interior bins carry the excess.
+* m2 > 3 Msun empties part of the low-m1 end at low q (for 0.3 < q < 0.65, every q in the range is allowed only for
+  m1 > 10 Msun). In the q bands, a bin is kept only if the cut leaves all its q bins in Q, i.e. m1 q_min >= 3 Msun, so
+  the cut cannot make a rising edge; the window used is printed and written to the CSV, and flagged where it was
+  shortened. Over all q the cut is part of the population at every m1 (q < 3 / m1 is always removed), so all bins are
+  kept there, as in the notebook's marginal; its excess at the low-mass end includes the cut's shape.
+
+Needs only the chains' log_p_mass (no spin cache). Runs on a Rusty login node, pinned (taskset; < 1 GB per run).
+"""
+import glob
+import os
+import sys
+
+import h5py
+import numpy as np
+
+os.environ.setdefault('JAX_PLATFORMS', 'cpu')
+HERE = os.path.dirname(os.path.abspath(__file__))
+REPO = os.path.dirname(HERE)
+sys.path.insert(0, REPO); sys.path.insert(0, os.path.join(REPO, 'notebooks')); sys.path.insert(0, HERE)
+import analysis as A
+from peak_fits import PEAKS, RUN_NAMES, fmt
+
+# q slices of the figure: all q, then the two fit q ranges (PEAKS)
+Q_SLICES = {'all': (0., 1.), 'low': (0.3, 0.65), 'high': (0.8, 1.0)}
+Q_LABELS = {'all': r'all $q$', 'low': r'$0.3 < q < 0.65$', 'high': r'$0.8 < q < 1$'}
+PEAK_LABELS = {'10': r'$10\,M_\odot$', '35': r'$35\,M_\odot$', '20': r'$20\,M_\odot$', '60': r'$60\,M_\odot$'}
+RUN_STYLE = ('C0', 'C3')                     # first run: filled bands; second: lines (as the notebook's var 1 / var 4)
+CSV = os.path.join(REPO, 'results', 'post_processing', 'peak_excess.csv')
+
+
+def load_mass(run):
+    """Windowed mass field per draw, (draws, Bm, Bq), density per d ln m1 dq, from every chain of results/<run>/
+    (as analysis.load_light, without the spin cache)."""
+    files = sorted(glob.glob(os.path.join(REPO, 'results', run, 'chain_*_samples.h5')))
+    if not files:
+        raise FileNotFoundError(f'no chains in results/{run}')
+    n_draws = min(len(h5py.File(f, 'r')['log_likelihood']) for f in files)
+    lp = np.concatenate([h5py.File(f, 'r')['log_p_mass'][:n_draws] for f in files]).astype(float)
+    lp += A.mass_window()[None]
+    mx = lp.max((1, 2), keepdims=True)
+    lp -= np.log(np.exp(lp - mx).sum((1, 2), keepdims=True) * A.dlnm * A.dq) + mx
+    print(f'{run}: {len(files)} chain(s) x {n_draws} draws')
+    return np.exp(lp).astype(np.float32)
+
+
+def slice_density(p_mass, q_range):
+    """p(ln m1, q in Q) per draw, (draws, Bm), and the m1 bins where m2 > 3 Msun leaves every q bin of Q."""
+    sel = (A.q_c >= q_range[0] - 1e-9) & (A.q_c <= q_range[1] + 1e-9)
+    p = p_mass[:, :, sel].sum(2).astype(float) * A.dq
+    full = A.m_c * A.q_c[sel].min() >= A.MIN_M if q_range[0] > 0 else np.ones(A.B, bool)   # see the docstring
+    return p, full
+
+
+def excess(p, full, window):
+    """Chord excess in one m1 window: dict with the bins used and the per-draw statistics (see the module docstring)."""
+    idx = np.flatnonzero((A.m_c >= window[0]) & (A.m_c <= window[1]) & full)
+    if len(idx) < 3:
+        return None
+    x = A.lnm_c[idx]
+    with np.errstate(divide='ignore'):
+        lp = np.log(p[:, idx])
+    t = (x - x[0]) / (x[-1] - x[0])
+    chord = lp[:, :1] * (1 - t) + lp[:, -1:] * t
+    d = lp - chord                                                    # (draws, n_bins); 0 at both ends
+    inner = d[:, 1:-1]
+    j = 1 + np.argmax(inner, axis=1)
+    j_star = 1 + int(np.argmax(np.median(inner, axis=0)))
+    pw = p[:, idx]
+    F = (pw - np.exp(chord)).sum(1) / pw.sum(1)
+    return dict(idx=idx, m=A.m_c[idx], d=d, m_hat=A.m_c[idx][j], height=inner.max(1), m_star=A.m_c[idx][j_star],
+                P_loc=float(np.mean(d[:, j_star] > 0)), F=F, P_F=float(np.mean(F > 0)),
+                window_used=(float(A.m_c[idx[0]]), float(A.m_c[idx[-1]])),
+                shortened=bool(A.m_c[idx[0]] > A.m_c[(A.m_c >= window[0]) & (A.m_c <= window[1])][0]))
+
+
+def compute(runs):
+    """{run: {(peak, slice): excess dict}} for every peak window and q slice."""
+    out = {}
+    for run in runs:
+        p_mass = load_mass(run)
+        out[run] = {}
+        for qs, qr in Q_SLICES.items():
+            p, full = slice_density(p_mass, qr)
+            for name, (_, win, _) in PEAKS.items():
+                out[run][(name, qs)] = excess(p, full, win)
+        del p_mass
+    return out
+
+
+def own_slice(name):
+    """The q slice that is the peak's own fit q range (PEAKS)."""
+    qr = PEAKS[name][0]
+    return next(k for k, v in Q_SLICES.items() if tuple(v) == tuple(qr))
+
+
+def table(res):
+    import pandas as pd
+    rows = []
+    for run, R in res.items():
+        for (name, qs), e in R.items():
+            row = dict(run=run, peak=name, q_slice=qs, q_range=Q_SLICES[qs], window=PEAKS[name][1],
+                       own_q=qs == own_slice(name))
+            if e is None:
+                rows.append(dict(row, note='fewer than 3 bins left by m2 > 3 Msun'))
+                continue
+            q = lambda v: np.percentile(v, [50, 5, 95])
+            mh, ht, F = q(e['m_hat']), q(e['height']), q(e['F'])
+            rows.append(dict(row, window_used=tuple(round(v, 2) for v in e['window_used']), shortened=e['shortened'],
+                             m_hat=mh[0], m_hat_lo=mh[1], m_hat_hi=mh[2], height=ht[0], height_lo=ht[1], height_hi=ht[2],
+                             m_star=round(float(e['m_star']), 2), P_loc=e['P_loc'], F_int=F[0], F_int_lo=F[1],
+                             F_int_hi=F[2], P_F_int=e['P_F'], note=''))
+    return pd.DataFrame(rows)
+
+
+def macros(res):
+    lines = ['% Excess over a local power law (chord in ln m1, ln p) in the fit windows, each peak in its own q range '
+             '(macros/peak_excess.py)',
+             '% PLoc: P(excess > 0) at the bin of largest median excess; Height: max excess (natural log), median and '
+             '90%; Loc: its m1; FInt: signed integrated excess fraction; PFInt: P(FInt > 0)']
+    for run, R in res.items():
+        suffix = RUN_NAMES.get(run, run.replace('_', ''))
+        lines.append(f'% {run}')
+        for name, (qr, win, tex) in PEAKS.items():
+            e = R[(name, own_slice(name))]
+            if e is None:
+                continue
+            lines.append(f'% peak {name}: q in {qr}, m1 window {win} Msun, bins used {e["window_used"]}'
+                         + (' (shortened by m2 > 3 Msun)' if e['shortened'] else ''))
+            lines += [rf'\newcommand{{\peak{tex}ExcessPLoc{suffix}}}{{{e["P_loc"]:.3f}}}',
+                      rf'\newcommand{{\peak{tex}ExcessHeight{suffix}}}{{{fmt(e["height"])}}}',
+                      rf'\newcommand{{\peak{tex}ExcessLoc{suffix}}}{{{fmt(e["m_hat"])}}}',
+                      rf'\newcommand{{\peak{tex}ExcessFInt{suffix}}}{{{fmt(e["F"])}}}',
+                      rf'\newcommand{{\peak{tex}ExcessPFInt{suffix}}}{{{e["P_F"]:.3f}}}']
+    path = os.path.join(HERE, 'peak_excess.tex')
+    with open(path, 'w') as f:
+        f.write('\n'.join(lines) + '\n')
+    print(f'wrote {path}')
+
+
+def draw_panel(ax, entries, labels):
+    """One window x q slice: the excess d(m1) per run (first run filled 90% / 99% bands and median, second run lines),
+    the 90% range of the peak location (shaded) and its median (dotted), and P_loc per run in the corner."""
+    texts = []
+    for i, (e, col) in enumerate(zip(entries, RUN_STYLE)):
+        if e is None:
+            continue
+        m, d = e['m'], e['d']
+        p05, p5, p50, p95, p995 = np.percentile(d, [0.5, 5, 50, 95, 99.5], axis=0)
+        if i == 0:
+            ax.fill_between(m, p05, p995, step='mid', color=col, alpha=0.15, lw=0)
+            ax.fill_between(m, p5, p95, step='mid', color=col, alpha=0.3, lw=0)
+            ax.step(m, p50, where='mid', color=col)
+        else:
+            for y, ls, lw in ((p05, '--', 0.7), (p995, '--', 0.7), (p5, '-', 0.9), (p95, '-', 0.9)):
+                ax.step(m, y, where='mid', color=col, ls=ls, lw=lw)
+        lo, md, hi = np.percentile(e['m_hat'], [5, 50, 95])
+        ax.axvspan(lo, hi, color=col, alpha=0.08, lw=0, zorder=0)
+        ax.axvline(md, color=col, ls=':', lw=0.8, zorder=1)
+        texts.append((rf'$P_{{\rm loc}} = {e["P_loc"]:.2f}$', col))
+    ax.axhline(0, color='k', ls='--', lw=0.7)
+    for k, (s, col) in enumerate(texts):
+        ax.text(0.04, 0.93 - 0.11 * k, s, transform=ax.transAxes, va='top', ha='left', color=col, fontsize=6.5)
+    e0 = next((e for e in entries if e is not None), None)
+    if e0 is not None:
+        from matplotlib.ticker import FixedLocator, FuncFormatter, NullLocator
+        a, b = e0['m'][0], e0['m'][-1]
+        ax.set_xscale('log'); ax.set_xlim(a, b)
+        ax.xaxis.set_major_locator(FixedLocator(np.unique(np.round(np.geomspace(a, b, 4)).astype(int))))
+        ax.xaxis.set_minor_locator(NullLocator())
+        ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f'${v:g}$'))
+    else:
+        ax.text(0.5, 0.5, r'excluded by $m_2 > 3\,M_\odot$', transform=ax.transAxes, ha='center', va='center',
+                fontsize=6.5, color='0.4')
+        ax.set_xticks([])
+
+
+def legend(fig, labels, top):
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    import paper_figs as P
+    c0, c1 = RUN_STYLE
+    handles = [(Patch(color=c0, alpha=0.3, lw=0), Line2D([], [], color=c0)), Patch(color=c0, alpha=0.15, lw=0),
+               Line2D([], [], color=c1, lw=0.9), Line2D([], [], color=c1, ls='--', lw=0.7)][:2 * len(labels)]
+    names = [f'{labels[0]}, 90\\%', f'{labels[0]}, 99\\%', f'{labels[1]}, 90\\%', f'{labels[1]}, 99\\%'][:2 * len(labels)]
+    fig.legend(handles, names, loc='upper center', bbox_to_anchor=(0.5, top), ncol=len(names), **P.LEG)
+
+
+def figures(res):
+    import pixelpop  # noqa: F401  (its import resets matplotlib's rcParams; import it before the style)
+    import matplotlib.pyplot as plt
+    import paper_figs as P
+    import plot_style
+    plot_style.apply(); plt.rcParams.update(P.SMALL_RC)
+    runs = list(res)[:2]
+    labels = [P.RUNS.get(r, r.replace('_', r'\_')) for r in runs]
+    ylab = r'$\ln p - \ln p_{\rm PL}$'
+
+    # every peak window x every q slice
+    fig, axes = plt.subplots(len(PEAKS), len(Q_SLICES), figsize=(P.TWO_COL, 1.45 * len(PEAKS) + 0.5), sharey='row')
+    for i, (name, (_, win, _)) in enumerate(PEAKS.items()):
+        for j, qs in enumerate(Q_SLICES):
+            ax = axes[i, j]
+            draw_panel(ax, [res[r][(name, qs)] for r in runs], labels)
+            if qs == own_slice(name):
+                for s in ax.spines.values():
+                    s.set_linewidth(1.2)
+            if i == 0:
+                ax.text(0.5, 1.04, Q_LABELS[qs], transform=ax.transAxes, ha='center', va='bottom')
+            if j == 0:
+                ax.set_ylabel(f'{PEAK_LABELS[name]}, ${win[0]:g}$--${win[1]:g}$\n{ylab}')
+            if i == len(PEAKS) - 1:
+                ax.set_xlabel(r'$m_1\,[M_\odot]$')
+    fig.tight_layout(rect=(0, 0, 1, 1 - 0.35 / fig.get_figheight())); fig.subplots_adjust(hspace=0.35, wspace=0.08)
+    legend(fig, labels, 1.0)
+    plot_style.save(fig, 'peak_excess')
+    plt.close(fig)
+
+    # each peak in its own q range (column width)
+    fig, axes = plt.subplots(len(PEAKS), 1, figsize=(P.ONE_COL, 1.25 * len(PEAKS) + 0.5))
+    for ax, (name, (qr, win, _)) in zip(axes, PEAKS.items()):
+        draw_panel(ax, [res[r][(name, own_slice(name))] for r in runs], labels)
+        ax.text(0.97, 0.93, f'{PEAK_LABELS[name]}, {Q_LABELS[own_slice(name)]}', transform=ax.transAxes, va='top',
+                ha='right', bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.5))
+        ax.set_ylabel(ylab)
+    axes[-1].set_xlabel(r'$m_1\,[M_\odot]$')
+    fig.tight_layout(rect=(0, 0, 1, 1 - 0.35 / fig.get_figheight())); fig.subplots_adjust(hspace=0.4)
+    legend(fig, labels, 1.0)
+    plot_style.save(fig, 'peak_excess_own_q')
+    plt.close(fig)
+
+
+def main(runs):
+    import paper_figs as P
+    runs = runs or list(P.RUNS)
+    res = compute(runs)
+    df = table(res)
+    os.makedirs(os.path.dirname(CSV), exist_ok=True)
+    df.to_csv(CSV, index=False)
+    print(f'wrote {CSV}')
+    cols = ['run', 'peak', 'q_slice', 'window_used', 'shortened', 'm_star', 'P_loc', 'height', 'm_hat', 'F_int',
+            'P_F_int', 'note']
+    with np.printoptions(precision=3):
+        print(df[[c for c in cols if c in df]].to_string(index=False, float_format=lambda v: f'{v:.3f}'))
+    macros(res)
+    figures(res)
+
+
+if __name__ == '__main__':
+    main(sys.argv[1:])
