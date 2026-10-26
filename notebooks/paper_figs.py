@@ -1,11 +1,13 @@
 """Paper figures at journal column widths (user, 2026-10-26), drawn at their final size with small fonts instead of shrinking the summary
 figure:
 
-    python notebooks/paper_figs.py [mass|chi|all] [--core] [--mean-asinh W]
+    python notebooks/paper_figs.py [mass|chi|m2|all] [--core] [--mean-asinh W]
         -> plots/mass_ratio_m1.pdf         Fig. 1: p(m1 | q range) above p(q | m1), the flexible run, one column
            plots/chi_eff_mean_m1.pdf       mu_chi_eff(m1), one row per spin model, one column
            plots/chi_eff_sd_m1.pdf         sigma_chi_eff(m1), one row per spin model, one column
            plots/chi_eff_mean_sd_m1.pdf    both: rows = spin models, columns = mean, sd; two columns
+           plots/m2_low_q.pdf              p(m2 | 0.3 < q < 0.65), both spin models, with p(m1 | 0.8 < q < 1) for
+                                           reference (user, 2026-10-26); one column
 
 The panels are drawn as in analysis.summary_figure (90% bands and medians per q range, black lines for all q; p(q | m1)
 median with the 90% / 99% intervals of <q>), on m1 from M_MIN to 200 Msun. --core: the chi_eff rows use
@@ -106,6 +108,60 @@ def mass_figure(r):
     return fig
 
 
+M2_Q = (0.3, 0.65)
+REF_Q = (0.8, 1.0)
+RUN_COLOURS = {'Flexible': 'C0', 'Gaussian': 'C3'}
+NS = 4                                                          # sub-cells per axis for the m2 transform
+lm2_edges = np.linspace(np.log(A.MIN_M), np.log(A.MAX_M), 121)
+m2_c = np.exp(0.5 * (lm2_edges[1:] + lm2_edges[:-1]))
+
+
+def p_m2_given_q_range(r, q_range):
+    """p(m2 | q in q_range) per draw, density per Msun on m2_c: each (ln m1, q) cell split into NS x NS sub-cells,
+    binned in ln m2 = ln m1 + ln q."""
+    du = (np.arange(NS) + 0.5) / NS - 0.5
+    lm2 = (A.lnm_c[:, None, None, None] + du[None, :, None, None] * A.dlnm
+           + np.log(np.maximum(A.q_c[None, None, :, None] + du[None, None, None, :] * A.dq, 1e-6)))
+    idx = np.moveaxis(np.searchsorted(lm2_edges, lm2) - 1, 2, 1).reshape(A.B * A.B, NS * NS)
+    keep = np.broadcast_to(((A.q_c >= q_range[0]) & (A.q_c <= q_range[1]))[None], (A.B, A.B)).ravel()
+    W = np.zeros((A.B * A.B, len(m2_c)))
+    for k in range(NS * NS):
+        good = (idx[:, k] >= 0) & (idx[:, k] < len(m2_c))
+        np.add.at(W, (np.where(good)[0], idx[good, k]), keep[good] / NS ** 2)
+    out = r.p_mass.reshape(len(r.p_mass), -1).astype(float) @ W
+    return out / (out.sum(1, keepdims=True) * np.diff(lm2_edges)[0]) / m2_c[None]
+
+
+def m2_figure(R):
+    """p(m2 | M2_Q) for each spin model (90% bands, medians), and the flexible run's median p(m1 | REF_Q)."""
+    fig, ax = plt.subplots(figsize=(ONE_COL, 2.4))
+    hi = 0
+    for run, r in R.items():
+        name = RUNS[run]
+        p2 = p_m2_given_q_range(r, M2_Q)
+        lo_, med, hi_ = np.nanpercentile(p2, [5, 50, 95], axis=0)
+        ax.fill_between(m2_c, lo_, hi_, color=RUN_COLOURS[name], alpha=0.25, lw=0)
+        ax.plot(m2_c, med, color=RUN_COLOURS[name], lw=1.0)
+        hi = max(hi, np.nanmax(hi_[m2_c >= M_MIN]))
+        s = (m2_c >= 5) & (m2_c <= 20)
+        modes = m2_c[s][np.argmax(p2[:, s], 1)]
+        print(f'{name}: mode of p(m2 | {M2_Q[0]} < q < {M2_Q[1]}) in 5-20 Msun: '
+              f'{np.median(modes):.1f} ({np.percentile(modes, 5):.1f}-{np.percentile(modes, 95):.1f}) Msun')
+    ref = np.nanmedian(A.p_m1_given_q_range(R['ppc_gwtc5_k10'], REF_Q), 0)
+    ax.plot(A.m_c, ref, color='0.4', lw=0.8, ls='--')
+    ax.set_yscale('log'); ax.set_ylim(hi * 1e-5, hi * 3)
+    m1_axis(ax, False)
+    ax.set_xlabel(r'$m_2$ (bands), $m_1$ (dashed) $[M_\odot]$')
+    ax.set_ylabel(r'$p(m)\,[M_\odot^{-1}]$')
+    handles = [(Patch(color=c, alpha=0.25, lw=0), Line2D([], [], color=c, lw=1.0)) for c in RUN_COLOURS.values()]
+    handles.append(Line2D([], [], color='0.4', lw=0.8, ls='--'))
+    labels = [rf'{n}: $p(m_2 \mid {M2_Q[0]:g} < q < {M2_Q[1]:g})$' for n in RUN_COLOURS]
+    labels.append(rf'Flexible: $p(m_1 \mid {REF_Q[0]:g} < q < {REF_Q[1]:g})$')
+    ax.legend(handles, labels, loc='upper right', **LEG)
+    fig.tight_layout()
+    return fig
+
+
 def chi_data(r, core):
     chi = lambda qr=None: A.q_averaged_moments(r, qr, names=('chi_eff',), core=core)['chi_eff']
     allq, byq = chi(), [chi(qr) for qr in A.SUMMARY_Q_RANGES]
@@ -146,7 +202,7 @@ def chi_figure(D, stats, core, asinh):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'all'))
+    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'm2', 'all'))
     ap.add_argument('--core', action='store_true')
     ap.add_argument('--mean-asinh', type=float, default=0.03)
     args = ap.parse_args()
@@ -155,6 +211,8 @@ def main():
     core = '_core' if args.core else ''
     if args.what in ('mass', 'all'):
         plot_style.save(mass_figure(R['ppc_gwtc5_k10']), 'mass_ratio_m1')
+    if args.what in ('m2', 'all'):
+        plot_style.save(m2_figure(R), 'm2_low_q')
     if args.what in ('chi', 'all'):
         D = {RUNS[run]: chi_data(r, args.core) for run, r in R.items()}
         for stats, name in ((('mean',), 'mean'), (('sd',), 'sd'), (('mean', 'sd'), 'mean_sd')):
