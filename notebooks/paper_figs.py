@@ -8,6 +8,8 @@ figure:
            plots/chi_eff_mean_sd_m1.pdf    both: rows = spin models, columns = mean, sd; two columns
            plots/m2_q_ranges.pdf           p(m2 | q range) for the two q ranges, one row per spin model (user,
                                            2026-10-26); one column
+           plots/m2_m1_windows.pdf         p(m2 | m1 in a window around each peak), one row per spin model; one
+                                           column
 
 The panels are drawn as in analysis.summary_figure (90% bands and medians per q range, black lines for all q; p(q | m1)
 median with the 90% / 99% intervals of <q>), on m1 from M_MIN to 200 Msun. --core: the chi_eff rows use
@@ -113,14 +115,17 @@ lm2_edges = np.linspace(np.log(A.MIN_M), np.log(A.MAX_M), 121)
 m2_c = np.exp(0.5 * (lm2_edges[1:] + lm2_edges[:-1]))
 
 
-def p_m2_given_q_range(r, q_range):
-    """p(m2 | q in q_range) per draw, density per Msun on m2_c: each (ln m1, q) cell split into NS x NS sub-cells,
-    binned in ln m2 = ln m1 + ln q."""
+def p_m2_given_q_range(r, q_range, m1_range=None):
+    """p(m2 | q in q_range[, m1 in m1_range]) per draw, density per Msun on m2_c: each (ln m1, q) cell split into
+    NS x NS sub-cells, binned in ln m2 = ln m1 + ln q."""
     du = (np.arange(NS) + 0.5) / NS - 0.5
     lm2 = (A.lnm_c[:, None, None, None] + du[None, :, None, None] * A.dlnm
            + np.log(np.maximum(A.q_c[None, None, :, None] + du[None, None, None, :] * A.dq, 1e-6)))
     idx = np.moveaxis(np.searchsorted(lm2_edges, lm2) - 1, 2, 1).reshape(A.B * A.B, NS * NS)
-    keep = np.broadcast_to(((A.q_c >= q_range[0]) & (A.q_c <= q_range[1]))[None], (A.B, A.B)).ravel()
+    keep = ((A.q_c >= q_range[0]) & (A.q_c <= q_range[1]))[None] & np.ones((A.B, 1), bool)
+    if m1_range is not None:
+        keep = keep & ((A.m_c >= m1_range[0]) & (A.m_c <= m1_range[1]))[:, None]
+    keep = keep.ravel()
     W = np.zeros((A.B * A.B, len(m2_c)))
     for k in range(NS * NS):
         good = (idx[:, k] >= 0) & (idx[:, k] < len(m2_c))
@@ -154,6 +159,40 @@ def m2_figure(R):
     handles = [(Patch(color=c, alpha=0.3, lw=0), Line2D([], [], color=c, lw=1.0)) for c in COLS]
     fig.legend(handles, Q_NAMES, loc='upper center', ncol=len(COLS), bbox_to_anchor=(0.5, 1.0), **LEG)
     fig.tight_layout(rect=(0, 0, 1, 1 - 0.17 / fig.get_figheight())); fig.subplots_adjust(hspace=0.06)
+    return fig
+
+
+# m1 windows around each peak for p(m2 | m1 in window) (user, 2026-10-26: e.g. [15, 25] for the ~20 Msun peak)
+M1_WINDOWS = {'10': (8., 12.), '20': (15., 25.), '35': (28., 40.), '60': (50., 70.)}
+M1_WINDOW_COLOURS = {'10': 'C0', '20': 'C2', '35': 'C3', '60': 'C1'}
+
+
+def m2_given_m1_figure(R):
+    """p(m2 | m1 in each of M1_WINDOWS), all q (90% bands, medians), one row per spin model, shared axes."""
+    fig, axes = plt.subplots(len(R), 1, figsize=(ONE_COL, 1.65 * len(R) + 0.45), sharex=True, sharey=True)
+    hi = 0
+    for ax, (run, r) in zip(axes, R.items()):
+        for name, win in M1_WINDOWS.items():
+            p2 = p_m2_given_q_range(r, (0., 1.), win)
+            lo_, med, hi_ = np.nanpercentile(p2, [5, 50, 95], axis=0)
+            s = m2_c <= win[1]
+            col = M1_WINDOW_COLOURS[name]
+            ax.fill_between(m2_c[s], lo_[s], hi_[s], color=col, alpha=0.3, lw=0)
+            ax.plot(m2_c[s], med[s], color=col, lw=1.0)
+            hi = max(hi, np.nanmax(hi_[s & (m2_c >= M_MIN)]))
+            modes = m2_c[s][np.argmax(p2[:, s], 1)]
+            print(f'{RUNS[run]}: mode of p(m2 | {win[0]:g} < m1 < {win[1]:g}): {np.median(modes):.1f} '
+                  f'({np.percentile(modes, 5):.1f}-{np.percentile(modes, 95):.1f}) Msun')
+        m1_axis(ax, ax is axes[-1])
+        ax.set_ylabel(r'$p(m_2 \mid m_1)\,[M_\odot^{-1}]$')
+        ax.text(0.97, 0.93, RUNS[run], transform=ax.transAxes, va='top', ha='right',
+                bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.5))
+    axes[-1].set_xlabel(r'$m_2\,[M_\odot]$')
+    axes[0].set_yscale('log'); axes[0].set_ylim(hi * 1e-4, hi * 3)
+    handles = [(Patch(color=c, alpha=0.3, lw=0), Line2D([], [], color=c, lw=1.0)) for c in M1_WINDOW_COLOURS.values()]
+    labels = [rf'${a:g} < m_1 < {b:g}$' for a, b in M1_WINDOWS.values()]
+    fig.legend(handles, labels, loc='upper center', ncol=2, bbox_to_anchor=(0.5, 1.0), **LEG)
+    fig.tight_layout(rect=(0, 0, 1, 1 - 0.3 / fig.get_figheight())); fig.subplots_adjust(hspace=0.06)
     return fig
 
 
@@ -208,6 +247,7 @@ def main():
         plot_style.save(mass_figure(R['ppc_gwtc5_k10']), 'mass_ratio_m1')
     if args.what in ('m2', 'all'):
         plot_style.save(m2_figure(R), 'm2_q_ranges')
+        plot_style.save(m2_given_m1_figure(R), 'm2_m1_windows')
     if args.what in ('chi', 'all'):
         D = {RUNS[run]: chi_data(r, args.core) for run, r in R.items()}
         for stats, name in ((('mean',), 'mean'), (('sd',), 'sd'), (('mean', 'sd'), 'mean_sd')):
