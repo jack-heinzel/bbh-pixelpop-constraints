@@ -35,6 +35,7 @@
 \inputmacros{peak_fits}
 \inputmacros{joint_fits}
 \inputmacros{peak_pairs}
+\inputmacros{peak_excess}
 
 % math macros
 \newcommand{\Msun}{\ensuremath{\mathrm{M}_{\odot}}}
@@ -211,7 +212,22 @@ For each potential peak in the mass spectrum, we fit a Gaussian plus powerlaw in
 \item A calibrated $p$-value needs mock catalogues (planned).
 \item Forecast: $\sim$2--4$\times$ more events (the full O4 sample) for a decisive test.
 \item Next: correlate redshift; channel-mixture interpretation (companion paper).
+\item Excess over a local power law (Fig.~\ref{fig: peak excess}): each peak stands above the chord in $(\ln m_1, \ln p)$ across its window in its own $q$ range, $P_{\rm loc} = \peakTenExcessPLocFlex$, $\peakThirtyFiveExcessPLocFlex$, $\peakTwentyExcessPLocFlex$, $\peakSixtyExcessPLocFlex$ (10, 35, 20, 60\,\Msun), and not in the other $q$ range ($P_{\rm loc} \approx 0.3$--0.6, SM Fig.): the off-diagonal $q$ slices are a built-in control for noise-fitting. Posterior probabilities, not $p$-values; the windows were chosen after seeing the field.
 \end{itemize}}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/peak_excess_own_q.pdf}
+    \caption{\red{Draft caption. The excess of $\ln p(m_1, q \in Q)$ over a local power law (the chord in $(\ln m_1, \ln p)$ between the window's end bins) for each peak in its own mass-ratio range $Q$, per posterior draw: the flexible (blue: 90\% and 99\% bands, median) and Gaussian (red: 90\% solid, 99\% dashed) spin models. Shaded: the 90\% range of the excess maximum's location; dotted: its median. $P_{\rm loc}$: the fraction of draws with a positive excess at the bin of largest median excess. (\texttt{plots/peak\_excess\_own\_q.pdf}, one column; the full grid, every peak in every $q$ slice, \texttt{peak\_excess.pdf}, in the SM.)}}
+    \label{fig: peak excess}
+\end{figure}
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/peak_excess.pdf}
+    \caption{\red{Move to the SM. As Fig.~\ref{fig: peak excess}, for every peak window (rows) in every $q$ slice (columns: all $q$, $0.3 < q < 0.65$, $0.8 < q < 1$); boxed: each peak's own $q$ range. The excess appears only in the own-$q$ panels; the others show what the statistic gives without a feature.}}
+    \label{fig: peak excess grid}
+\end{figure*}
 
 \red{\textbf{Supplemental Material (planned).}
 \begin{enumerate}

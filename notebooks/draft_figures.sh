@@ -1,7 +1,7 @@
 #!/bin/bash
 # Redraw the figures used in draft/ from the spin cache and copy them into draft/plots/ under their short names.
 # Runs on a login node (one pinned core, < 3 GB); the cache must be complete (post.sbatch).
-#     bash notebooks/draft_figures.sh [summary|regions|macros|paper|all]      (default: all)
+#     bash notebooks/draft_figures.sh [summary|regions|macros|paper|excess|all]      (default: all)
 # paper: notebooks/paper_figs.py (the column-width paper figures), copied to draft/plots/ under the same names.
 # macros: copies the LaTeX number macros (macros/*_fits.tex, macros/peak_pairs.tex) to draft/macros/.
 cd "$(dirname "$0")/.."
@@ -30,7 +30,7 @@ if [ "$what" = regions ] || [ "$what" = all ]; then
 fi
 if [ "$what" = macros ] || [ "$what" = all ]; then
     mkdir -p draft/macros
-    cp macros/peak_fits.tex macros/joint_fits.tex macros/peak_pairs.tex draft/macros/
+    cp macros/peak_fits.tex macros/joint_fits.tex macros/peak_pairs.tex macros/peak_excess.tex draft/macros/
 fi
 if [ "$what" = paper ] || [ "$what" = all ]; then
     $PY notebooks/paper_figs.py all || exit 1
@@ -38,5 +38,10 @@ if [ "$what" = paper ] || [ "$what" = all ]; then
              m2_q_ranges m2_m1_windows; do
         cp plots/$f.pdf draft/plots/$f.pdf
     done
+fi
+if [ "$what" = excess ] || [ "$what" = all ]; then      # macros/peak_excess.py: significance figures and macros
+    $PY macros/peak_excess.py || exit 1
+    cp plots/peak_excess.pdf plots/peak_excess_own_q.pdf draft/plots/
+    cp macros/peak_excess.tex draft/macros/
 fi
 echo "draft figures done"
