@@ -593,6 +593,7 @@ def load_regions(run):
 REGION_CHI_P_SLICES = (0.2, 0.5)          # top panels: p(chi_eff, chi_p = v | region) against chi_eff
 REGION_CHI_EFF_SLICES = (0.0, 0.2)        # right panels: p(chi_eff = v, chi_p | region) against chi_p
 REGION_CHI_EFF_RANGE = (-0.7, 0.7)
+REGION_PANEL_RATIO = (2.6, 1.6)           # heatmap : slice-panel size within each block
 REGION_DENSITY_MIN = 1e-2               # floor of the colour scale and of the slice axes (user, 2026-10-23)
 
 
@@ -641,7 +642,9 @@ def spin_region_figure(R, m_regions=REGION_M[:4], q_regions=REGION_Q[::-1], titl
     for a, (rk, row) in enumerate(zip(row_keys, blocks)):
         for b, (ck, i) in enumerate(zip(col_keys, row)):
             mr, qr = reg(rk, ck)
-            sub = gs[a, b].subgridspec(2, 2, width_ratios=[3, 1.2], height_ratios=[1.2, 3], hspace=0.06, wspace=0.06)
+            # heatmap : slice panels = 2.6 : 1.6 (user, 2026-10-24: thicker slices, room for the legends)
+            sub = gs[a, b].subgridspec(2, 2, width_ratios=REGION_PANEL_RATIO, height_ratios=REGION_PANEL_RATIO[::-1],
+                                       hspace=0.06, wspace=0.06)
             ax_m, ax_t, ax_r, ax_c = (fig.add_subplot(sub[1, 0]), fig.add_subplot(sub[0, 0]), fig.add_subplot(sub[1, 1]),
                                       fig.add_subplot(sub[0, 1]))
             img = np.where(med[i] > 0, med[i], np.nan)
@@ -692,8 +695,8 @@ def spin_region_figure(R, m_regions=REGION_M[:4], q_regions=REGION_Q[::-1], titl
                 ax_t.set_title(title_of(ck), pad=8, fontsize=15)             # column titles (user, 2026-10-23)
             if a == 0 and b == 0:
                 hp = [(Patch(color=c, alpha=0.3, lw=0), Line2D([], [], color=c, lw=1.5)) for c in col_p]
-                ax_t.legend(hp, [rf'$\chi_p = {v:g}$' for v in REGION_CHI_P_SLICES], loc='lower center', ncol=2,
-                            columnspacing=0.8, **dict(plot_style.LEG_KW, fontsize=11))
+                ax_t.legend(hp, [rf'$\chi_p = {v:g}$' for v in REGION_CHI_P_SLICES], loc='upper left',
+                            **dict(plot_style.LEG_KW, fontsize=11))
                 he = [(Patch(color=c, alpha=0.3, lw=0), Line2D([], [], color=c, lw=1.5)) for c in col_e]
                 ax_r.legend(he, [rf'$\chi_\mathrm{{eff}} = {v:g}$' for v in REGION_CHI_EFF_SLICES], loc='upper right',
                             **dict(plot_style.LEG_KW, fontsize=11))
