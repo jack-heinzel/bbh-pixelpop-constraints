@@ -6,8 +6,8 @@ figure:
            plots/chi_eff_mean_m1.pdf       mu_chi_eff(m1), one row per spin model, one column
            plots/chi_eff_sd_m1.pdf         sigma_chi_eff(m1), one row per spin model, one column
            plots/chi_eff_mean_sd_m1.pdf    both: rows = spin models, columns = mean, sd; two columns
-           plots/m2_low_q.pdf              p(m2 | 0.3 < q < 0.65), both spin models, with p(m1 | 0.8 < q < 1) for
-                                           reference (user, 2026-10-26); one column
+           plots/m2_q_ranges.pdf           p(m2 | q range) for the two q ranges, one row per spin model (user,
+                                           2026-10-26); one column
 
 The panels are drawn as in analysis.summary_figure (90% bands and medians per q range, black lines for all q; p(q | m1)
 median with the 90% / 99% intervals of <q>), on m1 from M_MIN to 200 Msun. --core: the chi_eff rows use
@@ -108,9 +108,6 @@ def mass_figure(r):
     return fig
 
 
-M2_Q = (0.3, 0.65)
-REF_Q = (0.8, 1.0)
-RUN_COLOURS = {'Flexible': 'C0', 'Gaussian': 'C3'}
 NS = 4                                                          # sub-cells per axis for the m2 transform
 lm2_edges = np.linspace(np.log(A.MIN_M), np.log(A.MAX_M), 121)
 m2_c = np.exp(0.5 * (lm2_edges[1:] + lm2_edges[:-1]))
@@ -133,32 +130,30 @@ def p_m2_given_q_range(r, q_range):
 
 
 def m2_figure(R):
-    """p(m2 | M2_Q) for each spin model (90% bands, medians), and the flexible run's median p(m1 | REF_Q)."""
-    fig, ax = plt.subplots(figsize=(ONE_COL, 2.4))
+    """p(m2 | q range) for each of SUMMARY_Q_RANGES (90% bands, medians; colours as in mass_figure), one row per spin
+    model, shared axes."""
+    fig, axes = plt.subplots(len(R), 1, figsize=(ONE_COL, 1.65 * len(R) + 0.45), sharex=True, sharey=True)
     hi = 0
-    for run, r in R.items():
-        name = RUNS[run]
-        p2 = p_m2_given_q_range(r, M2_Q)
-        lo_, med, hi_ = np.nanpercentile(p2, [5, 50, 95], axis=0)
-        ax.fill_between(m2_c, lo_, hi_, color=RUN_COLOURS[name], alpha=0.25, lw=0)
-        ax.plot(m2_c, med, color=RUN_COLOURS[name], lw=1.0)
-        hi = max(hi, np.nanmax(hi_[m2_c >= M_MIN]))
-        s = (m2_c >= 5) & (m2_c <= 20)
-        modes = m2_c[s][np.argmax(p2[:, s], 1)]
-        print(f'{name}: mode of p(m2 | {M2_Q[0]} < q < {M2_Q[1]}) in 5-20 Msun: '
-              f'{np.median(modes):.1f} ({np.percentile(modes, 5):.1f}-{np.percentile(modes, 95):.1f}) Msun')
-    ref = np.nanmedian(A.p_m1_given_q_range(R['ppc_gwtc5_k10'], REF_Q), 0)
-    ax.plot(A.m_c, ref, color='0.4', lw=0.8, ls='--')
-    ax.set_yscale('log'); ax.set_ylim(hi * 1e-5, hi * 3)
-    m1_axis(ax, False)
-    ax.set_xlabel(r'$m_2$ (bands), $m_1$ (dashed) $[M_\odot]$')
-    ax.set_ylabel(r'$p(m)\,[M_\odot^{-1}]$')
-    handles = [(Patch(color=c, alpha=0.25, lw=0), Line2D([], [], color=c, lw=1.0)) for c in RUN_COLOURS.values()]
-    handles.append(Line2D([], [], color='0.4', lw=0.8, ls='--'))
-    labels = [rf'{n}: $p(m_2 \mid {M2_Q[0]:g} < q < {M2_Q[1]:g})$' for n in RUN_COLOURS]
-    labels.append(rf'Flexible: $p(m_1 \mid {REF_Q[0]:g} < q < {REF_Q[1]:g})$')
-    ax.legend(handles, labels, loc='upper right', **LEG)
-    fig.tight_layout()
+    for ax, (run, r) in zip(axes, R.items()):
+        for qr, col in zip(A.SUMMARY_Q_RANGES, COLS):
+            p2 = p_m2_given_q_range(r, qr)
+            lo_, med, hi_ = np.nanpercentile(p2, [5, 50, 95], axis=0)
+            ax.fill_between(m2_c, lo_, hi_, color=col, alpha=0.3, lw=0)
+            ax.plot(m2_c, med, color=col, lw=1.0)
+            hi = max(hi, np.nanmax(hi_[m2_c >= M_MIN]))
+            s = (m2_c >= 5) & (m2_c <= 20)
+            modes = m2_c[s][np.argmax(p2[:, s], 1)]
+            print(f'{RUNS[run]}: mode of p(m2 | {qr[0]} < q < {qr[1]}) in 5-20 Msun: {np.median(modes):.1f} '
+                  f'({np.percentile(modes, 5):.1f}-{np.percentile(modes, 95):.1f}) Msun')
+        m1_axis(ax, ax is axes[-1])
+        ax.set_ylabel(r'$p(m_2)\,[M_\odot^{-1}]$')
+        ax.text(0.03, 0.07, RUNS[run], transform=ax.transAxes, va='bottom', ha='left',
+                bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.5))
+    axes[-1].set_xlabel(r'$m_2\,[M_\odot]$')
+    axes[0].set_yscale('log'); axes[0].set_ylim(hi * 1e-5, hi * 3)
+    handles = [(Patch(color=c, alpha=0.3, lw=0), Line2D([], [], color=c, lw=1.0)) for c in COLS]
+    fig.legend(handles, Q_NAMES, loc='upper center', ncol=len(COLS), bbox_to_anchor=(0.5, 1.0), **LEG)
+    fig.tight_layout(rect=(0, 0, 1, 1 - 0.17 / fig.get_figheight())); fig.subplots_adjust(hspace=0.06)
     return fig
 
 
@@ -212,7 +207,7 @@ def main():
     if args.what in ('mass', 'all'):
         plot_style.save(mass_figure(R['ppc_gwtc5_k10']), 'mass_ratio_m1')
     if args.what in ('m2', 'all'):
-        plot_style.save(m2_figure(R), 'm2_low_q')
+        plot_style.save(m2_figure(R), 'm2_q_ranges')
     if args.what in ('chi', 'all'):
         D = {RUNS[run]: chi_data(r, args.core) for run, r in R.items()}
         for stats, name in ((('mean',), 'mean'), (('sd',), 'sd'), (('mean', 'sd'), 'mean_sd')):
