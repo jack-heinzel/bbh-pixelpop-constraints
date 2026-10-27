@@ -327,7 +327,7 @@ def spin_peaks_figure(slices=False):
     else:
         fig = plt.figure(figsize=(TWO_COL, 2.45))
         gs = fig.add_gridspec(1, len(SPIN_PEAK_REGIONS), left=0.065, right=0.915, bottom=0.17, top=0.86, wspace=0.12)
-        for k, ((mr, qr), D, g) in enumerate(zip(SPIN_PEAK_REGIONS, Df, Mg)):
+        for k, ((mr, qr), D, g) in enumerate(zip(SPIN_PEAK_REGIONS, np.moveaxis(Df, 1, 0), Mg)):
             ref, pcm = spin_block(fig, gs[0, k], D, g, mr, qr, norm, ylabel=k == 0, fontsize=6)
         h2, n2 = slice_legend_handles()
         fig.legend(handles + h2, names + n2, loc='upper center', ncol=4, bbox_to_anchor=(0.5, 1.0), **LEG)
@@ -336,6 +336,10 @@ def spin_peaks_figure(slices=False):
     cb = fig.colorbar(pcm, cax=cax); cb.set_label(r'$p(\chi_\mathrm{eff}, \chi_p \mid m_1, q)$', fontsize=7)
     cb.ax.tick_params(direction='out')
     return fig
+
+
+# the talk figure's regions: Fig. 2's, but the ~60 Msun one widened to the cached 50-75 Msun (55-65 holds few events)
+TALK_REGIONS = SPIN_PEAK_REGIONS[:3] + (((50., 75.), (0.3, 0.65)),)
 
 
 def talk_figure(r):
@@ -349,10 +353,10 @@ def talk_figure(r):
     med = np.where(ok, np.median(r.p_mass, 0), np.nan)                     # per d ln m1 dq
     m_edges = np.exp(A.lnm_edges)
     mnorm = LogNorm(vmin=np.nanmax(med) * 1e-3, vmax=np.nanmax(med))
-    Df = region_draws('ppc_gwtc5_k10', SPIN_PEAK_REGIONS)
-    Mg = region_medians('ppc_gwtc5_k100_gauss', SPIN_PEAK_REGIONS)
+    Df = region_draws('ppc_gwtc5_k10', TALK_REGIONS)
+    Mg = region_medians('ppc_gwtc5_k100_gauss', TALK_REGIONS)
     snorm = LogNorm(vmin=A.REGION_DENSITY_MIN, vmax=np.nanmax(np.median(Df, 0)))
-    n = len(SPIN_PEAK_REGIONS)
+    n = len(TALK_REGIONS)
     fig = plt.figure(figsize=(13.33, 7.5))
     gs = fig.add_gridspec(n, 3, width_ratios=(2.2, 0.9, 1.35), left=0.05, right=0.95, bottom=0.12, top=0.96,
                           wspace=0.32, hspace=0.18)
@@ -365,13 +369,14 @@ def talk_figure(r):
     cb = fig.colorbar(pc, ax=ax0, location='top', fraction=0.04, pad=0.02, aspect=40)
     cb.set_label(r'median $p(\ln m_1, q)$'); cb.ax.tick_params(direction='out')
     colours = ('w', 'w', 'w', 'w')
-    for k, ((mr, qr), D, g) in enumerate(zip(SPIN_PEAK_REGIONS, Df, Mg)):
+    for k, ((mr, qr), D, g) in enumerate(zip(TALK_REGIONS, np.moveaxis(Df, 1, 0), Mg)):
         # the region on the main panel, and a zoom around it
         ax0.add_patch(Rectangle((mr[0], qr[0]), mr[1] - mr[0], qr[1] - qr[0], fill=False, ec=colours[k], lw=1.2))
         ax0.text(mr[0], qr[0] - 0.012, f'({"abcd"[k]})', fontsize=9, ha='left', va='top', bbox=LABEL_BOX)
         zm = (mr[0] / 1.5, mr[1] * 1.5); zq = (max(0, qr[0] - 0.2), min(1, qr[1] + 0.2))
         az = fig.add_subplot(gs[k, 1])
-        az.pcolormesh(m_edges, A.q_edges, med.T, norm=mnorm, cmap='viridis', shading='flat', rasterized=True)
+        az.pcolormesh(A.m_c, A.q_c, np.ma.masked_invalid(med).T, norm=mnorm, cmap='viridis', shading='gouraud',
+                      rasterized=True)                                   # smooth display of the zoomed grid
         az.add_patch(Rectangle((mr[0], qr[0]), mr[1] - mr[0], qr[1] - qr[0], fill=False, ec='w', lw=1.2))
         az.set_xscale('log'); az.set_xlim(*zm); az.set_ylim(*zq)
         az.xaxis.set_major_locator(matplotlib.ticker.FixedLocator(np.unique(np.round(np.geomspace(*zm, 3)))))

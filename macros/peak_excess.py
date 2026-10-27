@@ -199,7 +199,7 @@ def fit_excess(run, name, q_range, e):
     return lf - (lf[:, :1] * (1 - t) + lf[:, -1:] * t)
 
 
-def draw_panel(ax, entries, labels, colours=RUN_STYLE, fit=None):
+def draw_panel(ax, entries, labels, colours=RUN_STYLE, fit=None, window=None):
     """One window x q slice: the excess d(m1) per run (first run filled 90% / 99% bands and median, second run lines),
     the median peak location (dotted), and P_loc per run in the corner."""
     texts = []
@@ -230,9 +230,10 @@ def draw_panel(ax, entries, labels, colours=RUN_STYLE, fit=None):
     e0 = next((e for e in entries if e is not None), None)
     if e0 is not None:
         from matplotlib.ticker import FixedLocator, FuncFormatter, NullLocator
-        a, b = e0['m'][0], e0['m'][-1]
+        # the window's nominal edges as the axis limits and labelled ticks, with one tick between (user, 2026-10-26)
+        a, b = window if window is not None else (e0['m'][0], e0['m'][-1])
         ax.set_xscale('log'); ax.set_xlim(a, b)
-        ax.xaxis.set_major_locator(FixedLocator(np.unique(np.round(np.geomspace(a, b, 4)).astype(int))))
+        ax.xaxis.set_major_locator(FixedLocator([a, float(np.round(np.sqrt(a * b))), b]))
         ax.xaxis.set_minor_locator(NullLocator())
         ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f'${v:g}$'))
     else:
@@ -267,7 +268,7 @@ def figures(res):
     for i, (name, (_, win, _)) in enumerate(PEAKS.items()):
         for j, qs in enumerate(Q_SLICES):
             ax = axes[i, j]
-            draw_panel(ax, [res[r][(name, qs)] for r in runs], labels)
+            draw_panel(ax, [res[r][(name, qs)] for r in runs], labels, window=win)
             if qs == own_slice(name):
                 for s in ax.spines.values():
                     s.set_linewidth(1.2)
@@ -285,7 +286,7 @@ def figures(res):
     # each peak in its own q range (column width)
     fig, axes = plt.subplots(len(PEAKS), 1, figsize=(P.ONE_COL, 1.25 * len(PEAKS) + 0.5))
     for ax, (name, (qr, win, _)) in zip(axes, PEAKS.items()):
-        draw_panel(ax, [res[r][(name, own_slice(name))] for r in runs], labels)
+        draw_panel(ax, [res[r][(name, own_slice(name))] for r in runs], labels, window=win)
         ax.text(0.97, 0.93, f'{PEAK_LABELS[name]}, {Q_LABELS[own_slice(name)]}', transform=ax.transAxes, va='top',
                 ha='right', bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.5))
         ax.set_ylabel(ylab)
@@ -321,7 +322,8 @@ def fit_figures(res):
                 fig, axes = plt.subplots(len(PEAKS), 1, figsize=(P.ONE_COL, 1.25 * len(PEAKS) + 0.6))
                 cells = [(ax, name, own_slice(name)) for ax, name in zip(axes, PEAKS)]
             for ax, name, qs in cells:
-                draw_panel(ax, [res[run][(name, qs)]], [label], colours=(col,), fit=fits[(name, qs)])
+                draw_panel(ax, [res[run][(name, qs)]], [label], colours=(col,), fit=fits[(name, qs)],
+                           window=PEAKS[name][1])
                 win = PEAKS[name][1]
                 if grid:
                     i, j = list(PEAKS).index(name), list(Q_SLICES).index(qs)
