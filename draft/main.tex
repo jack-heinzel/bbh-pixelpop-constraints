@@ -44,6 +44,7 @@
 \newcommand{\mchirp}{\ensuremath{\mathcal{M}_c}}
 
 \newcommand{\red}[1]{{\color{Red} #1}}
+\newcommand{\todo}[1]{{\color{Blue}\bf TODO: #1}}
 \newcommand{\jh}[1]{{\color{orange}JH: #1}}
 \newcommand{\comment}[1]{}
 \newcommand{\PixelPop}{\textsc{PixelPop}\xspace}
@@ -96,33 +97,30 @@ In this paper, we report the observation of a highly correlated binary mass dist
 \begin{itemize}
 \item Data: the catalogue (GWTC-5, 259 events, FAR $< 1/$yr), at most 20000 PE samples per event, injections and VT.
 \item Mass: \PixelPop Mat\'ern field on $(\ln m_1, q)$, with $m_2 > 3\,\Msun$.
-\item Spins: the conditional $(\chieff, \chip)$ field ($k = 10$ mass modes), and the Gaussian model whose parameters are Mat\'ern fields (the current equations; move the covariance matrix to the SM to save space).
+\item Spins: the conditional $(\chieff, \chip)$ field ($k = 10$ mass modes), and the Gaussian model whose parameters are Mat\'ern fields (full covariance matrix now in the SM).
 \item Redshift: a power law. The correlated-redshift note becomes a sentence in the outlook.
 \item Sampling: NUTS, chains, the likelihood correction, the $N_{\rm eff}$ floor.
 \end{itemize}}
 
+\todo{
+\begin{itemize}
+    \item compute MC systematics across space
+    \item run a variance cut inference (v1, v4)
+    \item test weaker Neff floors
+\end{itemize}
+}
+
+We perform inference on the population of \acp{BBH} following \ac{GWTC-5}. We use the same dataset as described in \citet{LIGOScientific:2026ctl}, which contains 259 \acp{BBH} mergers with \ac{FAR} $<1\peryear$. We infer the population of \acp{BBH} under the Bayesian hierarchical inference procedure; see the supplemental material for more details.
+
+\todo{perhaps describe why we need models? Maybe we don't need to though}
+
 We consider a pair of flexible models. The first model we present is a four-dimensional, nonparametric model for the correlated space of primary mass, mass ratio, and the effective aligned spin $\chieff$ and effective precessing spin $\chip$. Specifically, we build a nonparametric model for $p(m_1, q)$ using a Mat\'ern field in \PixelPop \cite{}, and construct a correlated conditional model for $p(\chieff, \chip \mid m_1, q)$ using a separate Mat\'ern field. We model the comoving merger rate as evolving according to a simple powerlaw in redshift \cite[e.g.][]{Fishbach:2018edt}, uncorrelated with masses or spins. \jh{We should consider a model which correlates redshift too!} 
 
-Our second model is the Gaussian $\chieff, \chip$ model, where we directly model the mean and covariance matrix of the bivariate Gaussian as their own Mat\'ern fields. Specifically, 
+Our second model is a bivariate Gaussian in $(\chieff, \chip)$,
 \begin{equation}
-    p(\chieff, \chip \mid m_1, q) = \mathcal{N}\left[
-    \vec{\mu}(m_1, q), 
-    C(m_1, q)
-    \right]
+    p(\chieff, \chip \mid m_1, q) = \mathcal{N}\big(\vec{\mu}, C\big),
 \end{equation}
-where
-\begin{align}
-    \vec{\mu}(m_1, q) &= \begin{bmatrix}
-    \mu_{\chieff}(m_1, q) \\ 
-    \mu_{\chip}(m_1, q)
-    \end{bmatrix}
-    \\
-    C(m_1, q) &= \begin{bmatrix}
-    \sigma^2_{\chieff}(m_1, q) & \rho(m_1, q)\sigma_{\chieff}(m_1, q)\sigma_{\chip}(m_1, q) \\ 
-    \rho(m_1, q)\sigma_{\chieff}(m_1, q)\sigma_{\chip}(m_1, q) & \sigma^2_{\chip}(m_1, q)
-    \end{bmatrix}.
-\end{align}
-We enforce the bivariate Gaussian model is defined only on the physical domain, defined in Eq. 12 of \citet{iwaya_analytic_2025}. 
+whose means $\mu_{\chieff}, \mu_{\chip}$, standard deviations $\sigma_{\chieff}, \sigma_{\chip}$ and correlation coefficient $\rho$ are each Mat\'ern fields over $(m_1, q)$ (explicit form in Eq.~\eqref{eq: gaussian cov} of the Supplemental Material), truncated to the physical domain [Eq.~12 of \citet{iwaya_analytic_2025}]. Gaussian models are attractive for their interpretative abilities: we can directly interpret the measured moments of the Gaussian across the binary mass plane. Though the \flexiblespins model allows for generic, non-Gaussian spin distributions, it also induces a nontrivial prior on the implied moments (mean and standard deviation) of the spin distribution. For instance, it is plausible that the \flexiblespins model preferentially broadens in regions which are poorly constrained by the data, as the model reverts to the field prior which favors broader standard deviations. The \gaussianspins model, by contrast, directly models the moments, and so data-poor regions of the \ac{BBH} population correspond to broader \textit{uncertainties} on the moments, as opposed to \textit{biases}. In other words, one should place priors on the quantities one would like to interpret, the \gaussianspins model compares the 
 
 more more more
 
@@ -250,6 +248,35 @@ For each potential peak in the mass spectrum, we fit a Gaussian plus powerlaw in
 \end{itemize}}
 
 \bibliography{draft/main}
+
+\clearpage
+\setcounter{equation}{0}
+\renewcommand{\theequation}{S\arabic{equation}}
+
+\section*{Supplemental Material}
+
+\subsection*{Gaussian spin model}
+
+In the Gaussian spin model, the conditional distribution of the effective spins is a bivariate Gaussian,
+\begin{equation}
+    p(\chieff, \chip \mid m_1, q) = \mathcal{N}\left[
+    \vec{\mu}(m_1, q), 
+    C(m_1, q)
+    \right],
+\end{equation}
+with mean vector and covariance matrix
+\begin{align}
+    \vec{\mu}(m_1, q) &= \begin{bmatrix}
+    \mu_{\chieff}(m_1, q) \\ 
+    \mu_{\chip}(m_1, q)
+    \end{bmatrix},
+    \\
+    C(m_1, q) &= \begin{bmatrix}
+    \sigma^2_{\chieff}(m_1, q) & \rho(m_1, q)\sigma_{\chieff}(m_1, q)\sigma_{\chip}(m_1, q) \\ 
+    \rho(m_1, q)\sigma_{\chieff}(m_1, q)\sigma_{\chip}(m_1, q) & \sigma^2_{\chip}(m_1, q)
+    \end{bmatrix}, \label{eq: gaussian cov}
+\end{align}
+where each of $\mu_{\chieff}$, $\mu_{\chip}$, $\sigma_{\chieff}$, $\sigma_{\chip}$ and $\rho$ is its own Mat\'ern field over $(m_1, q)$. The distribution is truncated to the physical domain of $(\chieff, \chip)$, Eq.~12 of \citet{iwaya_analytic_2025}.
 
 
 \end{document}
