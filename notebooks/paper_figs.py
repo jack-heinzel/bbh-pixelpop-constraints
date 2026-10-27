@@ -6,6 +6,7 @@ figure:
            plots/chi_eff_mean_m1.pdf       mu_chi_eff(m1), one row per spin model, one column
            plots/chi_eff_sd_m1.pdf         sigma_chi_eff(m1), one row per spin model, one column
            plots/chi_eff_mean_sd_m1.pdf    both: rows = spin models, columns = mean, sd; two columns
+           plots/chi_p_{mean,sd,mean_sd}_m1.pdf   the same for chi_p (rows = spin models)
            plots/m2_q_ranges.pdf           p(m2 | q range) for the two q ranges, one row per spin model (user,
                                            2026-10-26); one column
            plots/m2_m1_windows.pdf         p(m2 | m1 in a window around each peak), one row per spin model; one
@@ -457,16 +458,27 @@ def bookkeeping_figure():
     return fig
 
 
-def chi_data(r, core):
-    chi = lambda qr=None: A.q_averaged_moments(r, qr, names=('chi_eff',), core=core)['chi_eff']
+def add_chi_p_moments(r):
+    """Append the per-cell chi_p mean and sd (MOM[..., 2:4] of the spin cache) to load_light's MOM[..., :2]."""
+    import glob
+    import h5py
+    files = sorted(glob.glob(os.path.join(A.REPO, 'results', r.run, 'chain_*_samples.h5')))
+    mp = np.concatenate([h5py.File(A.post_path(r.run, f), 'r')['MOM'][:r.n_draws, ..., 2:4] for f in files])
+    r.MOM = np.concatenate([r.MOM, mp.astype(r.MOM.dtype)], -1)
+
+
+def chi_data(r, core, spin='chi_eff'):
+    chi = lambda qr=None: A.q_averaged_moments(r, qr, names=(spin,), core=core)[spin]
     allq, byq = chi(), [chi(qr) for qr in A.SUMMARY_Q_RANGES]
     return {'mean': (allq['mean'], [x['mean'] for x in byq]), 'sd': (allq['sd'], [x['sd'] for x in byq])}
 
 
-def chi_figure(D, stats, core, asinh):
-    """Rows: spin models; columns: ``stats`` ('mean', 'sd'). Shared y per column."""
+def chi_figure(D, stats, core, asinh, spin='chi_eff'):
+    """Rows: spin models; columns: ``stats`` ('mean', 'sd') of ``spin`` ('chi_eff': the mean on an asinh scale;
+    'chi_p': linear). Shared y per column."""
     cut = rf', $|\chi_\mathrm{{eff}}| < {A.CHI_CORE:g}$' if core else ''
-    labels = {'mean': r'$\mu_{\chi_\mathrm{eff}}(m_1)$' + cut, 'sd': r'$\sigma_{\chi_\mathrm{eff}}(m_1)$' + cut}
+    sym = {'chi_eff': r'\chi_\mathrm{eff}', 'chi_p': r'\chi_p'}[spin]
+    labels = {'mean': rf'$\mu_{{{sym}}}(m_1)$' + cut, 'sd': rf'$\sigma_{{{sym}}}(m_1)$' + cut}
     width = ONE_COL if len(stats) == 1 else TWO_COL
     fig, axes = plt.subplots(len(D), len(stats), figsize=(width, 1.65 * len(D) + 0.45), sharex=True, squeeze=False)
     for j, st in enumerate(stats):
@@ -477,7 +489,9 @@ def chi_figure(D, stats, core, asinh):
             ax = axes[i, j]
             bands(ax, *d[st])
             m1_axis(ax, i == len(D) - 1)
-            if st == 'mean':
+            if st == 'mean' and spin == 'chi_p':
+                ax.set_ylim(0, 1.05 * hi)
+            elif st == 'mean':
                 ax.axhline(0, color='0.5', lw=0.6, ls=':')
                 ax.set_yscale('asinh', linear_width=asinh)
                 ticks = [t for t in (-0.5, -0.1, -0.03, 0, 0.03, 0.1, 0.5)
@@ -497,11 +511,11 @@ def chi_figure(D, stats, core, asinh):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'm2', 'spin', 'book', 'talk', 'all'))
+    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'chip', 'm2', 'spin', 'book', 'talk', 'all'))
     ap.add_argument('--core', action='store_true')
     ap.add_argument('--mean-asinh', type=float, default=0.03)
     args = ap.parse_args()
-    need = {'mass': list(RUNS)[:1], 'chi': list(RUNS), 'm2': list(RUNS), 'talk': list(RUNS)[:1],
+    need = {'mass': list(RUNS)[:1], 'chi': list(RUNS), 'chip': list(RUNS), 'm2': list(RUNS), 'talk': list(RUNS)[:1],
             'all': list(RUNS)}.get(args.what, [])
     R = {run: A.load_light(run) for run in need}
     import pixelpop  # noqa: F401  (its import resets matplotlib's rcParams; import it before the style)
@@ -517,6 +531,13 @@ def main():
         plt.rcParams.update(SMALL_RC)
     if args.what in ('book', 'all'):
         plot_style.save(bookkeeping_figure(), 'peak_bookkeeping')
+    if args.what in ('chip', 'all'):
+        for r in R.values():
+            if r.MOM.shape[-1] == 2:
+                add_chi_p_moments(r)
+        D = {RUNS[run]: chi_data(r, False, 'chi_p') for run, r in R.items()}
+        for stats, name in ((('mean',), 'mean'), (('sd',), 'sd'), (('mean', 'sd'), 'mean_sd')):
+            plot_style.save(chi_figure(D, stats, False, args.mean_asinh, 'chi_p'), f'chi_p_{name}_m1')
     if args.what in ('m2', 'all'):
         plot_style.save(m2_figure(R), 'm2_q_ranges')
         plot_style.save(m2_given_m1_figure(R), 'm2_m1_windows')
