@@ -554,12 +554,15 @@ def chi_figure(D, stats, core, asinh, spin='chi_eff', prior=None):
 Q_MIN = 0.1                                      # the q axis of the moments-against-q figures
 
 
-def m1_averaged_moments(r, core, spin='chi_eff'):
+def m1_averaged_moments(r, core, spin='chi_eff', m1_range=None):
     """Spin moments given q alone: the conditional averaged over the windowed p(m1 | q) (as A.q_averaged_moments, with
-    the axes swapped): 'mean' and 'sd' (draws, Bq)."""
+    the axes swapped): 'mean' and 'sd' (draws, Bq). With ``m1_range`` = (lo, hi) [Msun], only the m1 bins with centres
+    in it (NaN where the window leaves none)."""
     w = r.p_mass.astype(np.float32)
     if core:
         w = w * (1 - r.MOM_CORE[..., 2])
+    if m1_range is not None:
+        w = w * ((A.m_c >= m1_range[0]) & (A.m_c <= m1_range[1]))[None, :, None]
     tot = w.sum(1, keepdims=True)
     w = w / np.maximum(tot, 1e-30)
     i_mu, i_sd = {'chi_eff': (0, 1), 'chi_p': (2, 3)}[spin]
@@ -578,9 +581,32 @@ def m1_averaged_prior(r, core, spin='chi_eff'):
     return m1_averaged_moments(rp, core, spin)
 
 
-def chi_q_figure(D, stats, core, spin='chi_eff', prior=None):
+# GWTC-5 population release (zenodo.org/records/20292639; popsummary files): the chi_eff | q models
+LVK_DIR = '/mnt/ceph/users/jheinzel/gwtc5_pop_release/popsummary/popsummary_files'
+LVK_MODELS = {'Linear': ('linear_mass_ratio_popsummary.h5', '#CD5C5C'),
+              'Spline': ('spline_mass_ratio_k4_popsummary.h5', '#2C5AA0')}
+
+
+def lvk_chi_q():
+    """{label: (q, {'mean': draws, 'sd': draws}, colour)} for the GWTC-5 chi_eff | q models (their Gaussian's mean and
+    width against q) whose popsummary files exist under LVK_DIR."""
+    import h5py
+    out = {}
+    for label, (fname, col) in LVK_MODELS.items():
+        path = os.path.join(LVK_DIR, fname)
+        if not os.path.exists(path):
+            print('missing', path)
+            continue
+        with h5py.File(path, 'r') as h:
+            g = h['posterior/rates_on_grids']
+            out[label] = (g['mu_chieff/positions'][0], {'mean': g['mu_chieff/rates'][:],
+                                                        'sd': g['sigma_chieff/rates'][:]}, col)
+    return out
+
+
+def chi_q_figure(D, stats, core, spin='chi_eff', prior=None, lvk=None):
     """Rows: spin models; columns: ``stats`` of ``spin`` against q, averaged over p(m1 | q): the posterior's median and
-    90% band, and the prior's 90% (dashed)."""
+    90% band, the prior's 90% (dashed), and ``lvk`` (lvk_chi_q: the GWTC-5 chi_eff | q models' 90%, outlined)."""
     cut = rf', $|\chi_\mathrm{{eff}}| < {A.CHI_CORE:g}$' if core else ''
     sym = {'chi_eff': r'\chi_\mathrm{eff}', 'chi_p': r'\chi_p'}[spin]
     labels = {'mean': rf'$\mu_{{{sym}}}(q)$' + cut, 'sd': rf'$\sigma_{{{sym}}}(q)$' + cut}
@@ -599,6 +625,10 @@ def chi_q_figure(D, stats, core, spin='chi_eff', prior=None):
             if prior is not None:
                 for f in (5, 95):
                     ax.plot(qx, ext(np.nanpercentile(prior[name][st], f, 0)), color='0.45', lw=0.8, ls='--')
+            for qg, L, col in (lvk or {}).values():
+                l5, m5, h5 = np.percentile(L[st], [5, 50, 95], 0)
+                ax.fill_between(qg, l5, h5, facecolor='none', edgecolor=col, lw=0.7, hatch='////', alpha=0.6)
+                ax.plot(qg, m5, color=col, lw=0.8, ls='-.')
             if st == 'mean' and spin == 'chi_eff':
                 ax.axhline(0, color='0.5', lw=0.6, ls=':')
                 ax.set_ylim(lo - 0.05 * (hi - lo), hi + 0.05 * (hi - lo))
@@ -616,6 +646,61 @@ def chi_q_figure(D, stats, core, spin='chi_eff', prior=None):
     names = [r'posterior (median, 90\%)']
     if prior is not None:
         handles.append(Line2D([], [], color='0.45', lw=0.8, ls='--')); names.append(r'prior (90\%)')
+    for label, (_, _, col) in (lvk or {}).items():
+        handles.append((Patch(facecolor='none', edgecolor=col, hatch='////', lw=0.7),
+                        Line2D([], [], color=col, lw=0.8, ls='-.')))
+        names.append(rf'GWTC-5 {label}')
+    fig.legend(handles, names, loc='upper center', ncol=len(names), bbox_to_anchor=(0.5, 1.0), **LEG)
+    fig.tight_layout(rect=(0, 0, 1, 1 - 0.17 / fig.get_figheight())); fig.subplots_adjust(hspace=0.06)
+    return fig
+
+
+M1_BANDS = ((8., 12.), (18., 24.), (30., 40.), (55., 65.))     # the four peaks (internal figure)
+M1_BAND_COLS = ('C2', 'C0', 'C1', 'C3')
+
+
+def chi_q_bands_figure(R, core, spin='chi_eff', bands=M1_BANDS):
+    """As chi_q_figure, for p(chi | q, m1 in each of ``bands``) (90% bands and medians, M1_BAND_COLS) and over all m1
+    (black lines, 90%): rows the runs of R, columns mean and sd. Internal figure."""
+    cut = rf', $|\chi_\mathrm{{eff}}| < {A.CHI_CORE:g}$' if core else ''
+    sym = {'chi_eff': r'\chi_\mathrm{eff}', 'chi_p': r'\chi_p'}[spin]
+    labels = {'mean': rf'$\mu_{{{sym}}}(q)$' + cut, 'sd': rf'$\sigma_{{{sym}}}(q)$' + cut}
+    qx = np.concatenate([[0.], A.q_c, [1.]])
+    D = {RUNS[run]: [m1_averaged_moments(r, core, spin)] + [m1_averaged_moments(r, core, spin, b) for b in bands]
+         for run, r in R.items()}
+    fig, axes = plt.subplots(len(D), 2, figsize=(TWO_COL, 1.65 * len(D) + 0.45), sharex=True, squeeze=False)
+    show = A.q_c >= Q_MIN
+    for j, st in enumerate(('mean', 'sd')):
+        ys = [x[st] for d in D.values() for x in d]
+        with np.errstate(all='ignore'), __import__('warnings').catch_warnings():
+            __import__('warnings').simplefilter('ignore')
+            lo = min(np.nanmin(np.nanpercentile(y, 5, 0)[show]) for y in ys)
+            hi = max(np.nanmax(np.nanpercentile(y, 95, 0)[show]) for y in ys)
+        for i, (name, d) in enumerate(D.items()):
+            ax = axes[i, j]
+            for x, col in zip(d[1:], M1_BAND_COLS):
+                with __import__('warnings').catch_warnings():
+                    __import__('warnings').simplefilter('ignore')
+                    l, m, h = ext(q5(x[st]))
+                ax.fill_between(qx, l, h, color=col, alpha=0.25, lw=0); ax.plot(qx, m, color=col, lw=1.0)
+            l, _, h = ext(q5(d[0][st]))
+            ax.plot(qx, l, color='k', lw=0.7); ax.plot(qx, h, color='k', lw=0.7)
+            if st == 'mean' and spin == 'chi_eff':
+                ax.axhline(0, color='0.5', lw=0.6, ls=':')
+                ax.set_ylim(lo - 0.05 * (hi - lo), hi + 0.05 * (hi - lo))
+            elif st == 'sd':
+                log_sd_axis(ax, lo, hi)
+            else:
+                ax.set_ylim(0, 1.05 * hi)
+            ax.set_xlim(Q_MIN, 1)
+            if i == len(D) - 1:
+                ax.set_xlabel('$q$')
+            ax.set_ylabel(labels[st])
+            ax.text(0.03, 0.93, name, transform=ax.transAxes, va='top', ha='left',
+                    bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.5))
+    handles = [Line2D([], [], color='k', lw=0.7)] + [(Patch(color=c, alpha=0.25, lw=0), Line2D([], [], color=c, lw=1.0))
+                                                    for c in M1_BAND_COLS]
+    names = [r'all $m_1$ (90\%)'] + [rf'${a:g} < m_1 < {b:g}\,M_\odot$' for a, b in bands]
     fig.legend(handles, names, loc='upper center', ncol=len(names), bbox_to_anchor=(0.5, 1.0), **LEG)
     fig.tight_layout(rect=(0, 0, 1, 1 - 0.17 / fig.get_figheight())); fig.subplots_adjust(hspace=0.06)
     return fig
@@ -623,12 +708,13 @@ def chi_q_figure(D, stats, core, spin='chi_eff', prior=None):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'chip', 'chiq', 'm2', 'spin', 'book', 'talk', 'all'))
+    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'chip', 'chiq', 'chiqm', 'm2', 'spin', 'book', 'talk', 'all'))
     ap.add_argument('--core', action='store_true')
     ap.add_argument('--prior', action='store_true', help='chi / chip: overlay the spin prior (macros/spin_prior.py)')
+    ap.add_argument('--lvk', action='store_true', help='chiq: overlay the GWTC-5 chi_eff | q models (lvk_chi_q)')
     ap.add_argument('--mean-asinh', type=float, default=0.03)
     args = ap.parse_args()
-    need = {'mass': list(RUNS)[:1], 'chi': list(RUNS), 'chip': list(RUNS), 'chiq': list(RUNS), 'm2': list(RUNS), 'talk': list(RUNS)[:1],
+    need = {'mass': list(RUNS)[:1], 'chi': list(RUNS), 'chip': list(RUNS), 'chiq': list(RUNS), 'chiqm': list(RUNS), 'm2': list(RUNS), 'talk': list(RUNS)[:1],
             'all': list(RUNS)}.get(args.what, [])
     R = {run: A.load_light(run) for run in need}
     import pixelpop  # noqa: F401  (its import resets matplotlib's rcParams; import it before the style)
@@ -657,13 +743,17 @@ def main():
         for r in R.values():
             if r.MOM.shape[-1] == 2:
                 add_chi_p_moments(r)
-        tag = '_prior' if args.prior else ''
-        for spin, core_ in (('chi_eff', args.core),) + ((('chi_p', False),) if not args.core else ()):
+        tag = ('_prior' if args.prior else '') + ('_lvk' if args.lvk else '')
+        lvk = lvk_chi_q() if args.lvk else None
+        for spin, core_ in (('chi_eff', args.core),) + ((('chi_p', False),) if not args.core and not args.lvk else ()):
             D = {RUNS[run]: m1_averaged_moments(r, core_, spin) for run, r in R.items()}
             Pr = {RUNS[run]: m1_averaged_prior(r, core_, spin) for run, r in R.items()} if args.prior else None
             c = '_core' if core_ else ''
             for stats, name in ((('mean',), 'mean'), (('sd',), 'sd'), (('mean', 'sd'), 'mean_sd')):
-                plot_style.save(chi_q_figure(D, stats, core_, spin, prior=Pr), f'{spin}_{name}_q{c}{tag}')
+                plot_style.save(chi_q_figure(D, stats, core_, spin, prior=Pr, lvk=lvk if spin == 'chi_eff' else None),
+                                f'{spin}_{name}_q{c}{tag}')
+    if args.what == 'chiqm':                                          # internal: by m1 band
+        plot_style.save(chi_q_bands_figure(R, args.core), f'chi_eff_mean_sd_q_m1bands{core}')
     if args.what in ('m2', 'all'):
         plot_style.save(m2_figure(R), 'm2_q_ranges')
         plot_style.save(m2_given_m1_figure(R), 'm2_m1_windows')

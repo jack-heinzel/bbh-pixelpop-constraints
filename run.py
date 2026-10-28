@@ -6,7 +6,7 @@ The chain starts from a random draw from the prior of every latent site (keyed b
 evaluates the same draw), unless --init-from gives one (e.g. warmstart.py's output). Chains of one run (--chain 0, 1,
 ...; separate jobs) share its directory as chain_<N>_samples.h5, each from its own prior draw and sampler key.
 
-Run name: ppc_<catalog>_k<spin mass modes>[_<spin model>][_neff<floor>][_npe<max samples>][_no231123][_short][_<tag>];
+Run name: ppc_<catalog>_k<spin mass modes>[_<spin model>][_sdfloor<x>][_neff<floor>][_varcut<Var(ln L) cut>][_npe<max samples>][_no231123][_short][_<tag>];
 the spin model ('field', the default, 'split' or 'gauss'; model.py) is left out of the name for 'field'.
 
 This node caps processes + threads at 500 per user, and XLA sizes its thread pools from the CPU affinity, so the job
@@ -35,6 +35,8 @@ def make_parser():
     ap.add_argument('--spin-bins', type=int, nargs=2, default=[100, 100], metavar=('B_CHIEFF', 'B_CHIP'))
     ap.add_argument('--bins', type=int, default=100, help='mass grid bins per axis')
     ap.add_argument('--event-neff-cut', type=float, default=100.)
+    ap.add_argument('--variance-cut', type=float, default=float('inf'),
+                    help="soft cut on Var(ln L) (default: none); finite values add '_varcut<x>'")
     ap.add_argument('--max-samples', type=int, default=MAX_SAMPLES,
                     help='usable PE samples kept per event (those in grid bins injections reach); 0: keep all')
     ap.add_argument('--no-likelihood-correction', action='store_true')
@@ -64,6 +66,7 @@ def run_name(args):
             + (f'_{args.spin_model}' if args.spin_model != 'field' else '')
             + (f'_sdfloor{args.gauss_sd_floor:g}' if args.spin_model == 'gauss' and args.gauss_sd_floor != 0.02 else '')
             + (f'_neff{args.event_neff_cut:g}' if args.event_neff_cut != 100. else '')
+            + (f'_varcut{args.variance_cut:g}' if args.variance_cut != float('inf') else '')
             + (f'_npe{args.max_samples or "all"}' if args.max_samples != MAX_SAMPLES else '')
             + ('_nocorr' if args.no_likelihood_correction else '')
             + ('_no' + '_'.join(e.replace('GW', '') for e in args.exclude_events) if args.exclude_events else '')
@@ -110,7 +113,8 @@ def build(args, name, record_weights=False):
     pp, posteriors, injections = data.build_pixelpop_data(name, args.catalog, bins=args.bins,
                                                           event_neff_cut=args.event_neff_cut,
                                                           exclude_events=tuple(args.exclude_events),
-                                                          max_samples=args.max_samples, n_spin_bins=tuple(args.spin_bins))
+                                                          max_samples=args.max_samples, n_spin_bins=tuple(args.spin_bins),
+                                                          variance_cut=args.variance_cut)
     prob_model, init = model.setup_model(pp, spin_mass_modes=args.spin_mass_modes, n_spin_bins=tuple(args.spin_bins),
                                          likelihood_correction=not args.no_likelihood_correction,
                                          record_weights=record_weights, spin_model=args.spin_model,

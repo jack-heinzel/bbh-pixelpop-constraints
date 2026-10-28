@@ -119,9 +119,10 @@ def subsample(posteriors, injections, event_counts, max_samples, bins, n_spin_bi
 
 
 def build_pixelpop_data(name, catalog, bins=100, event_neff_cut=100., exclude_events=(), max_samples=None,
-                        n_spin_bins=(100, 100)):
-    """PixelPopData on the (ln m1, q) grid (ln m1 in [ln 3, ln 200], q in [0, 1]); no variance cut. ``max_samples``:
-    keep at most that many usable samples per event (``subsample``; None keeps them all)."""
+                        n_spin_bins=(100, 100), variance_cut=np.inf):
+    """PixelPopData on the (ln m1, q) grid (ln m1 in [ln 3, ln 200], q in [0, 1]). ``variance_cut``: the soft cut on
+    Var(ln L) (pixelpop's UncertaintyCut is its square root; inf, the default: none). ``max_samples``: keep at most that
+    many usable samples per event (``subsample``; None keeps them all)."""
     posteriors, injections, event_counts = load_data(catalog, exclude_events)
     if max_samples:
         posteriors, event_counts = subsample(posteriors, injections, event_counts, max_samples, bins, n_spin_bins)
@@ -134,6 +135,6 @@ def build_pixelpop_data(name, catalog, bins=100, event_neff_cut=100., exclude_ev
         pixelpop_parameters=['log_mass_1', 'mass_ratio'], other_parameters=OTHER_PARAMS, bins=bins,
         minima={'log_mass_1': np.log(MIN_M)}, maxima={'log_mass_1': np.log(MAX_M)},
         parametric_models=models, parameter_to_hyperparameters=hypers, priors=priors,
-        UncertaintyCut=np.inf, event_counts=event_counts, spde_matern=True, EventNeffCut=event_neff_cut,
+        UncertaintyCut=np.sqrt(variance_cut), event_counts=event_counts, spde_matern=True, EventNeffCut=event_neff_cut,
         SelectionNeffCut=0.)
     return pp, posteriors, injections
