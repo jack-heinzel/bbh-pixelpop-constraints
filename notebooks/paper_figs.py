@@ -658,7 +658,7 @@ def main():
             if r.MOM.shape[-1] == 2:
                 add_chi_p_moments(r)
         tag = '_prior' if args.prior else ''
-        for spin, core_ in (('chi_eff', args.core), ('chi_p', False)):
+        for spin, core_ in (('chi_eff', args.core),) + ((('chi_p', False),) if not args.core else ()):
             D = {RUNS[run]: m1_averaged_moments(r, core_, spin) for run, r in R.items()}
             Pr = {RUNS[run]: m1_averaged_prior(r, core_, spin) for run, r in R.items()} if args.prior else None
             c = '_core' if core_ else ''
