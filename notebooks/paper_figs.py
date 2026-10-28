@@ -584,7 +584,7 @@ def m1_averaged_prior(r, core, spin='chi_eff'):
 # GWTC-5 population release (zenodo.org/records/20292639; popsummary files): the chi_eff | q models
 LVK_DIR = '/mnt/ceph/users/jheinzel/gwtc5_pop_release/popsummary/popsummary_files'
 LVK_MODELS = {'Linear': ('linear_mass_ratio_popsummary.h5', '#CD5C5C'),
-              'Spline': ('spline_mass_ratio_k4_popsummary.h5', '#2C5AA0')}
+              'Spline': ('spline_mass_ratio_k4_popsummary.h5', '#2E8B57')}    # not blue: ours is C0
 
 
 def lvk_chi_q():
