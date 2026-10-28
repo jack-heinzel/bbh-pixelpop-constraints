@@ -583,16 +583,16 @@ def m1_averaged_prior(r, core, spin='chi_eff'):
 
 # GWTC-5 population release (zenodo.org/records/20292639; popsummary files): the chi_eff | q models
 LVK_DIR = '/mnt/ceph/users/jheinzel/gwtc5_pop_release/popsummary/popsummary_files'
-LVK_MODELS = {'Linear': ('linear_mass_ratio_popsummary.h5', '#CD5C5C'),
-              'Spline': ('spline_mass_ratio_k4_popsummary.h5', '#2E8B57')}    # not blue: ours is C0
+LVK_MODELS = {'Linear': ('linear_mass_ratio_popsummary.h5', '#CD5C5C', '-.'),
+              'Spline': ('spline_mass_ratio_k4_popsummary.h5', '#2E8B57', '--')}    # not blue: ours is C0
 
 
 def lvk_chi_q():
-    """{label: (q, {'mean': draws, 'sd': draws}, colour)} for the GWTC-5 chi_eff | q models (their Gaussian's mean and
-    width against q) whose popsummary files exist under LVK_DIR."""
+    """{label: (q, {'mean': draws, 'sd': draws}, colour, line style)} for the GWTC-5 chi_eff | q models (their
+    Gaussian's mean and width against q) whose popsummary files exist under LVK_DIR."""
     import h5py
     out = {}
-    for label, (fname, col) in LVK_MODELS.items():
+    for label, (fname, col, ls) in LVK_MODELS.items():
         path = os.path.join(LVK_DIR, fname)
         if not os.path.exists(path):
             print('missing', path)
@@ -600,13 +600,14 @@ def lvk_chi_q():
         with h5py.File(path, 'r') as h:
             g = h['posterior/rates_on_grids']
             out[label] = (g['mu_chieff/positions'][0], {'mean': g['mu_chieff/rates'][:],
-                                                        'sd': g['sigma_chieff/rates'][:]}, col)
+                                                        'sd': g['sigma_chieff/rates'][:]}, col, ls)
     return out
 
 
 def chi_q_figure(D, stats, core, spin='chi_eff', prior=None, lvk=None):
     """Rows: spin models; columns: ``stats`` of ``spin`` against q, averaged over p(m1 | q): the posterior's median and
-    90% band, the prior's 90% (dashed), and ``lvk`` (lvk_chi_q: the GWTC-5 chi_eff | q models' 90%, outlined)."""
+    90% band, the prior's 90% (dashed), and ``lvk`` (lvk_chi_q: the GWTC-5 chi_eff | q models' 90% bounds, as lines in
+    each model's colour and style over a faint fill)."""
     cut = rf', $|\chi_\mathrm{{eff}}| < {A.CHI_CORE:g}$' if core else ''
     sym = {'chi_eff': r'\chi_\mathrm{eff}', 'chi_p': r'\chi_p'}[spin]
     labels = {'mean': rf'$\mu_{{{sym}}}(q)$' + cut, 'sd': rf'$\sigma_{{{sym}}}(q)$' + cut}
@@ -625,10 +626,10 @@ def chi_q_figure(D, stats, core, spin='chi_eff', prior=None, lvk=None):
             if prior is not None:
                 for f in (5, 95):
                     ax.plot(qx, ext(np.nanpercentile(prior[name][st], f, 0)), color='0.45', lw=0.8, ls='--')
-            for qg, L, col in (lvk or {}).values():
-                l5, m5, h5 = np.percentile(L[st], [5, 50, 95], 0)
-                ax.fill_between(qg, l5, h5, facecolor='none', edgecolor=col, lw=0.7, hatch='////', alpha=0.6)
-                ax.plot(qg, m5, color=col, lw=0.8, ls='-.')
+            for qg, L, col, ls in (lvk or {}).values():
+                l5, h5 = np.percentile(L[st], [5, 95], 0)
+                ax.fill_between(qg, l5, h5, color=col, alpha=0.06, lw=0)
+                ax.plot(qg, l5, color=col, lw=0.9, ls=ls); ax.plot(qg, h5, color=col, lw=0.9, ls=ls)
             if st == 'mean' and spin == 'chi_eff':
                 ax.axhline(0, color='0.5', lw=0.6, ls=':')
                 ax.set_ylim(lo - 0.05 * (hi - lo), hi + 0.05 * (hi - lo))
@@ -646,10 +647,9 @@ def chi_q_figure(D, stats, core, spin='chi_eff', prior=None, lvk=None):
     names = [r'posterior (median, 90\%)']
     if prior is not None:
         handles.append(Line2D([], [], color='0.45', lw=0.8, ls='--')); names.append(r'prior (90\%)')
-    for label, (_, _, col) in (lvk or {}).items():
-        handles.append((Patch(facecolor='none', edgecolor=col, hatch='////', lw=0.7),
-                        Line2D([], [], color=col, lw=0.8, ls='-.')))
-        names.append(rf'GWTC-5 {label}')
+    for label, (_, _, col, ls) in (lvk or {}).items():
+        handles.append(Line2D([], [], color=col, lw=0.9, ls=ls))
+        names.append(rf'GWTC-5 {label} (90\%)')
     fig.legend(handles, names, loc='upper center', ncol=len(names), bbox_to_anchor=(0.5, 1.0), **LEG)
     fig.tight_layout(rect=(0, 0, 1, 1 - 0.17 / fig.get_figheight())); fig.subplots_adjust(hspace=0.06)
     return fig
