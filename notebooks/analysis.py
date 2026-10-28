@@ -109,7 +109,15 @@ CHI_EFF_SLICES = {r'0 < \chi_\mathrm{eff} < 0.1': lambda e: (e > 0) & (e < 0.1),
                   r'|\chi_\mathrm{eff}| > 0.2': lambda e: np.abs(e) > 0.2}
 
 
-def _spin_fns(km, logW, spin_model):
+def gauss_sd_floor(run):
+    """The gauss model's sd floor of a run, from its name (run.py's '_sdfloor<x>'; model.GAUSS_SD_FLOOR otherwise)."""
+    import re
+    from model import GAUSS_SD_FLOOR
+    m = re.search(r'_sdfloor([0-9.e-]+?)(?:_|$)', run)
+    return float(m.group(1)) if m else GAUSS_SD_FLOOR
+
+
+def _spin_fns(km, logW, spin_model, sd_floor=None):
     """Jitted spin rebuild for one draw of the given spin model; returns P_raw, P_win (population marginal,
     unwindowed / windowed mass weights, unnormalized), MOM (per-cell moments), PE_M, PP_M (p(chi_eff | m1),
     p(chi_p | m1): per-bin probabilities, averaged over the windowed p(q | m1)) and SLICE (per-cell
@@ -119,8 +127,9 @@ def _spin_fns(km, logW, spin_model):
     import jax.numpy as jnp
     from jax.scipy.special import logsumexp as LSE
     import pixelpop
-    from model import (NEG, axis_eigs, gauss_log_kernel, matern_spectrum, spin_window_fraction, split_spin_field,
-                       to_grid)
+    from model import (GAUSS_SD_FLOOR, NEG, axis_eigs, gauss_log_kernel, matern_spectrum, spin_window_fraction,
+                       split_spin_field, to_grid)
+    sd_floor = GAUSS_SD_FLOOR if sd_floor is None else sd_floor
 
     (w_ax, v_ax), = axis_eigs([pixelpop.utils.create_CAR_coupling_matrix(B, 1, isVisible=False)])
     window = spin_window_fraction(q_edges, e_edges, p_edges)
@@ -170,8 +179,8 @@ def _spin_fns(km, logW, spin_model):
 
     @jax.jit
     def gauss(theta, log_p_mass):
-        return stats(lambda m: gauss_log_kernel(theta[:, m][:, :, None, None], ec[None, :, None], pc[None, None, :]),
-                     log_p_mass)
+        return stats(lambda m: gauss_log_kernel(theta[:, m][:, :, None, None], ec[None, :, None], pc[None, None, :],
+                                                sd_floor), log_p_mass)
 
     keys = {'field': ('_spin_sites', 'lnsigma_spin', 'log_nu_spin', 'log_ranges_spin', 'log_p_mass'),
             'split': ('_spin0_sites', 'lnsigma_spin0', 'log_nu_spin0', 'log_ranges_spin0',
@@ -214,7 +223,7 @@ def rebuild_chain(run, chain_file, n_draws=None, log_every=100, block=25):
         km = (h['_spin_sites'].shape[1] if spin_model == 'field' else h['_spin1_sites'].shape[1] if spin_model == 'split'
               else 1)
         n = len(h['log_likelihood']) if n_draws is None else n_draws
-        fn, keys = _spin_fns(km, logW, spin_model)
+        fn, keys = _spin_fns(km, logW, spin_model, gauss_sd_floor(run))
         g.attrs.update(n_draws=n, spin_model=spin_model, k=km, source=chain_file,
                        regions=np.array([[*mr, *qr] for mr, qr in REGION_LIST]))    # REGION's (m0, m1, q0, q1)
         out = None

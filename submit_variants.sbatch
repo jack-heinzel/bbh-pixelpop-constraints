@@ -6,6 +6,8 @@
 #     sbatch submit_variants.sbatch [extra run.py args]              (tasks 0-3: split, gauss at k = 10)
 #     sbatch --array=4-5 submit_variants.sbatch                       (gauss k = 100, chains 0 and 1)
 #     sbatch --array=2 --export=ALL,CHAIN=2 submit_variants.sbatch     (one task, as a new chain index: gauss chain 2)
+#     sbatch --array=4-5 --export=ALL,LOGTAG=_sdfloor0 submit_variants.sbatch --gauss-sd-floor 0   (no sd floor)
+# LOGTAG goes into the log names, so a variant run does not overwrite the logs of the default one.
 # Slurm copies this script at submission, so editing it does not affect queued or running jobs.
 #SBATCH --job-name=ppc-var
 #SBATCH --partition=gpu
@@ -32,6 +34,6 @@ J="job $SLURM_ARRAY_JOB_ID.$SLURM_ARRAY_TASK_ID"
 echo "$(date '+%F %H:%M') $J on $(hostname) ($(nvidia-smi --query-gpu=name --format=csv,noheader)): $model k=$k chain $c $*" >> $LOG
 $PY run.py $A --check-only || exit 1
 echo "$(date '+%F %H:%M') $J: start long $model k=$k chain $c" >> $LOG
-$PY run.py $A > $L/ppc_${cat}_k${k}_${model}_long_chain${c}.log 2>&1
+$PY run.py $A > $L/ppc_${cat}_k${k}_${model}${LOGTAG}_long_chain${c}.log 2>&1
 rc=$?; echo "$(date '+%F %H:%M') $J: end long $model k=$k chain $c (exit $rc)" >> $LOG
 exit $rc

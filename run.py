@@ -30,6 +30,8 @@ def make_parser():
     ap.add_argument('--spin-model', choices=['field', 'split', 'gauss'], default='field',
                     help="spin conditional: one 4D Matern field ('field'), mass-independent + mass-varying fields with "
                          "separate amplitudes ('split'), or a truncated Gaussian with field-valued parameters ('gauss')")
+    ap.add_argument('--gauss-sd-floor', type=float, default=0.02,
+                    help="spin_model gauss: soft floor on its sds (model.GAUSS_SD_FLOOR); not 0.02 adds '_sdfloor<x>'")
     ap.add_argument('--spin-bins', type=int, nargs=2, default=[100, 100], metavar=('B_CHIEFF', 'B_CHIP'))
     ap.add_argument('--bins', type=int, default=100, help='mass grid bins per axis')
     ap.add_argument('--event-neff-cut', type=float, default=100.)
@@ -60,6 +62,7 @@ def make_parser():
 def run_name(args):
     return (f'ppc_{args.catalog}_k{args.spin_mass_modes}'
             + (f'_{args.spin_model}' if args.spin_model != 'field' else '')
+            + (f'_sdfloor{args.gauss_sd_floor:g}' if args.spin_model == 'gauss' and args.gauss_sd_floor != 0.02 else '')
             + (f'_neff{args.event_neff_cut:g}' if args.event_neff_cut != 100. else '')
             + (f'_npe{args.max_samples or "all"}' if args.max_samples != MAX_SAMPLES else '')
             + ('_nocorr' if args.no_likelihood_correction else '')
@@ -110,7 +113,8 @@ def build(args, name, record_weights=False):
                                                           max_samples=args.max_samples, n_spin_bins=tuple(args.spin_bins))
     prob_model, init = model.setup_model(pp, spin_mass_modes=args.spin_mass_modes, n_spin_bins=tuple(args.spin_bins),
                                          likelihood_correction=not args.no_likelihood_correction,
-                                         record_weights=record_weights, spin_model=args.spin_model)
+                                         record_weights=record_weights, spin_model=args.spin_model,
+                                         gauss_sd_floor=args.gauss_sd_floor)
     return prob_model, init, posteriors, injections, pp
 
 

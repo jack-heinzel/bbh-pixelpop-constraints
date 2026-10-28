@@ -54,7 +54,7 @@ SPIN_MODELS = tuple(SPIN_SITES)
 GAUSS_PARAMS = ('mu_eff', 'mu_p', 'ln_sd_eff', 'ln_sd_p', 'atanh_rho')
 GAUSS_OFFSET_BOUNDS = ((-0.5, 0., np.log(0.03), np.log(0.03), -2.), (0.5, 1., 0., 0., 2.))
 GAUSS_LNSIGMA_CENTRES = (np.log(0.1), np.log(0.1), np.log(0.5), np.log(0.5), np.log(0.5))
-GAUSS_SD_FLOOR = 0.02          # sd = sqrt(exp(2 ln_sd) + floor^2): a soft floor at one spin bin
+GAUSS_SD_FLOOR = 0.02          # sd = sqrt(exp(2 ln_sd) + floor^2): a soft floor at one spin bin (default; 0: none)
 
 
 # ---------------------------------------------------------------- Matern fields on the grid's Laplacian eigenbasis
@@ -121,12 +121,12 @@ def spin_bins(data, chi_eff_edges, chi_p_edges):
 
 
 # ---------------------------------------------------------------- the model
-def gauss_log_kernel(params, chi_eff, chi_p):
+def gauss_log_kernel(params, chi_eff, chi_p, sd_floor=GAUSS_SD_FLOOR):
     """Unnormalized log density of the correlated 2D Gaussian with ``params`` = (mu_eff, mu_p, ln_sd_eff, ln_sd_p,
-    atanh_rho) (leading axis), broadcast against ``chi_eff``, ``chi_p``."""
+    atanh_rho) (leading axis), broadcast against ``chi_eff``, ``chi_p``; sd = sqrt(exp(2 ln_sd) + sd_floor^2)."""
     mu_e, mu_p, ls_e, ls_p, z = params
-    sd_e = jnp.sqrt(jnp.exp(2 * ls_e) + GAUSS_SD_FLOOR ** 2)
-    sd_p = jnp.sqrt(jnp.exp(2 * ls_p) + GAUSS_SD_FLOOR ** 2)
+    sd_e = jnp.sqrt(jnp.exp(2 * ls_e) + sd_floor ** 2)
+    sd_p = jnp.sqrt(jnp.exp(2 * ls_p) + sd_floor ** 2)
     rho = jnp.tanh(z)
     x, y = (chi_eff - mu_e) / sd_e, (chi_p - mu_p) / sd_p
     return -0.5 * (x ** 2 - 2 * rho * x * y + y ** 2) / (1 - rho ** 2) - jnp.log(sd_e * sd_p) - 0.5 * jnp.log1p(-rho ** 2)
@@ -150,7 +150,8 @@ def split_spin_field(white0, lnsigma0, nu0, ranges0, white1, lnsigma1, nu1, rang
 
 
 def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_range_floor=0.05,
-                likelihood_correction=True, record_weights=False, spin_model='field', _dense_cube=False):
+                likelihood_correction=True, record_weights=False, spin_model='field', gauss_sd_floor=GAUSS_SD_FLOOR,
+                _dense_cube=False):
     """NumPyro model and initial values. ``pixelpop_data`` pixelates the mass plane (log_mass_1, mass_ratio) with
     ``spde_matern=True``; its posteriors and injections carry chi_eff and chi_p, binned here onto ``n_spin_bins`` over
     [-1, 1] x [0, 1]. ``spin_mass_modes`` = 0 makes the spins independent of mass (a 2D field on chi). ``_dense_cube``
@@ -164,7 +165,8 @@ def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_
       spectrum, a Matern over the mass modes times a Matern over the spin modes, so variation along mass is not damped
       jointly with variation in chi. sigma_1 measures how much the spins change with mass.
     * ``'gauss'``: a correlated 2D Gaussian in (chi_eff, chi_p) truncated to the window, whose five parameters
-      (GAUSS_PARAMS) are each an offset plus a k x k-mode Matern field on (ln m1, q) (mean mode pinned).
+      (GAUSS_PARAMS) are each an offset plus a k x k-mode Matern field on (ln m1, q) (mean mode pinned). Its sds are
+      sqrt(exp(2 ln_sd) + gauss_sd_floor^2).
     """
     pp = pixelpop_data
     if spin_model not in SPIN_MODELS:
@@ -300,8 +302,9 @@ def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_
             G = split_field()
         if spin_model == 'gauss':
             theta = gauss_fields()                                                        # (5, Bm, Bq)
-            slab_T = lambda m: gauss_log_kernel(theta[:, m][:, :, None, None], e_c[None, :, None], p_c[None, None, :])
-            event_f = lambda im, iq, ie, ip: gauss_log_kernel(theta[:, im, iq], e_c[ie], p_c[ip])
+            slab_T = lambda m: gauss_log_kernel(theta[:, m][:, :, None, None], e_c[None, :, None], p_c[None, None, :],
+                                                gauss_sd_floor)
+            event_f = lambda im, iq, ie, ip: gauss_log_kernel(theta[:, im, iq], e_c[ie], p_c[ip], gauss_sd_floor)
         elif km:
             slab_T = lambda m: jnp.einsum('k,ql,klep->qep', Vm[m], Vq, G)
             event_f = lambda im, iq, ie, ip: jnp.einsum('...k,...l,kl...->...', Vm[im], Vq[iq], G[:, :, ie, ip])

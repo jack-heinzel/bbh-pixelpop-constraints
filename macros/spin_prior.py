@@ -5,8 +5,9 @@
         -> results/post_processing/<run>_spin_prior.npz
 
 For N posterior draws (evenly spaced over the chains, in analysis.load_light's draw order, saved as ``draws``): the
-spin model's hyperparameters stay at the draw's values and its white sites are drawn afresh from N(0, 1), so the spin
-field is a prior draw given the posterior's kernel (empirical Bayes). The field ('field' model: lnsigma_spin,
+spin model's kernel hyperparameters stay at the draw's values and its white sites are drawn afresh from N(0, 1), so the
+spin field is a prior draw given the posterior's kernel (empirical Bayes). For 'gauss', the five constant offsets are
+drawn afresh too, from their Uniform(GAUSS_OFFSET_BOUNDS) prior (user, 2026-10-28), so only the kernels are empirical. The field ('field' model: lnsigma_spin,
 log_nu_spin, log_ranges_spin) or the five Gaussian parameter fields ('gauss': gauss_offsets, lnsigma_gauss,
 log_nu_gauss, log_ranges_gauss, as model.gauss_fields) are rebuilt with analysis._spin_fns, with the draw's own
 (posterior) mass field, so p(q | m1) is the posterior's and only the spins come from the prior. Saved per draw: MOM
@@ -54,13 +55,13 @@ def load_draws(run, n):
 def main(runs, n=200, seed=0):
     import jax.numpy as jnp
     import pixelpop
-    from model import axis_eigs, matern_spectrum, to_grid
+    from model import GAUSS_OFFSET_BOUNDS, axis_eigs, matern_spectrum, to_grid
     rng = np.random.default_rng(seed)
     for run in runs:
         t0 = time.time()
         spin_model, idx, D = load_draws(run, n)
         km = int(run.split('_k')[1].split('_')[0])
-        fn, _ = A._spin_fns(km, A.mass_window(), spin_model)
+        fn, _ = A._spin_fns(km, A.mass_window(), spin_model, A.gauss_sd_floor(run))
         if spin_model == 'gauss':
             (w_ax, v_ax), = axis_eigs([pixelpop.utils.create_CAR_coupling_matrix(A.B, 1, isVisible=False)])
             Vk = v_ax[:, :km]
@@ -75,12 +76,13 @@ def main(runs, n=200, seed=0):
                 fields = [to_grid(matern_spectrum([w_ax[:km], w_ax[:km]], D['lnsigma_gauss'][j][i],
                                                   D['log_ranges_gauss'][j][i], nu, A.B * A.B), white[i], [Vk, Vk])
                           for i in range(5)]
-                theta = jnp.asarray(D['gauss_offsets'][j])[:, None, None] + jnp.stack(fields)
+                offsets = rng.uniform(*GAUSS_OFFSET_BOUNDS)                      # the offsets' prior, not the draw's
+                theta = jnp.asarray(offsets)[:, None, None] + jnp.stack(fields)
                 out = fn(theta, D['log_p_mass'][j])
             MOM.append(np.asarray(out[2], np.float32)); CORE.append(np.asarray(out[6], np.float32))
             if (j + 1) % 25 == 0:
                 print(f'  {run}: {j + 1}/{n} prior draws, {(time.time() - t0) / (j + 1):.1f} s each', flush=True)
-        np.savez(prior_path(run), draws=idx, MOM=np.stack(MOM), MOM_CORE=np.stack(CORE))
+        np.savez(prior_path(run), draws=idx, offsets_from_prior=spin_model == 'gauss', MOM=np.stack(MOM), MOM_CORE=np.stack(CORE))
         print('saved', prior_path(run), flush=True)
 
 

@@ -493,6 +493,18 @@ def prior_lines(ax, allq, byq):
         ax.plot(mx, ext(np.nanpercentile(allq, f, 0)), color='0.45', lw=0.7, ls='--')
 
 
+SD_TICKS = (0.01, 0.02, 0.05, 0.1, 0.2, 0.5)
+
+
+def log_sd_axis(ax, lo, hi):
+    """Log y axis for a spin sd, from lo to hi (the bands' 5% and 95% extremes), labelled at SD_TICKS."""
+    lo, hi = max(lo, 5e-3) / 1.15, hi * 1.15
+    ax.set_yscale('log'); ax.set_ylim(lo, hi)
+    ticks = [t for t in SD_TICKS if lo <= t <= hi]
+    ax.set_yticks(ticks, [f'${t:g}$' for t in ticks])
+    ax.yaxis.set_minor_formatter(matplotlib.ticker.NullFormatter())
+
+
 def chi_figure(D, stats, core, asinh, spin='chi_eff', prior=None):
     """Rows: spin models; columns: ``stats`` ('mean', 'sd') of ``spin`` ('chi_eff': the mean on an asinh scale;
     'chi_p': linear). Shared y per column."""
@@ -503,6 +515,8 @@ def chi_figure(D, stats, core, asinh, spin='chi_eff', prior=None):
     fig, axes = plt.subplots(len(D), len(stats), figsize=(width, 1.65 * len(D) + 0.45), sharex=True, squeeze=False)
     for j, st in enumerate(stats):
         ys = [y for d in D.values() for y in [d[st][0]] + d[st][1]]
+        if prior is not None:                                        # the prior's 90% fits too
+            ys += [y for d in prior.values() for y in [d[st][0]] + d[st][1]]
         lo = min(np.nanmin(np.nanpercentile(y, 5, 0)[vis]) for y in ys)
         hi = max(np.nanmax(np.nanpercentile(y, 95, 0)[vis]) for y in ys)
         for i, (name, d) in enumerate(D.items()):
@@ -521,6 +535,8 @@ def chi_figure(D, stats, core, asinh, spin='chi_eff', prior=None):
                 ax.set_yticks(ticks, [f'${t:g}$' for t in ticks])
                 ax.yaxis.set_minor_locator(matplotlib.ticker.NullLocator())
                 ax.set_ylim(lo * 1.1, hi * 1.1)
+            elif st == 'sd':
+                log_sd_axis(ax, lo, hi)
             else:
                 ax.set_ylim(0, 1.05 * hi)
             ax.set_ylabel(labels[st])
@@ -586,6 +602,8 @@ def chi_q_figure(D, stats, core, spin='chi_eff', prior=None):
             if st == 'mean' and spin == 'chi_eff':
                 ax.axhline(0, color='0.5', lw=0.6, ls=':')
                 ax.set_ylim(lo - 0.05 * (hi - lo), hi + 0.05 * (hi - lo))
+            elif st == 'sd':
+                log_sd_axis(ax, lo, hi)
             else:
                 ax.set_ylim(0, 1.05 * hi)
             ax.set_xlim(Q_MIN, 1)
