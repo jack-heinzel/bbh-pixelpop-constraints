@@ -42,6 +42,7 @@
 \newcommand{\chieff}{\ensuremath{\chi_{\mathrm{eff}}}}
 \newcommand{\chip}{\ensuremath{\chi_{\mathrm{p}}}}
 \newcommand{\mchirp}{\ensuremath{\mathcal{M}_c}}
+\newcommand{\peryear}{\ensuremath{\,\mathrm{yr}^{-1}}}
 
 \newcommand{\red}[1]{{\color{Red} #1}}
 \newcommand{\todo}[1]{{\color{Blue}\bf TODO: #1}}
@@ -50,6 +51,8 @@
 \newcommand{\PixelPop}{\textsc{PixelPop}\xspace}
 \newcommand{\gwpopulation}{\textsc{GWPopulation}\xspace}
 \newcommand{\BrokenPowerlawTwoPeaks}{\textsc{Broken Powerlaw Plus Two Peaks}\xspace}
+\newcommand{\flexiblespins}{\textsc{Flexible}\xspace}
+\newcommand{\gaussianspins}{\textsc{Gaussian}\xspace}
 
 
 
@@ -187,16 +190,24 @@ For each potential peak in the mass spectrum, we fit a Gaussian plus powerlaw in
 
 \red{Target $\sim$500 words.
 \begin{itemize}
-\item Fig.~\ref{fig: main result}, bottom row: $\sigma_{\chieff}(m_1)$ is broad at $\sim$18--20 and $> 45\,\Msun$, narrow at the near-equal-mass peaks; it comes from the width at fixed $q$ (low $q$).
+\item Fig.~\ref{fig: chi_eff width}: the core width $\sigma_{\chieff}(m_1)$ ($|\chieff| < 0.8$) is broad at $\sim$18--20 and $> 45\,\Msun$, narrow at the near-equal-mass peaks; it comes from the width at fixed $q$ (low $q$).
 \item Fig.~2: the $(\chieff, \chip)$ distribution in each of the four peak regions.
+\item Fig.~\ref{fig: chi_eff width q}: the core width $\sigma_{\chieff}(q)$ falls from $\sim$0.2 at $q \lesssim 0.4$ to $\sim$0.08 near $q = 1$ in both spin models; the mass-ratio dependence behind the $m_1$ structure.
 \item Robust across the spin models (field, split, Gaussian $k = 10$ and 100); details in the SM.
 \end{itemize}}
 
 \begin{figure}
     \centering
-    \includegraphics[width=\linewidth]{draft/plots/chi_eff_sd_m1.pdf}
-    \caption{\red{Draft caption. The width of the effective-spin distribution at each primary mass, $\sigma_{\chieff}(m_1)$ (the standard deviation of $p(\chieff \mid m_1)$), over all mass ratios (black lines: 90\% interval) and for $0.3 < q < 0.65$ (blue) and $0.8 < q < 1$ (orange) (90\% bands and medians), for the flexible (top) and Gaussian (bottom) spin models. The width is small at the near-equal-mass peaks ($\sim$10 and $\sim$33\,\Msun) and large at $\sim$18--20 and $\gtrsim 45\,\Msun$, driven by the low-$q$ systems. The mean, $\mu_{\chieff}(m_1)$, is in the SM (\texttt{chi\_eff\_mean\_m1.pdf}). (\texttt{plots/chi\_eff\_sd\_m1.pdf}, one column.)}}
+    \includegraphics[width=\linewidth]{plots/chi_eff_sd_m1_core.pdf}
+    \caption{\red{Draft caption. The width of the effective-spin distribution at each primary mass, $\sigma_{\chieff}(m_1)$: the standard deviation of $p(\chieff \mid m_1, |\chieff| < 0.8)$, i.e.\ restricted to the core $|\chieff| < 0.8$ so that the poorly constrained tails do not set the width. Shown over all mass ratios (black lines: 90\% interval) and for $0.3 < q < 0.65$ (blue) and $0.8 < q < 1$ (orange) (90\% bands and medians), for the \flexiblespins (top) and \gaussianspins (bottom) spin models. The width is small at the near-equal-mass peaks ($\sim$10 and $\sim$33\,\Msun) and large at $\sim$18--20 and $\gtrsim 45\,\Msun$, driven by the low-$q$ systems. The mean, $\mu_{\chieff}(m_1)$, is in the SM (\texttt{chi\_eff\_mean\_m1\_core.pdf}). (\texttt{plots/chi\_eff\_sd\_m1\_core.pdf}, one column.)}}
     \label{fig: chi_eff width}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{plots/chi_eff_sd_q_core_prior.pdf}
+    \caption{\red{Draft caption. The core width of the effective-spin distribution as a function of mass ratio, $\sigma_{\chieff}(q)$: the standard deviation of $p(\chieff \mid q, |\chieff| < 0.8)$, with the conditional averaged over $p(m_1 \mid q)$, for the \flexiblespins (top) and \gaussianspins (bottom) spin models. Blue: posterior median and 90\% band; dashed: the 90\% interval of the empirical-Bayes spin prior. In both models the width falls from $\sim$0.2 at $q \lesssim 0.4$ to $\sim$0.08 near $q = 1$, well inside the prior range: the broad effective spins sit at unequal masses. (\texttt{plots/chi\_eff\_sd\_q\_core\_prior.pdf}, one column.)}}
+    \label{fig: chi_eff width q}
 \end{figure}
 
 
