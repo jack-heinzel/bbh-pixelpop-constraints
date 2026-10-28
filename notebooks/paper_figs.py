@@ -7,6 +7,8 @@ figure:
            plots/chi_eff_sd_m1.pdf         sigma_chi_eff(m1), one row per spin model, one column
            plots/chi_eff_mean_sd_m1.pdf    both: rows = spin models, columns = mean, sd; two columns
            plots/chi_p_{mean,sd,mean_sd}_m1.pdf   the same for chi_p (rows = spin models)
+           --prior: the chi / chip figures with the empirical-Bayes spin prior (macros/spin_prior.py) overlaid,
+           suffix _prior
            plots/m2_q_ranges.pdf           p(m2 | q range) for the two q ranges, one row per spin model (user,
                                            2026-10-26); one column
            plots/m2_m1_windows.pdf         p(m2 | m1 in a window around each peak), one row per spin model; one
@@ -473,7 +475,25 @@ def chi_data(r, core, spin='chi_eff'):
     return {'mean': (allq['mean'], [x['mean'] for x in byq]), 'sd': (allq['sd'], [x['sd'] for x in byq])}
 
 
-def chi_figure(D, stats, core, asinh, spin='chi_eff'):
+def chi_prior_data(r, core, spin='chi_eff'):
+    """As chi_data, for the empirical-Bayes spin prior draws of macros/spin_prior.py (each with its posterior draw's
+    mass field, so the same p(q | m1))."""
+    from types import SimpleNamespace
+    d = np.load(os.path.join(A.REPO, 'results', 'post_processing', f'{r.run}_spin_prior.npz'))
+    rp = SimpleNamespace(p_mass=r.p_mass[d['draws']], MOM=d['MOM'], MOM_CORE=d['MOM_CORE'])
+    return chi_data(rp, core, spin)
+
+
+def prior_lines(ax, allq, byq):
+    """The prior's 90% interval: dashed lines in each q range's colour, grey dashed for all q."""
+    for y, col in zip(byq, COLS):
+        for f in (5, 95):
+            ax.plot(mx, ext(np.nanpercentile(y, f, 0)), color=col, lw=0.8, ls='--')
+    for f in (5, 95):
+        ax.plot(mx, ext(np.nanpercentile(allq, f, 0)), color='0.45', lw=0.7, ls='--')
+
+
+def chi_figure(D, stats, core, asinh, spin='chi_eff', prior=None):
     """Rows: spin models; columns: ``stats`` ('mean', 'sd') of ``spin`` ('chi_eff': the mean on an asinh scale;
     'chi_p': linear). Shared y per column."""
     cut = rf', $|\chi_\mathrm{{eff}}| < {A.CHI_CORE:g}$' if core else ''
@@ -488,6 +508,8 @@ def chi_figure(D, stats, core, asinh, spin='chi_eff'):
         for i, (name, d) in enumerate(D.items()):
             ax = axes[i, j]
             bands(ax, *d[st])
+            if prior is not None:
+                prior_lines(ax, *prior[name][st])
             m1_axis(ax, i == len(D) - 1)
             if st == 'mean' and spin == 'chi_p':
                 ax.set_ylim(0, 1.05 * hi)
@@ -504,18 +526,91 @@ def chi_figure(D, stats, core, asinh, spin='chi_eff'):
             ax.set_ylabel(labels[st])
             ax.text(0.03, 0.93, name, transform=ax.transAxes, va='top', ha='left',
                     bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.5))
-    fig.legend(*band_legend(), loc='upper center', ncol=3, bbox_to_anchor=(0.5, 1.0), **LEG)
+    handles, names = band_legend()
+    if prior is not None:
+        handles = handles + [Line2D([], [], color='0.45', lw=0.8, ls='--')]
+        names = names + [r'prior (90\%, dashed)']
+    fig.legend(handles, names, loc='upper center', ncol=len(names), bbox_to_anchor=(0.5, 1.0), **LEG)
+    fig.tight_layout(rect=(0, 0, 1, 1 - 0.17 / fig.get_figheight())); fig.subplots_adjust(hspace=0.06)
+    return fig
+
+
+Q_MIN = 0.1                                      # the q axis of the moments-against-q figures
+
+
+def m1_averaged_moments(r, core, spin='chi_eff'):
+    """Spin moments given q alone: the conditional averaged over the windowed p(m1 | q) (as A.q_averaged_moments, with
+    the axes swapped): 'mean' and 'sd' (draws, Bq)."""
+    w = r.p_mass.astype(np.float32)
+    if core:
+        w = w * (1 - r.MOM_CORE[..., 2])
+    tot = w.sum(1, keepdims=True)
+    w = w / np.maximum(tot, 1e-30)
+    i_mu, i_sd = {'chi_eff': (0, 1), 'chi_p': (2, 3)}[spin]
+    mu, sd = (r.MOM_CORE[..., 0], r.MOM_CORE[..., 1]) if core else (r.MOM[..., i_mu], r.MOM[..., i_sd])
+    mean = (w * mu).sum(1)
+    var = (w * (sd ** 2 + (mu - mean[:, None]) ** 2)).sum(1)
+    empty = tot[:, 0] <= 0
+    return {'mean': np.where(empty, np.nan, mean), 'sd': np.where(empty, np.nan, np.sqrt(var))}
+
+
+def m1_averaged_prior(r, core, spin='chi_eff'):
+    """As m1_averaged_moments, for the empirical-Bayes spin prior draws (chi_prior_data)."""
+    from types import SimpleNamespace
+    d = np.load(os.path.join(A.REPO, 'results', 'post_processing', f'{r.run}_spin_prior.npz'))
+    rp = SimpleNamespace(p_mass=r.p_mass[d['draws']], MOM=d['MOM'], MOM_CORE=d['MOM_CORE'])
+    return m1_averaged_moments(rp, core, spin)
+
+
+def chi_q_figure(D, stats, core, spin='chi_eff', prior=None):
+    """Rows: spin models; columns: ``stats`` of ``spin`` against q, averaged over p(m1 | q): the posterior's median and
+    90% band, and the prior's 90% (dashed)."""
+    cut = rf', $|\chi_\mathrm{{eff}}| < {A.CHI_CORE:g}$' if core else ''
+    sym = {'chi_eff': r'\chi_\mathrm{eff}', 'chi_p': r'\chi_p'}[spin]
+    labels = {'mean': rf'$\mu_{{{sym}}}(q)$' + cut, 'sd': rf'$\sigma_{{{sym}}}(q)$' + cut}
+    qx = np.concatenate([[0.], A.q_c, [1.]])
+    show = A.q_c >= Q_MIN
+    width = ONE_COL if len(stats) == 1 else TWO_COL
+    fig, axes = plt.subplots(len(D), len(stats), figsize=(width, 1.65 * len(D) + 0.45), sharex=True, squeeze=False)
+    for j, st in enumerate(stats):
+        ys = [d[st] for d in D.values()] + ([p[st] for p in prior.values()] if prior is not None else [])
+        lo = min(np.nanmin(np.nanpercentile(y, 5, 0)[show]) for y in ys)
+        hi = max(np.nanmax(np.nanpercentile(y, 95, 0)[show]) for y in ys)
+        for i, (name, d) in enumerate(D.items()):
+            ax = axes[i, j]
+            l, m, h = ext(q5(d[st]))
+            ax.fill_between(qx, l, h, color='C0', alpha=0.3, lw=0); ax.plot(qx, m, color='C0')
+            if prior is not None:
+                for f in (5, 95):
+                    ax.plot(qx, ext(np.nanpercentile(prior[name][st], f, 0)), color='0.45', lw=0.8, ls='--')
+            if st == 'mean' and spin == 'chi_eff':
+                ax.axhline(0, color='0.5', lw=0.6, ls=':')
+                ax.set_ylim(lo - 0.05 * (hi - lo), hi + 0.05 * (hi - lo))
+            else:
+                ax.set_ylim(0, 1.05 * hi)
+            ax.set_xlim(Q_MIN, 1)
+            if i == len(D) - 1:
+                ax.set_xlabel('$q$')
+            ax.set_ylabel(labels[st])
+            ax.text(0.03, 0.93, name, transform=ax.transAxes, va='top', ha='left',
+                    bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.5))
+    handles = [(Patch(color='C0', alpha=0.3, lw=0), Line2D([], [], color='C0'))]
+    names = [r'posterior (median, 90\%)']
+    if prior is not None:
+        handles.append(Line2D([], [], color='0.45', lw=0.8, ls='--')); names.append(r'prior (90\%)')
+    fig.legend(handles, names, loc='upper center', ncol=len(names), bbox_to_anchor=(0.5, 1.0), **LEG)
     fig.tight_layout(rect=(0, 0, 1, 1 - 0.17 / fig.get_figheight())); fig.subplots_adjust(hspace=0.06)
     return fig
 
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'chip', 'm2', 'spin', 'book', 'talk', 'all'))
+    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'chip', 'chiq', 'm2', 'spin', 'book', 'talk', 'all'))
     ap.add_argument('--core', action='store_true')
+    ap.add_argument('--prior', action='store_true', help='chi / chip: overlay the spin prior (macros/spin_prior.py)')
     ap.add_argument('--mean-asinh', type=float, default=0.03)
     args = ap.parse_args()
-    need = {'mass': list(RUNS)[:1], 'chi': list(RUNS), 'chip': list(RUNS), 'm2': list(RUNS), 'talk': list(RUNS)[:1],
+    need = {'mass': list(RUNS)[:1], 'chi': list(RUNS), 'chip': list(RUNS), 'chiq': list(RUNS), 'm2': list(RUNS), 'talk': list(RUNS)[:1],
             'all': list(RUNS)}.get(args.what, [])
     R = {run: A.load_light(run) for run in need}
     import pixelpop  # noqa: F401  (its import resets matplotlib's rcParams; import it before the style)
@@ -536,15 +631,30 @@ def main():
             if r.MOM.shape[-1] == 2:
                 add_chi_p_moments(r)
         D = {RUNS[run]: chi_data(r, False, 'chi_p') for run, r in R.items()}
+        Pr = {RUNS[run]: chi_prior_data(r, False, 'chi_p') for run, r in R.items()} if args.prior else None
+        tag = '_prior' if args.prior else ''
         for stats, name in ((('mean',), 'mean'), (('sd',), 'sd'), (('mean', 'sd'), 'mean_sd')):
-            plot_style.save(chi_figure(D, stats, False, args.mean_asinh, 'chi_p'), f'chi_p_{name}_m1')
+            plot_style.save(chi_figure(D, stats, False, args.mean_asinh, 'chi_p', prior=Pr), f'chi_p_{name}_m1{tag}')
+    if args.what in ('chiq', 'all'):
+        for r in R.values():
+            if r.MOM.shape[-1] == 2:
+                add_chi_p_moments(r)
+        tag = '_prior' if args.prior else ''
+        for spin, core_ in (('chi_eff', args.core), ('chi_p', False)):
+            D = {RUNS[run]: m1_averaged_moments(r, core_, spin) for run, r in R.items()}
+            Pr = {RUNS[run]: m1_averaged_prior(r, core_, spin) for run, r in R.items()} if args.prior else None
+            c = '_core' if core_ else ''
+            for stats, name in ((('mean',), 'mean'), (('sd',), 'sd'), (('mean', 'sd'), 'mean_sd')):
+                plot_style.save(chi_q_figure(D, stats, core_, spin, prior=Pr), f'{spin}_{name}_q{c}{tag}')
     if args.what in ('m2', 'all'):
         plot_style.save(m2_figure(R), 'm2_q_ranges')
         plot_style.save(m2_given_m1_figure(R), 'm2_m1_windows')
     if args.what in ('chi', 'all'):
         D = {RUNS[run]: chi_data(r, args.core) for run, r in R.items()}
+        Pr = {RUNS[run]: chi_prior_data(r, args.core) for run, r in R.items()} if args.prior else None
+        tag = core + ('_prior' if args.prior else '')
         for stats, name in ((('mean',), 'mean'), (('sd',), 'sd'), (('mean', 'sd'), 'mean_sd')):
-            plot_style.save(chi_figure(D, stats, args.core, args.mean_asinh), f'chi_eff_{name}_m1{core}')
+            plot_style.save(chi_figure(D, stats, args.core, args.mean_asinh, prior=Pr), f'chi_eff_{name}_m1{tag}')
 
 
 if __name__ == '__main__':
