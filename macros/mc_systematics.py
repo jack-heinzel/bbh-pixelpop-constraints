@@ -132,7 +132,8 @@ def main(runs, chunk, check, block=4096):
         sig_stat = np.where(good, dF.std(0), np.nan)
         print(f'{run}: {N} draws, {F.shape[1]} quantities ({good.sum()} finite in every draw), '
               f'{time.time() - t0:.0f} s to load', flush=True)
-        draws = lambda: itertools.islice(latent_draws(run, keys, r.n_draws), N)
+        lats = list(itertools.islice(latent_draws(run, keys, r.n_draws), N))     # in memory: read once, not per pass
+        draws = lambda: iter(lats)
 
         kw = jax.device_put({'posteriors': posteriors, 'injections': injections})
 
@@ -200,7 +201,9 @@ def main(runs, chunk, check, block=4096):
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
     ap.add_argument('runs', nargs='+')
-    ap.add_argument('--chunk', type=int, default=2_500_000, help='samples per pass over the draws (GPU memory)')
+    ap.add_argument('--chunk', type=int, default=500_000,
+                    help='samples per pass over the draws: the pass holds (draws x chunk) weights twice on the GPU, 8 GB '
+                         'at 2000 draws (2.5e6 ran out of memory on an A100-80GB)')
     ap.add_argument('--check', type=int, default=0, help='only N draws, compared with the explicit double sum')
     a = ap.parse_args()
     main(a.runs, a.chunk, a.check)

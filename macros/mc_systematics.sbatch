@@ -10,7 +10,7 @@
 #SBATCH --exclude=workergpu168
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=128G
-#SBATCH --time=4:00:00
+#SBATCH --time=16:00:00
 #SBATCH --output=results/logs/slurm-mc-syst-%j.out
 
 cd "$SLURM_SUBMIT_DIR"
