@@ -206,7 +206,7 @@ For each potential peak in the mass spectrum, we fit a Gaussian plus powerlaw in
 \begin{figure}
     \centering
     \includegraphics[width=\linewidth]{draft/plots/chi_eff_sd_q_core_lvk.pdf}
-    \caption{\red{Draft caption. The core width of the effective-spin distribution as a function of mass ratio, $\sigma_{\chieff}(q)$: the standard deviation of $p(\chieff \mid q, |\chieff| < 0.8)$, with the conditional averaged over $p(m_1 \mid q)$, for the \flexiblespins (top) and \gaussianspins (bottom) spin models (blue: posterior median and 90\% band). Hatched: the 90\% intervals (dash-dotted: medians) of the Gaussian width $\sigma_{\chieff}(q)$ in the GWTC-5 linear (red) and spline (green) $\chieff \mid q$ models. All four agree: the width falls from $\sim$0.2--0.3 at $q \lesssim 0.4$ to $\sim$0.08 near $q = 1$. The GWTC-5 widths are not restricted to $|\chieff| < 0.8$, so the comparison is approximate where the tails matter. Our models find this without a parametric form in $q$; the mean $\mu_{\chieff}(q)$ is flat and consistent with GWTC-5 (SM, \texttt{chi\_eff\_mean\_sd\_q\_core\_lvk.pdf}); the version with the spin prior is \texttt{chi\_eff\_sd\_q\_core\_prior.pdf}. (\texttt{plots/chi\_eff\_sd\_q\_core\_lvk.pdf}, one column.)}}
+    \caption{\red{Draft caption. The core width of the effective-spin distribution as a function of mass ratio, $\sigma_{\chieff}(q)$: the standard deviation of $p(\chieff \mid q, |\chieff| < 0.8)$, with the conditional averaged over $p(m_1 \mid q)$, for the \flexiblespins (top) and \gaussianspins (bottom) spin models (blue: posterior median and 90\% band). Lines: the 90\% intervals of the Gaussian width $\sigma_{\chieff}(q)$ in the GWTC-5 linear (red, dash-dotted) and spline (green, dashed) $\chieff \mid q$ models, over a faint fill. All four agree: the width falls from $\sim$0.2--0.3 at $q \lesssim 0.4$ to $\sim$0.08 near $q = 1$. The GWTC-5 widths are not restricted to $|\chieff| < 0.8$, so the comparison is approximate where the tails matter. Our models find this without a parametric form in $q$; the mean $\mu_{\chieff}(q)$ is flat and consistent with GWTC-5 (SM, \texttt{chi\_eff\_mean\_sd\_q\_core\_lvk.pdf}); the version with the spin prior is \texttt{chi\_eff\_sd\_q\_core\_prior.pdf}. (\texttt{plots/chi\_eff\_sd\_q\_core\_lvk.pdf}, one column.)}}
     \label{fig: chi_eff width q}
 \end{figure}
 
@@ -265,6 +265,22 @@ For each potential peak in the mass spectrum, we fit a Gaussian plus powerlaw in
 \renewcommand{\theequation}{S\arabic{equation}}
 
 \section*{Supplemental Material}
+
+\subsection*{Field priors}
+
+\red{All fields are Mat\'ern Gaussian random fields built in the Laplacian eigenbasis of their grid (the stochastic-PDE construction of \PixelPop). On a $D$-dimensional grid with per-axis Laplacian eigenvectors $v^{(d)}_k$ and eigenvalues $\lambda^{(d)}_k$, a field is
+\begin{gather}
+    f = \sum_{\vec{k}} a_{\vec{k}}\, z_{\vec{k}} \prod_{d=1}^{D} v^{(d)}_{k_d}, \qquad z_{\vec{k}} \sim \mathcal{N}(0, 1), \\
+    a_{\vec{k}} \propto \Big(1 + \sum_{d} \frac{\ell_d^2 \lambda^{(d)}_{k_d}}{8\nu}\Big)^{-(\nu + D/2)/2},
+\end{gather}
+with ranges $\ell_d$ (in bins) along each axis and smoothness $\nu$; the amplitudes are normalized so that the site-averaged variance of $f$ is $s^2$, and the constant mode is set to zero. Unless stated otherwise, the hyperpriors are \PixelPop's: $\ln s \sim \mathcal{N}(0, 2)$, $\ln \nu \sim \mathcal{N}(0, 0.5)$, and $\ln \ell_d \sim \mathcal{U}(\ln \ell_{\min}, \ln B_d)$, log-uniform from one bin ($\ell_{\min} = 1$) to the number of bins $B_d$ along the axis.
+\begin{itemize}
+\item Mass: $p(\ln m_1, q) \propto e^{L}$, with $L$ a 2D Mat\'ern field on a $100 \times 100$ grid in $\ln m_1 \in [\ln 3, \ln 200]$ and $q$, keeping all modes; hyperparameters $s$, $\nu$, $\ell_{\ln m_1}$, $\ell_q$. The rate is windowed to $m_2 > 3\,\Msun$.
+\item \flexiblespins spins: $p(\chieff, \chip \mid m_1, q) \propto e^{F}$ on the physical window $\chip < \chi_{\rm p, max}(\chieff, q)$, on $100 \times 100$ bins over $[-1, 1] \times [0, 1]$, normalized separately at each $(m_1, q)$. $F$ is a 4D Mat\'ern field restricted to the lowest $k \times k$ ($k = 10$) eigenmodes along $\ln m_1$ and $q$ and all modes along $\chieff$ and $\chip$, with one $s$, one $\nu$ and four ranges. The spin ranges are bounded below by $0.05$ in $\chi$ (2.5 bins in $\chieff$, 5 in $\chip$). Modes that are constant in $\chi$ cancel in the normalization and are set to zero, so a zero field is uniform on the physical window: there is no isotropic or template mean.
+\item Split spins (robustness): $F = G_0(\chi) + G_1(\ln m_1, q, \chi)$: $G_0$ is a mass-independent 2D Mat\'ern field with its own $(s_0, \nu_0, \ell)$; $G_1$ keeps only the mass-varying modes, with its own $(s_1, \nu_1)$ and a separable spectrum (a Mat\'ern spectrum over the mass modes times one over the spin modes), so that $s_1$ measures how much the spins change with mass. Same hyperpriors as above.
+\item \gaussianspins spins: Each of the five parameters $\theta_i \in \{\mu_{\chieff}, \mu_{\chip}, \ln\sigma_{\chieff}, \ln\sigma_{\chip}, \operatorname{atanh}\rho\}$ is an offset plus a field, $\theta_i = c_i + f_i(\ln m_1, q)$, where $f_i$ is a 2D Mat\'ern field on the lowest $k \times k$ mass modes (mean mode zero) with its own amplitude $s_i$ and ranges, and a shared $\nu$. The offsets are uniform: $c_{\mu_{\chieff}} \in [-0.5, 0.5]$, $c_{\mu_{\chip}} \in [0, 1]$, $c_{\ln\sigma} \in [\ln 0.03, 0]$ for both widths, and $c_{\operatorname{atanh}\rho} \in [-2, 2]$. The amplitudes are $\ln s_i \sim \mathcal{N}(\ln 0.1, 1)$ for the two means and $\mathcal{N}(\ln 0.5, 1)$ for the two log-widths and $\operatorname{atanh}\rho$. The widths entering the Gaussian are $\sqrt{e^{2\ln\sigma} + 0.02^2}$, a soft floor at one spin bin. The Gaussian is truncated to the physical window and normalized at each $(m_1, q)$.
+\item Redshift: A power law in $(1+z)$, uncorrelated with masses and spins, with its standard prior.
+\end{itemize}}
 
 \subsection*{Gaussian spin model}
 

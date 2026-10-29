@@ -1,0 +1,536 @@
+\documentclass[%
+ reprint,
+ amsmath,amssymb,
+ aps,
+ prl,
+ nofootinbib,nobibnotes,
+ floatfix,
+]{revtex4-2}
+
+\usepackage{graphicx}
+\usepackage{tabularx}
+\usepackage{dcolumn}
+\usepackage{bm}
+\usepackage{bold-extra}
+
+\usepackage[dvipsnames]{xcolor}
+\usepackage[hidelinks]{hyperref}
+\usepackage{acronym}
+\usepackage{physics}
+\usepackage{orcidlink}
+\usepackage{xspace}
+
+\input{acronyms}
+
+% numbers: copies of ../macros/*.tex (notebooks/draft_figures.sh macros); use in math mode, e.g. $\peakTenMuFlex\,\Msun$.
+% Found from draft/ or from the repository root.
+\newcommand{\inputmacros}[1]{\IfFileExists{macros/#1.tex}{\input{macros/#1}}{\input{draft/macros/#1}}}
+\inputmacros{peak_fits}
+\inputmacros{joint_fits}
+\inputmacros{peak_pairs}
+\inputmacros{peak_excess}
+\inputmacros{chi_q_broadening}
+
+% math macros
+\newcommand{\Msun}{\ensuremath{\mathrm{M}_{\odot}}}
+\newcommand{\chieff}{\ensuremath{\chi_{\mathrm{eff}}}}
+\newcommand{\chip}{\ensuremath{\chi_{\mathrm{p}}}}
+\newcommand{\mchirp}{\ensuremath{\mathcal{M}_c}}
+\newcommand{\peryear}{\ensuremath{\,\mathrm{yr}^{-1}}}
+\newcommand{\LSE}{\operatorname{LSE}}
+
+\newcommand{\red}[1]{{\color{Red} #1}}
+\newcommand{\todo}[1]{{\color{Blue}\bf TODO: #1}}
+\newcommand{\jh}[1]{{\color{orange}JH: #1}}
+\newcommand{\comment}[1]{}
+\newcommand{\PixelPop}{\textsc{PixelPop}\xspace}
+\newcommand{\flexiblespins}{\textsc{Flexible}\xspace}
+\newcommand{\gaussianspins}{\textsc{Gaussian}\xspace}
+
+\begin{document}
+
+\title{Nonparametric mass and spin inference reveals peaks and correlations}
+
+\author{Jack Heinzel\,\orcidlink{0000-0002-5794-821X}}
+\email{jheinzel@flatironinstitute.org}
+
+\date{\today}
+
+\begin{abstract}
+We infer the masses and effective spins of 259 \acp{BBH} from \ac{GWTC-5} with nonparametric models that allow arbitrary correlations between primary mass, mass ratio and spin. Near equal masses, the primary-mass spectrum peaks at $\sim 10$ and $\sim 33\,\Msun$; at $q \sim 0.5$ we find tentative evidence for a second pair of peaks at $\sim 21$ and $\sim 59\,\Msun$, where the effective spins are broad and symmetric about zero. These features resemble hierarchical mergers in dense star clusters, although the $\sim 21\,\Msun$ peak is slightly heavier than this picture predicts.
+\end{abstract}
+
+\maketitle
+
+\section{Introduction}
+
+Gravitational waves are providing a new window into the astrophysics of binary black hole formation. The LIGO~\cite{LIGOScientific:2014pky}, Virgo~\cite{VIRGO:2014yos} and KAGRA~\cite{KAGRA:2020tym} observatory network has now cataloged over 250 \ac{BBH} merger detections~\cite{LIGOScientific:2025slb, LIGOScientific:2026wfs}, and the constraints on their masses, spins and merger redshifts enable a characterization of the population~\cite{KAGRA:2021duu, LIGOScientific:2025pvj, LIGOScientific:2026ctl}.
+
+We know that the \ac{BH} mass function is highly structured: a prominent peak at $\sim 10\,\Msun$, a feature at $\sim 30$--$35\,\Msun$ which may be a local peak or a steepening of the mass function~\cite{Farah:2023vsc, Roy:2025ktr}, and a long tail extending into the theorized \ac{PISN} mass gap~\cite{Antonini:2025ilj, Tong:2025wpz, Ray:2025xti}. Most \ac{BH} spins are small, but a fraction of merging \acp{BH} spin rapidly, and the effective spin distribution correlates with mass ratio~\cite{Callister:2021fpo} and possibly with mass and redshift~\cite{Biscoveanu:2022qac, Heinzel:2023hlb}.
+
+Historically, parametric models, which make strong assumptions about the nature of the binary population, have driven population-level discoveries. These models typically assumed that the \ac{BH} parameters were uncorrelated; for instance, that the mass ratio distribution does not change across the primary mass spectrum. Such approximations were adequate when the catalog was too small to resolve astrophysical correlations. With hundreds of detections, features previously too subtle are now emerging, and flexible models are needed to find them without specifying their form in advance~\cite{Edelman:2022ydv, Callister:2023tgi, Ray:2023upk, Heinzel:2024jlc, Alvarez-Lopez:2025ltt}.
+
+In this paper, we report a highly correlated binary mass distribution, with prominent peaks at $m_1 = \jointTenMuFlex\,\Msun$ and $\jointThirtyFiveMuFlex\,\Msun$ for mass ratios close to one (mean $q = \jointTenQMeanFlex$ and $\jointThirtyFiveQMeanFlex$), and a secondary pair of peaks at $m_1 = \jointTwentyMuFlex\,\Msun$ and $\jointSixtyMuFlex\,\Msun$ for mass ratios $q \sim 0.5$ (mean $q = \jointTwentyQMeanFlex$ and $\jointSixtyQMeanFlex$). The mass features bifurcate in their spin properties as well: the near-equal-mass peaks have narrow effective spin distributions, while the $q \sim 0.5$ peaks have broad, nearly symmetric $\chieff$. This is the pattern expected if the $q \sim 0.5$ peaks are second-generation \acp{BH} that pair with first-generation companions~\cite{Fishbach:2017dwv, Gerosa:2017kvu, Rodriguez:2019huv, Gerosa:2021mno}.
+
+\section{Data and methods}
+
+We perform inference on the population of \acp{BBH} following \ac{GWTC-5}. We use the same dataset as described in \citet{LIGOScientific:2026ctl}, which contains 259 \acp{BBH} with \ac{FAR} $< 1\peryear$, together with the sensitivity estimates released with that catalog. For each event we use at most 20000 \ac{PE} samples, preferring NRSur7dq4~\cite{Varma:2019csw} where available. We infer the population under the standard Bayesian hierarchical framework~\cite{Mandel:2018mve, Thrane:2018qnx}, marginalizing over the merger rate, correcting for the bias of the Monte Carlo estimate of the selection function~\cite{Heinzel:2025ogf}, and requiring an effective sample size of at least 100 per event~\cite{Essick:2022ojx, Talbot:2023pex}. Details of the data and likelihood are in the Supplemental Material.
+
+We consider a pair of flexible models. Both describe the joint distribution of primary mass $m_1$, mass ratio $q$, effective aligned spin $\chieff$ and effective precessing spin $\chip$~\cite{Racine:2008qv, Schmidt:2014iyl} as
+\begin{equation}
+    p(m_1, q, \chieff, \chip) = p(m_1, q)\, p(\chieff, \chip \mid m_1, q).
+\end{equation}
+In both models, $p(m_1, q)$ is a nonparametric Mat\'ern field on a $100 \times 100$ grid in $(\ln m_1, q)$, with $m_1 \in [3, 200]\,\Msun$ and $m_2 > 3\,\Msun$, built with \PixelPop~\cite{Heinzel:2024jlc, lindgren_explicit_2011}. We model the comoving merger rate as evolving according to a simple power law in redshift~\cite{Fishbach:2018edt}, uncorrelated with masses or spins. The two models differ in the spin conditional.
+
+In the \flexiblespins model, $\ln p(\chieff, \chip \mid m_1, q)$ is a four-dimensional Mat\'ern field on $100 \times 100$ bins in $(\chieff, \chip)$, restricted to the physical domain~\cite{iwaya_analytic_2025} and normalized separately at each $(m_1, q)$. The field varies with mass through the ten longest-wavelength modes along each of $\ln m_1$ and $q$, so the spin distribution can change on scales of about a tenth of each mass axis. A field of zero is uniform on the physical domain: there is no isotropic, aligned or template mean.
+
+Our second model, the \gaussianspins model, is a bivariate Gaussian in $(\chieff, \chip)$,
+\begin{equation}
+    p(\chieff, \chip \mid m_1, q) = \mathcal{N}\big(\vec{\mu}, C\big),
+\end{equation}
+whose means $\mu_{\chieff}, \mu_{\chip}$, standard deviations $\sigma_{\chieff}, \sigma_{\chip}$ and correlation coefficient $\rho$ are each Mat\'ern fields over the full $100 \times 100$ $(m_1, q)$ grid (explicit form in Eq.~\eqref{eq: gaussian cov}), truncated to the physical domain of the effective spins [Eq.~12 of \citet{iwaya_analytic_2025}]. Gaussian models are attractive for their interpretability: we can directly read off the moments of the spin distribution across the binary mass plane. Though the \flexiblespins model allows for generic, non-Gaussian spin distributions, it also induces a nontrivial prior on the implied moments of the spin distribution. For instance, the \flexiblespins model may preferentially broaden in regions which are poorly constrained by the data, as it reverts to a field prior which favors broad distributions. The \gaussianspins model, by contrast, places its prior directly on the moments, so data-poor regions of the population correspond to broader \textit{uncertainties} on the moments, as opposed to \textit{biases}. Agreement between the two therefore shows that a result does not depend on the form of the spin prior; both models share the mass field and the smoothness prior of the Mat\'ern fields, so it does not test those. For this, we also compare every spin moment with its distribution under the prior. The field priors of both models are given in the Supplemental Material.
+
+We sample the posterior with the No-U-Turn Sampler~\cite{Hoffman:2014nuts} in \textsc{NumPyro}~\cite{Phan:2019numpyro}, drawing 2000 posterior samples per model from two independent chains, each initialized from a random draw of the prior. Because the widths of the spin distribution are sensitive to the tails of $\chieff$, which are poorly measured for individual events, we report spin moments restricted to the core $|\chieff| < 0.8$ unless otherwise stated.
+
+\section{Mass peaks}
+
+We show the primary mass spectrum and the mass ratio distribution in Fig.~\ref{fig: mass}. For mass ratios close to one, $0.8 < q < 1$, the primary mass spectrum has peaks at $\sim 10$ and $\sim 33\,\Msun$, the familiar features of the \ac{BBH} mass spectrum. For $0.3 < q < 0.65$, the spectrum instead peaks at $\sim 21$ and $\sim 59\,\Msun$. Averaged over all mass ratios, the two families overlap, and the $q \sim 0.5$ peaks appear only as a shoulder and a tail; they emerge once the mass ratio distribution is allowed to change with primary mass.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/mass_ratio_m1.pdf}
+    \caption{Top: the primary mass distribution $p(m_1)$ over all mass ratios (black lines: 90\% interval) and restricted to $0.3 < q < 0.65$ (blue) and $0.8 < q < 1$ (orange) (90\% bands and medians), for the \flexiblespins model. Bottom: the median $p(q \mid m_1)$, with the 90\% (solid) and 99\% (dashed) intervals of the mean mass ratio $\langle q \rangle$ at each $m_1$; cells with $m_2 < 3\,\Msun$ are blank.}
+    \label{fig: mass}
+\end{figure}
+
+To quantify each peak, we fit a simple parametric model to each posterior draw of $p(m_1, q)$ in a window around the peak. Specifically, in a window $m_1 \in [m_{\rm min}, m_{\rm max}]$ we fit
+\begin{multline}
+    p(m_1, q \mid \Lambda) = \eta\, \mathrm{PL}(m_1 \mid \alpha)\, \mathcal{N}_{[0, 1]}(q \mid \mu_q', \sigma_q') \\
+    + (1 - \eta)\, \mathcal{N}(m_1 \mid \mu, \sigma)\, \mathcal{N}_{[0, 1]}(q \mid \mu_q, \sigma_q),
+\end{multline}
+a Gaussian peak on a power-law background, each with its own truncated-Gaussian mass ratio distribution, by minimizing the Kullback--Leibler divergence from the inferred $p(m_1, q)$. No mass ratio range is imposed, so the mass ratio of each peak is measured, not assumed. The fitted peak locations and mass ratios are listed in Table~\ref{tab: peaks}, and shown in Fig.~\ref{fig: bookkeeping}(a). The locations agree between the two spin models, and with fits to the one-dimensional $p(m_1 \mid q)$ in each mass ratio range (Supplemental Material).
+
+\begin{table}
+    \caption{The four peaks: location $\mu$, width $\sigma$ and mean mass ratio $\langle q \rangle$ from the joint $(m_1, q)$ fits, for the \flexiblespins model (medians and 90\% intervals; \gaussianspins values in the Supplemental Material).}
+    \label{tab: peaks}
+    \begin{ruledtabular}
+    \begin{tabular}{lccc}
+        Peak & $\mu$ [\Msun] & $\sigma$ [\Msun] & $\langle q \rangle$ \\
+        \hline
+        10 & $\jointTenMuFlex$ & $\jointTenSigmaFlex$ & $\jointTenQMeanFlex$ \\
+        35 & $\jointThirtyFiveMuFlex$ & $\jointThirtyFiveSigmaFlex$ & $\jointThirtyFiveQMeanFlex$ \\
+        20 & $\jointTwentyMuFlex$ & $\jointTwentySigmaFlex$ & $\jointTwentyQMeanFlex$ \\
+        60 & $\jointSixtyMuFlex$ & $\jointSixtySigmaFlex$ & $\jointSixtyQMeanFlex$ \\
+    \end{tabular}
+    \end{ruledtabular}
+\end{table}
+
+How significant are these peaks? A flexible model can fit noise as structure, and the fits above always find the best Gaussian in a window, whether or not a peak is present. Nearly every posterior draw has a fitted peak in each window (fractions $\jointTenPeakFracFlex$, $\jointThirtyFivePeakFracFlex$, $\jointTwentyPeakFracFlex$ and $\jointSixtyPeakFracFlex$ for the 10, 35, 20 and 60\,\Msun peaks), but random draws of the mass field's prior also produce a fitted peak in 70--85\% of draws, so these fractions alone are weak evidence. We also test whether each peak stands above a local power law: in each window we compare $\ln p(m_1, q)$, integrated over the peak's own mass ratio range, to the straight line in $(\ln m_1, \ln p)$ joining the window's edges. The probability of a positive excess at the most prominent bin is $\peakTenExcessPLocFlex$, $\peakThirtyFiveExcessPLocFlex$, $\peakTwentyExcessPLocFlex$ and $\peakSixtyExcessPLocFlex$, while the same statistic in the other mass ratio range gives $\approx 0.3$--$0.6$ (Supplemental Material). The off-diagonal mass ratio ranges thus act as a built-in control. Still, these are posterior probabilities, not $p$-values: the windows were chosen after inspecting the population. The clearest signal is in the mass ratio rather than in $m_1$: the mean mass ratio in a window around each peak is higher at 10 and 35\,\Msun than at 20 and 60\,\Msun, with $P(\Delta > 0) = $ \todo{values} for the three contrasts (Supplemental Material). These contrasts compare the peaks with one another rather than with a local power law, so they do not depend on where the windows end. We therefore regard the $q \sim 0.5$ peaks as tentative. A calibrated significance requires mock catalogs analyzed with the same pipeline, which we outline in the Supplemental Material and leave to future work.
+
+\subsection{Peak locations: consistent with dynamical \acp{BBH}?}
+
+If the $q \sim 0.5$ peaks are hierarchical mergers, the secondary of each should be a first-generation \ac{BH} from the corresponding near-equal-mass peak, and its primary should be the remnant of a merger between two such \acp{BH}. Two checks follow. First, the typical secondary mass of each $q \sim 0.5$ peak, $\langle q \rangle \mu$, is $\approx 10$ and $\approx 32\,\Msun$ for the 20 and 60\,\Msun peaks, matching the near-equal-mass peaks. The secondary mass distribution itself shows plateaus rather than peaks at these masses (Fig.~\ref{fig: m2}); this is expected, since even a narrow peak in $m_1$ is spread over a factor of $\sim 2$ in $m_2 = q m_1$ by the width of the mass ratio distribution. \todo{forward-model $p(m_2)$ from the fitted peaks and compare the plateau edges} Second, the remnant of a near-equal-mass merger of slowly spinning \acp{BH} retains $\approx 95\%$ of the binary's total mass, the rest being radiated in gravitational waves~\cite{Gerosa:2021mno}, so the second-generation peak should sit at $\approx 0.95\,\mu_{\rm lo}(1 + \langle q \rangle_{\rm lo})$. We define the retained fraction
+\begin{equation}
+    f_{\rm ret} = \frac{\mu_{\rm hi}}{\mu_{\rm lo}(1 + \langle q \rangle_{\rm lo})},
+\end{equation}
+which should be $\approx 0.95$ (Fig.~\ref{fig: bookkeeping}b). For the $35 \to 60$ pair we find $f_{\rm ret} = \pairThirtyFiveSixtyRetainedFlex$, consistent with hierarchical mergers. For the $10 \to 20$ pair, $f_{\rm ret} = \pairTenTwentyRetainedFlex$, with only $\pairTenTwentyQuantileRetainedFlex$ of the posterior below 0.95: the 20\,\Msun peak sits slightly above where hierarchical mergers of the 10\,\Msun population would place it. A fit-free version, using the modes of the total mass and primary mass distributions, gives $\pairTenTwentyRetainedModeFlex$ and $\pairThirtyFiveSixtyRetainedModeFlex$, with the same conclusion.
+
+The $10 \to 20$ tension has several plausible readings. The first-generation \acp{BH} that are retained in clusters need not follow the $\sim 10\,\Msun$ peak, which is likely dominated by isolated binaries with small, preferentially positive $\chieff$, so the first-generation mass spectrum in clusters may be heavier. Mass-dependent pairing in clusters also favors heavier first-generation \acp{BH}. Finally, the radiated fraction depends on the first-generation spins and mass ratios, so 0.95 is only approximate. \todo{replace 0.95 by the distribution of remnant masses from numerical-relativity fits, averaged over the 10\,\Msun peak's $q$ and spin posteriors} A model that separates the formation channels is needed to distinguish these, which is beyond the scope of this work.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/peak_bookkeeping.pdf}
+    \caption{(a) Each peak's location $\mu$ against its mean mass ratio, from the joint $(m_1, q)$ fits; 90\% (solid) and 50\% (dashed) regions for the \flexiblespins (blue) and \gaussianspins (red) models. (b) The retained fraction $f_{\rm ret}$ for the $10 \to 20$ and $35 \to 60$ pairs, from the modes of $p(m_1 \mid 0.3 < q < 0.65)$ and of the total mass of the lower peak. Dotted: 0.95 ($\sim 5\%$ radiated); shaded: $f_{\rm ret} > 1$.}
+    \label{fig: bookkeeping}
+\end{figure}
+
+\section{Spin behavior}
+
+The effective spin distribution changes markedly across the mass plane. In Fig.~\ref{fig: width m1} we show the standard deviation of $\chieff$ as a function of primary mass. The width is small at the near-equal-mass peaks, $\sim 10$ and $\sim 33\,\Msun$, and large at $\sim 18$--$20$ and $\gtrsim 45\,\Msun$, coincident with the $q \sim 0.5$ peaks. The broadening comes from the low mass ratio systems: it is absent in the $0.8 < q < 1$ slice. Both spin models find the same pattern.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/chi_eff_sd_m1_core.pdf}
+    \caption{The width of the effective spin distribution at each primary mass, $\sigma_{\chieff}(m_1)$, the standard deviation of $p(\chieff \mid m_1, |\chieff| < 0.8)$, over all mass ratios (black lines: 90\% interval) and for $0.3 < q < 0.65$ (blue) and $0.8 < q < 1$ (orange) (90\% bands and medians), for the \flexiblespins (top) and \gaussianspins (bottom) models.}
+    \label{fig: width m1}
+\end{figure}
+
+Fig.~\ref{fig: width q} shows the same width as a function of mass ratio, averaged over primary mass. In the \flexiblespins model, $\sigma_{\chieff} = \chiQBroadSdQLoCoreFlex$ at $q = 0.35$ and $\chiQBroadSdQHiCoreFlex$ at $q = 0.85$, a ratio of $\chiQBroadSdRatioCoreFlex$; the width is larger at $q = 0.35$ with probability $\chiQBroadProbCoreFlex$, compared with $\chiQBroadProbPriorCoreFlex$ under the prior. The \gaussianspins model gives $\chiQBroadSdQLoCoreGauss$ and $\chiQBroadSdQHiCoreGauss$, with probability $\chiQBroadProbCoreGauss$ (prior: $\chiQBroadProbPriorCoreGauss$). The mean of $\chieff$, by contrast, is nearly independent of $q$ (Supplemental Material): the effective spins at low mass ratio are broader, not shifted. Our results agree with the linear and spline $\chieff \mid q$ models of \citet{LIGOScientific:2026ctl}, which assume a functional form in $q$; our models find the same trend without one, and further localize it to the $q \sim 0.5$ peaks.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/chi_eff_sd_q_core_lvk.pdf}
+    \caption{The width of the effective spin distribution as a function of mass ratio, $\sigma_{\chieff}(q)$, averaged over $p(m_1 \mid q)$ and restricted to $|\chieff| < 0.8$, for the \flexiblespins (top) and \gaussianspins (bottom) models (blue: median and 90\% band). Lines: the 90\% intervals of $\sigma_{\chieff}(q)$ in the GWTC-5 linear (red, dash-dotted) and spline (green, dashed) $\chieff \mid q$ models~\cite{LIGOScientific:2026ctl}.}
+    \label{fig: width q}
+\end{figure}
+
+Fig.~\ref{fig: spin regions} shows the joint $(\chieff, \chip)$ distribution in each of the four peak regions. The near-equal-mass peaks have narrow, slightly positive $\chieff$, as expected for first-generation \acp{BH} with small spins. The $q \sim 0.5$ peaks have broad $\chieff$, nearly symmetric about zero, and larger $\chip$. This is the signature of hierarchical mergers in dense clusters: the remnant of a near-equal-mass merger spins with $\chi \approx 0.69$, and dynamical assembly orients it isotropically~\cite{Gerosa:2017kvu, Fishbach:2017dwv, Rodriguez:2019huv}. For a second-generation primary with a slowly spinning first-generation companion at $q \approx 0.5$, isotropic tilts give $\chieff$ centered on zero with a standard deviation of $\approx 0.27$, and $\langle \chip \rangle \approx 0.55$ (Supplemental Material). The measured width at $q = 0.35$, $\chiQBroadSdQLoCoreFlex$, is comparable to this prediction. A quantitative comparison must account for the first-generation binaries that share the window with the $q \sim 0.5$ peaks, which narrow the expected width. \todo{mixture prediction from the fitted peak fractions} A symmetric broadening also distinguishes clusters from hierarchical mergers in active galactic nuclei disks, which would produce preferentially positive $\chieff$~\cite{Li:2025iux}.
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/spin_peak_regions.pdf}
+    \caption{The joint spin distribution $p(\chieff, \chip \mid m_1, q)$ in the four peak regions: the near-equal-mass peaks ($m_1 \in [8, 12]$ and $[30, 40]\,\Msun$, $q \in [0.8, 1]$) and the $q \sim 0.5$ peaks ($m_1 \in [16, 22]$ and $[55, 65]\,\Msun$, $q \in [0.3, 0.65]$). Heatmap: the \flexiblespins model's median density; contours: the \gaussianspins model's 50\% (solid) and 90\% (dashed) regions. The blank corner is outside the physical domain.}
+    \label{fig: spin regions}
+\end{figure*}
+
+The precessing spin is less informative. Individual-event $\chip$ measurements are close to their priors, particularly at low mass, and the inferred mean $\chip$ varies little across the mass plane in either model. The $\chip$ moments near the 20\,\Msun peak are likely pulled toward those of the neighboring, more populous near-equal-mass peaks by the smoothness of the field. We therefore base our conclusions on $\chieff$, and regard $\chip$ as consistent with, but not evidence for, the hierarchical merger interpretation. \todo{state the $\chip$ moments at the four peaks, with the prior for comparison}
+
+\section{Discussion}
+
+We have presented a nonparametric measurement of the joint mass and effective spin distribution of \acp{BBH}, which allows the mass ratio and spin distributions to vary across the primary mass spectrum. The population is not separable: near equal masses, the mass spectrum peaks at $\sim 10$ and $\sim 33\,\Msun$ with narrow effective spins, while at $q \sim 0.5$ it peaks at about twice those masses with broad, symmetric effective spins. The masses and spins of the $35 \to 60$ pair match the expectation for hierarchical mergers; the $10 \to 20$ pair matches in spin and in secondary mass, but its primary sits slightly heavier than a simple remnant-mass estimate predicts.
+
+These results are tentative. Posterior-only measures of significance are unreliable for models this flexible, and calibrating them requires injection campaigns with mock catalogs, which we leave to future work. The full sample from the fourth observing run, roughly two to four times larger, should be decisive. Our models also assume that the redshift distribution is independent of mass and spin; relaxing this would test whether the $q \sim 0.5$ peaks evolve differently with redshift, as hierarchical mergers in clusters might. A model with explicit formation channels, needed to interpret these features quantitatively, is the subject of a companion paper.
+
+\begin{acknowledgments}
+\todo{acknowledgments, LVK data statement, computing resources}
+\end{acknowledgments}
+
+\bibliography{draft/main}
+
+\clearpage
+\onecolumngrid
+\setcounter{equation}{0}
+\setcounter{figure}{0}
+\setcounter{table}{0}
+\setcounter{section}{0}
+\renewcommand{\theequation}{S\arabic{equation}}
+\renewcommand{\thefigure}{S\arabic{figure}}
+\renewcommand{\thetable}{S\arabic{table}}
+\renewcommand{\thesection}{S\arabic{section}}
+
+\begin{center}
+\textbf{\large Supplemental Material}
+\end{center}
+
+This Supplemental Material describes the data (Sec.~\ref{sm: data}), the likelihood (Sec.~\ref{sm: likelihood}), the population models and their priors (Secs.~\ref{sm: fields}--\ref{sm: spin models}), how we evaluate them efficiently (Sec.~\ref{sm: implementation}), the sampler (Sec.~\ref{sm: sampling}), the post-processing of the posterior into spin moments (Sec.~\ref{sm: moments}), the peak fits and their significance (Secs.~\ref{sm: peak fits}--\ref{sm: significance}), the robustness tests (Sec.~\ref{sm: robustness}), and the hierarchical-merger expectations used in the main text (Sec.~\ref{sm: hierarchical}).
+
+\section{Data}
+\label{sm: data}
+
+\textit{Events.} We use the 259 \acp{BBH} with \ac{FAR} $< 1\peryear$ in the population analysis of \citet{LIGOScientific:2026ctl}, spanning the first through fourth observing runs (O1--O4b), with the same event list, exclusions and waveform choices. The \ac{PE} samples come from the GWTC-2.1 and GWTC-3 data releases for O1--O3 and from the GWTC-4 and GWTC-5 releases for O4a and O4b. For each event we take the first available of NRSur7dq4~\cite{Varma:2019csw}, the mixed-waveform samples, and IMRPhenomXPHM-SpinTaylor~\cite{Pratten:2020ceb}. The list excludes sub-threshold events and events with a possible neutron star, including GW190814 and GW190917. Each sample carries its \ac{PE} prior density, which we convert to $(\ln m_1, q, \chieff, \chip, z)$, including the Jacobians of the transformation. \todo{cite the data releases}
+
+\textit{Sensitivity.} We estimate the selection function with the mixture of sensitivity injections released with \ac{GWTC-5}: real-noise injections for O3, O4a and O4b and semianalytic injections for O1 and O2, with the same detection threshold as the events (\ac{FAR} $< 1\peryear$, and a network signal-to-noise ratio above 10 for the semianalytic injections).
+
+\textit{Domain.} Samples and injections are restricted to $m_1 \in [3, 200]\,\Msun$ and $z < 1.9$. Samples outside this domain are given zero weight (an infinite \ac{PE} prior), and injections outside it are removed.
+
+\textit{Sample selection.} The number of \ac{PE} samples differs between events. We keep at most 20000 samples per event, drawn at random from the \emph{usable} samples: those inside the population grid, in a $(\ln m_1, q)$ bin and a $(\chieff, \chip)$ bin that at least one detected injection reaches. Samples that are not usable carry zero weight in the likelihood anyway, since the population density at an unreachable bin cannot be constrained by the selection function. Leaving them out of the count shifts each event's log-likelihood by the constant $-\ln(N_{\rm usable}/N_{\rm real})$, which does not affect inference. Over the catalog, a fraction $9.7 \times 10^{-4}$ of samples is not usable, at most 2.3\% for one event (GW230704, mostly at $z > 1.9$). Events with fewer samples are padded to a rectangular array with zero-weight copies, and the per-event sample count is kept for the Monte Carlo estimators below.
+
+\section{Likelihood}
+\label{sm: likelihood}
+
+For hyperparameters $\Lambda$, we write the population as a density $p(\theta \mid \Lambda)$ over $\theta = (\ln m_1, q, \chieff, \chip, z)$ and the merger rate as $R\, p(\theta \mid \Lambda)$. Marginalizing over $R$ with a scale-invariant prior gives the standard hierarchical likelihood~\cite{Mandel:2018mve, Thrane:2018qnx}
+\begin{equation}
+    \ln \mathcal{L}(\Lambda) = \sum_{i=1}^{N_{\rm obs}} \ln \hat{\mathcal{L}}_i(\Lambda) - N_{\rm obs} \ln \hat{\xi}(\Lambda),
+\end{equation}
+with the Monte Carlo estimates
+\begin{equation}
+    \hat{\mathcal{L}}_i = \frac{1}{M_i} \sum_{j=1}^{M_i} w_{ij}, \quad w_{ij} = \frac{p(\theta_{ij} \mid \Lambda)}{\pi_i(\theta_{ij})}, \qquad
+    \hat{\xi} = \frac{1}{T} \sum_{k\,\in\,\rm found} w_k, \quad w_k = \frac{p(\theta_k \mid \Lambda)}{p_{\rm draw}(\theta_k)},
+\end{equation}
+where $\theta_{ij}$ are the $M_i$ samples of event $i$ with \ac{PE} prior $\pi_i$, and $\theta_k$ the found injections out of $T$ generated, with draw density $p_{\rm draw}$. Both weights include the redshift factor $\frac{dV_c}{dz} \frac{1}{1+z} (1 + z)^{\lambda}$.
+
+\textit{Monte Carlo uncertainty.} The variance of the log-likelihood estimate is
+\begin{equation}
+    \sigma^2_{\ln \mathcal{L}} = \sum_i \frac{1}{N_{{\rm eff}, i}} + \frac{N_{\rm obs}^2}{N_{\rm eff, sel}}, \qquad
+    N_{{\rm eff}, i} = \left[\frac{\sum_j w_{ij}^2}{(\sum_j w_{ij})^2} - \frac{1}{M_i}\right]^{-1},
+\end{equation}
+with the analogous effective sample size $N_{\rm eff, sel}$ for the injections~\cite{Farr:2019rap, Essick:2022ojx, Talbot:2023pex}. We record it, with its per-event and selection parts, at every posterior sample. We impose no cut on $\sigma^2_{\ln\mathcal{L}}$.
+
+\textit{Per-event effective sample size.} Flexible models can place structure on scales smaller than an event's \ac{PE} samples resolve, where $\hat{\mathcal{L}}_i$ becomes unreliable. We therefore require $N_{{\rm eff}, i} \geq 100$ for every event, imposed as a smooth penalty, $\sum_i s(-\ln N_{{\rm eff}, i};\, -\ln 100,\, 0.1)$, where $s(x; x_0, \delta)$ is a smoothed step from zero to a large negative value at $x_0$ with width $\delta$. A smooth penalty keeps the log density differentiable for the sampler.
+
+\textit{Selection bias correction.} $1/\hat{\xi}^{N_{\rm obs}}$ is a biased estimate of $1/\xi^{N_{\rm obs}}$. To leading order, its expectation is too large by a factor $1 + N_{\rm obs}(N_{\rm obs} + 1)\sigma_{\rm sel}^2/2$, with
+\begin{equation}
+    \sigma_{\rm sel}^2 = \frac{1}{T - 1}\left[T\frac{\sum_k w_k^2}{(\sum_k w_k)^2} - 1\right].
+\end{equation}
+Following \citet{Heinzel:2025ogf}, we subtract $N_{\rm obs}(N_{\rm obs} + 1)\sigma^2_{\rm sel}/2$ from $\ln \mathcal{L}$.
+
+\textit{Monte Carlo systematics.} To check that the Monte Carlo error does not drive our results, we estimate for each reported quantity $f$ the systematic shift of its posterior mean due to the Monte Carlo error of $\ln \hat{\mathcal{L}}$. To first order, the spread of this shift over Monte Carlo realizations is
+\begin{equation}
+    \sigma^2_{\rm syst} = \frac{1}{N^2} \sum_{n, m} \delta f_n\, \delta f_m\, C(\Lambda_n, \Lambda_m), \qquad \delta f_n = f(\Lambda_n) - \overline{f},
+\end{equation}
+where $C$ is the covariance of the log-likelihood error between posterior samples $\Lambda_n$ and $\Lambda_m$~\cite{Heinzel:2025ogf}. Writing $C$ as a sum over \ac{PE} samples and injections of products of normalized weights reduces this to a single pass over the posterior samples, $\sigma^2_{\rm syst} = \sum_s c_s g_s^2$ with $g_s = N^{-1}\sum_n \delta f_n \tilde{w}_{n, s}$, where $c_s = 1/[M_i(M_i - 1)]$ for the samples of event $i$ and $N_{\rm obs}^2/[T(T - 1)]$ for the injections. We compare $\sigma_{\rm syst}$ with the posterior standard deviation $\sigma_{\rm stat}$. \todo{$\sigma_{\rm syst}/\sigma_{\rm stat}$ for the peak locations, $f_{\rm ret}$ and $\sigma_{\chieff}(q)$}
+
+\section{Mat\'ern fields}
+\label{sm: fields}
+
+All population fields are Mat\'ern Gaussian random fields on a regular grid, represented in the Laplacian eigenbasis of the grid, following the stochastic partial differential equation construction~\cite{Whittle:1954abc, lindgren_explicit_2011} used in \PixelPop~\cite{Heinzel:2024jlc}.
+
+\textit{Eigenbasis.} Along each axis $d$ with $B_d$ bins, we take the graph Laplacian of the path graph (each bin coupled to its neighbors), and its eigenvectors $v^{(d)}_k$ and eigenvalues $\lambda^{(d)}_k$, $k = 0, \dots, B_d - 1$, with $\lambda^{(d)}_0 = 0$ for the constant mode. On a $D$-dimensional grid, the products $\prod_d v^{(d)}_{k_d}$ form an orthonormal basis.
+
+\textit{Field.} A field is
+\begin{equation}
+    f = \sum_{\vec{k}} a_{\vec{k}}\, z_{\vec{k}} \prod_{d=1}^{D} v^{(d)}_{k_d}, \qquad z_{\vec{k}} \sim \mathcal{N}(0, 1),
+\end{equation}
+with the Mat\'ern spectrum
+\begin{equation}
+    a_{\vec{k}} = s \sqrt{\frac{N_{\rm sites}}{\sum_{\vec{k}'} \tilde{a}_{\vec{k}'}^2}}\; \tilde{a}_{\vec{k}}, \qquad
+    \tilde{a}_{\vec{k}} = \Big(1 + \sum_{d} \frac{\ell_d^2\, \lambda^{(d)}_{k_d}}{8\nu}\Big)^{-(\nu + D/2)/2},
+\end{equation}
+where $\ell_d$ is the range along axis $d$ in bins, $\nu$ the smoothness and $N_{\rm sites}$ the number of grid sites. The normalization makes the site-averaged variance of $f$ equal to $s^2$, independent of $\ell_d$ and $\nu$, so the amplitude and the correlation structure are separately identified. The constant mode $\vec{k} = 0$ is set to zero: it is degenerate with the normalization of the density.
+
+\textit{Parametrization.} We sample the white-noise coefficients $z_{\vec{k}}$ and the hyperparameters $(s, \nu, \ell_d)$, not the field itself (a non-centered parametrization), which removes the strong posterior correlation between the field and its amplitude~\cite{Papaspiliopoulos:2007abc, Betancourt:2017ebh}.
+
+\textit{Hyperpriors.} Unless stated otherwise, $\ln s \sim \mathcal{N}(0, 2)$, $\ln \nu \sim \mathcal{N}(0, 0.5)$, and $\ln \ell_d \sim \mathcal{U}(0, \ln B_d)$, log-uniform from one bin to the length of the axis. \todo{confirm the \PixelPop default hyperpriors}
+
+\section{Mass and redshift model}
+\label{sm: mass model}
+
+The mass distribution is
+\begin{equation}
+    p(\ln m_1, q) \propto e^{L(\ln m_1, q)}\, \Theta(q m_1 - 3\,\Msun),
+\end{equation}
+with $L$ a two-dimensional Mat\'ern field on $100 \times 100$ bins uniform in $\ln m_1 \in [\ln 3, \ln 200]$ and $q \in [0, 1]$, keeping all $10^4$ modes, and piecewise constant within each bin. The step function, the $m_2 > 3\,\Msun$ window, is applied as a separate factor, with its lower edge fixed at $3\,\Msun$ and no tapering. All mass distributions we show are windowed and renormalized; the field $L$ alone is not.
+
+The redshift distribution is $p(z) \propto \frac{dV_c}{dz} \frac{1}{1+z} (1 + z)^{\lambda}$ on $z < 1.9$, independent of mass and spin, with the prior on $\lambda$ of \citet{LIGOScientific:2026ctl}. \todo{state the prior on $\lambda$}
+
+\section{Spin models}
+\label{sm: spin models}
+
+\textit{Physical domain.} For given $q$ and $\chieff$, the largest reachable $\chip$, with component spin magnitudes below 1, is~\cite{iwaya_analytic_2025}
+\begin{equation}
+    \chi_{\rm p, max}(\chieff, q) = \sqrt{1 - x^2}, \qquad x = \min\big[\max\big((1 + q)|\chieff| - q,\, 0\big),\, 1\big].
+\end{equation}
+The spin distribution lives on $100 \times 100$ bins uniform over $\chieff \in [-1, 1]$ and $\chip \in [0, 1]$, restricted to $\chip < \chi_{\rm p, max}(\chieff, q)$. Many bins are cut by this boundary. For each $(\chieff, \chip)$ bin and each $q$ bin, we compute the allowed fraction $f_b(q)$ of the bin's area, on 64 sub-bins in $\chieff$ and 8 values of $q$ across the $q$ bin. A spin density that is constant within a bin then has total probability $\propto e^{F_b} f_b$ in it. The fraction enters the normalization only, so a sample's density is the same anywhere in its bin.
+
+\textit{Normalization.} Each spin model gives a log density $F(\ln m_1, q, \chieff, \chip)$ on the grid, and
+\begin{equation}
+    \ln p(\chieff, \chip \mid m_1, q) = F - \ln Z(m_1, q), \qquad \ln Z = \LSE_{b}\big[F_b + \ln f_b(q)\big],
+\end{equation}
+with $\LSE$ the log-sum-exp over spin bins. Bins that no $q$ in the $q$ bin can reach ($f_b = 0$) are assigned a log density of $-10^4$ instead of $-\infty$, which gives them zero probability while keeping all gradients finite. \ac{PE} samples or injections in bins with $f_b = 0$ would have zero weight. \todo{confirm that there are none} We also give zero weight to the (few) \ac{PE} samples in spin bins that no detected injection reaches.
+
+\textit{The} \flexiblespins \textit{model.} $F$ is a four-dimensional Mat\'ern field, factorized over the mass plane:
+\begin{equation}
+    F(\ln m_1, q, \chi) = \sum_{k, l < K} v^{(m)}_k(\ln m_1)\, v^{(q)}_l(q)\, G_{kl}(\chieff, \chip),
+\end{equation}
+keeping the $K = 10$ lowest modes along each mass axis and all $100 \times 100$ spin modes. $G$ has the Mat\'ern spectrum of Sec.~\ref{sm: fields} in four dimensions, with a single amplitude $s$, a single smoothness $\nu$ and four ranges. The mass ranges have the default prior. The spin ranges are bounded below by $0.05$ in $\chi$, that is 2.5 bins in $\chieff$ and 5 bins in $\chip$, so that the spin distribution cannot vary on scales finer than individual events resolve. Modes that are constant in $\chi$ (the $(0, 0)$ spin mode of every mass mode) add a function of $(m_1, q)$ alone to $F$, which cancels in the normalization; we set them to zero. A field of zero is uniform on the physical domain, so the model has no preferred spin distribution. The truncation to $K = 10$ mass modes limits the spin distribution to vary on scales of about a tenth of each mass axis, about $0.4$ in $\ln m_1$ and $0.1$ in $q$, and makes the model tractable (Sec.~\ref{sm: implementation}).
+
+\textit{The} \gaussianspins \textit{model.} The spin distribution is a bivariate Gaussian in $(\chieff, \chip)$, truncated to the physical domain and normalized at each $(m_1, q)$ as above:
+\begin{equation}
+    F = -\frac{1}{2(1 - \rho^2)}\left[x^2 - 2\rho x y + y^2\right] - \ln(\sigma_{\chieff} \sigma_{\chip}) - \frac{1}{2}\ln(1 - \rho^2), \qquad
+    x = \frac{\chieff - \mu_{\chieff}}{\sigma_{\chieff}}, \quad y = \frac{\chip - \mu_{\chip}}{\sigma_{\chip}},
+\end{equation}
+that is, $p \propto \mathcal{N}(\vec{\mu}, C)$ with
+\begin{align}
+    \vec{\mu} &= \begin{bmatrix} \mu_{\chieff} \\ \mu_{\chip} \end{bmatrix}, &
+    C &= \begin{bmatrix}
+    \sigma^2_{\chieff} & \rho\,\sigma_{\chieff}\sigma_{\chip} \\
+    \rho\,\sigma_{\chieff}\sigma_{\chip} & \sigma^2_{\chip}
+    \end{bmatrix}, \label{eq: gaussian cov}
+\end{align}
+each entry a function of $(m_1, q)$. The five parameters $\theta_i \in \{\mu_{\chieff}, \mu_{\chip}, \ln\tilde{\sigma}_{\chieff}, \ln\tilde{\sigma}_{\chip}, \operatorname{atanh}\rho\}$ are each a constant plus a two-dimensional Mat\'ern field over the $(\ln m_1, q)$ grid, $\theta_i = c_i + f_i(\ln m_1, q)$, with the constant mode of $f_i$ set to zero so that $c_i$ carries the mean. Each $f_i$ has its own amplitude $s_i$ and ranges, and the smoothness $\nu$ is shared. We use all $100 \times 100$ mass modes ($5 \times 10^4$ white-noise coefficients). The widths entering the Gaussian are $\sigma = (\tilde{\sigma}^2 + 0.02^2)^{1/2}$, a soft floor at one spin bin, so that the Gaussian cannot become narrower than the grid resolves. The priors are
+\begin{gather}
+    c_{\mu_{\chieff}} \sim \mathcal{U}(-0.5, 0.5), \quad c_{\mu_{\chip}} \sim \mathcal{U}(0, 1), \quad c_{\ln\tilde{\sigma}} \sim \mathcal{U}(\ln 0.03, 0) \text{ (both widths)}, \quad c_{\operatorname{atanh}\rho} \sim \mathcal{U}(-2, 2), \\
+    \ln s_i \sim \mathcal{N}(\ln 0.1, 1) \text{ for the two means}, \qquad \ln s_i \sim \mathcal{N}(\ln 0.5, 1) \text{ for the two log-widths and } \operatorname{atanh}\rho,
+\end{gather}
+and the default priors on $\nu$ and the ranges. The amplitude priors are centered on the scale over which each parameter can plausibly vary across the mass plane: $\sim 0.1$ in the means, and a factor of $\sim e^{0.5}$ in the widths.
+
+\textit{The split model (robustness).} $F = G_0(\chi) + G_1(\ln m_1, q, \chi)$. $G_0$ is a mass-independent two-dimensional Mat\'ern field on $(\chieff, \chip)$ with its own $(s_0, \nu_0, \ell)$. $G_1$ keeps the $10 \times 10$ mass modes except the constant one, with its own amplitude $s_1$ and smoothness $\nu_1$, and a separable spectrum: the product of a two-dimensional Mat\'ern spectrum over the mass modes and one over the spin modes, each with the constant mode removed. Variations of the spin distribution along mass are then not damped jointly with variations in $\chi$, and $s_1$ directly measures how much the spin distribution changes with mass. Since the lowest mass eigenvectors are constant, $G_0$ enters as a constant addition to the $(0, 0)$ mass mode.
+
+\section{Implementation}
+\label{sm: implementation}
+
+The model is written in \textsc{JAX} and \textsc{NumPyro}~\cite{Phan:2019numpyro} and runs on a single GPU. The four-dimensional spin density of the \flexiblespins model has $100^4 = 10^8$ cells, too many to form at once, and the population density must be evaluated at more than $5 \times 10^6$ \ac{PE} samples and injections, with gradients, at every sampler step. We make this tractable as follows.
+
+\textit{Factorization.} The \flexiblespins field is stored as its $10 \times 10 \times 100 \times 100$ coefficients $G_{kl}(\chi)$ in the mass eigenbasis and spin grid. At a sample in bin $(a, b, c, d)$ of $(\ln m_1, q, \chieff, \chip)$, $F = \sum_{kl} v^{(m)}_k(a)\, v^{(q)}_l(b)\, G_{kl}(c, d)$, a contraction over 100 coefficients that never forms the full cube.
+
+\textit{Normalization by slabs.} The normalization $\ln Z(m_1, q)$ requires a log-sum-exp over all spin bins at every mass cell. We compute it one $\ln m_1$ bin at a time, forming the $100 \times 100 \times 100$ slab of $(q, \chieff, \chip)$, with a sequential map over the 100 slabs (in batches of 10). Each slab is rematerialized on the backward pass rather than stored (gradient checkpointing), so memory scales with one slab rather than with the cube. The same pass accumulates, at no extra cost, the per-cell means and standard deviations of $\chieff$ and $\chip$ (on the full domain and on $|\chieff| < 0.8$), and the population spin marginal, which we store at every posterior sample.
+
+\textit{Gaussian model.} The \gaussianspins density is evaluated in closed form at each sample and normalized by the same slab pass, so its cost is similar despite using all $10^4$ mass modes per parameter field.
+
+\textit{Cost.} One evaluation of the log density and its gradient takes $\sim 25$\,ms on an NVIDIA A100 for the \flexiblespins model. \todo{update timings for the final runs}
+
+\section{Sampling}
+\label{sm: sampling}
+
+We sample all latent variables jointly with the No-U-Turn Sampler~\cite{Hoffman:2014nuts}, with a target acceptance probability of 0.7 and a maximum tree depth of 7. The mass matrix is diagonal for the white-noise coefficients and dense within each field's hyperparameters (its amplitude, smoothness and ranges), where the posterior correlations are strongest. Each chain runs 4000 warm-up steps, during which the step size and mass matrix are adapted, followed by 5000 steps thinned by a factor of 5 to 1000 retained samples. Each chain starts from an independent random draw of the full prior, keyed by the chain index, rather than from a tuned starting point, so that agreement between chains is a meaningful convergence test. Before each run we evaluate the likelihood, its variance and the smallest per-event effective sample size at the starting point. \todo{$\hat{R}$ and effective sample sizes of the hyperparameters and of the reported quantities}
+
+A few chains stalled early in warm-up: their step size fell from $\sim 10^{-2}$ to $\sim 10^{-6}$ with the parameters far from the posterior. The variance of the likelihood and the per-event effective sample sizes at the starting point did not predict which chains would stall. We discard these chains and replace them with new chains from different prior draws. \todo{state the agreement between the retained chains}
+
+\section{Spin moments}
+\label{sm: moments}
+
+\textit{Per-cell moments.} At each posterior sample and each $(m_1, q)$ cell, we compute the mean and standard deviation of $\chieff$ and $\chip$ under $p(\chieff, \chip \mid m_1, q)$, on the bin centers. Because individual-event $\chieff$ measurements rarely reach $|\chieff| > 0.8$, the tails of the spin distribution there are set mostly by the prior, and can dominate a standard deviation without being constrained. We therefore also compute the \emph{core} moments, of $p(\chieff \mid m_1, q, |\chieff| < 0.8)$, together with the probability outside the core.
+
+\textit{Moments as a function of $m_1$ or $q$.} To show the spin distribution as a function of $m_1$ alone, we average the conditional over the windowed $p(q \mid m_1)$, optionally restricted to a range of $q$. By the law of total variance,
+\begin{equation}
+    \sigma^2_{\chieff}(m_1) = \underbrace{\mathbb{E}_{q \mid m_1}\big[\sigma^2_{\chieff}(m_1, q)\big]}_{\rm within} + \underbrace{\mathrm{Var}_{q \mid m_1}\big[\mu_{\chieff}(m_1, q)\big]}_{\rm between},
+\end{equation}
+and we track both terms. The broadening at $\sim 18$--$20$ and $\gtrsim 45\,\Msun$ comes almost entirely from the \lq\lq within'' term at low $q$: the spin distribution at fixed low mass ratio is broad, rather than shifting with $q$. For core moments, each cell is additionally weighted by its probability inside the core, so the average is over $p(\chieff \mid m_1, |\chieff| < 0.8)$. The moments as a function of $q$ are computed in the same way, averaging over $p(m_1 \mid q)$.
+
+\textit{Prior comparison.} To ask whether a spin moment is informed by the data beyond the prior, we compare it with an empirical-Bayes prior. For 200 posterior samples, we keep the hyperparameters of the spin model and the mass field, and draw the spin white-noise coefficients afresh from $\mathcal{N}(0, 1)$ (and, for the \gaussianspins model, the constants $c_i$ from their priors). We then compute the same moments. These prior draws share the posterior's $p(q \mid m_1)$ and smoothness, so only the spin field itself is drawn from the prior.
+
+\textit{Comparison with \ac{GWTC-5}.} For Fig.~\ref{fig: width q}, we take the posterior of the Gaussian width $\sigma_{\chieff}(q)$ of the linear and spline mass-ratio-dependent spin models of \citet{LIGOScientific:2026ctl} from their released population summaries. These widths are not restricted to $|\chieff| < 0.8$, so the comparison is approximate where the tails matter.
+
+\section{Peak fits}
+\label{sm: peak fits}
+
+\textit{Windows.} The peaks are fitted in windows chosen by eye: $m_1 \in [5, 15]$, $[25, 40]$, $[15, 30]$ and $[40, 100]\,\Msun$ for the 10, 35, 20 and 60\,\Msun peaks, with the mass ratio ranges $0.8 < q < 1$ for the first two and $0.3 < q < 0.65$ for the last two where a range is used.
+
+\textit{Objective.} We fit each posterior sample's density $p$ by a model $f$ by minimizing the generalized Kullback--Leibler divergence over the window's cells,
+\begin{equation}
+    D(p \,\|\, f) = \sum_{\rm cells} a \left[p \ln\frac{p}{f} - p + f\right],
+\end{equation}
+with $a$ the cell area. This is the cross entropy $-\sum a\, p \ln f$ with the normalization of $f$ free, equivalent to a Poisson likelihood. Least squares in $\ln p$ gives equal weight to the many low-density cells and lets them dominate the fit; $D$ weights cells by their probability. We minimize $D$ by nonlinear least squares on the deviance residuals $\mathrm{sign}(f - p)\sqrt{2a[p\ln(p/f) - p + f]}$.
+
+\textit{One-dimensional fits.} On $p(m_1 \mid q \in Q)$ we fit $f(m_1) = A e^{-(m_1 - \mu)^2/2\sigma^2} + B(m_1/m_{\rm ref})^{-\alpha}$, with $m_{\rm ref}$ the window's center, $\mu$ bounded to the window, $\sigma$ to $(0.03, 1)$ times its width and $\alpha$ to $(-20, 20)$. Each sample starts from two initial points, with the Gaussian at the window's maximum and at its center, and keeps the better fit.
+
+\textit{Joint fits.} On the windowed $p(m_1, q)$ over all $q$ allowed by $m_2 > 3\,\Msun$, we fit
+\begin{equation}
+    f(m_1, q) = A\, \mathcal{N}(m_1; \mu, \sigma)\, \mathcal{T}(q; \mu_q, \sigma_q) + B \Big(\frac{m_1}{m_{\rm ref}}\Big)^{-\alpha} \mathcal{T}(q; \mu_q', \sigma_q'),
+\end{equation}
+where $\mathcal{T}$ is a Gaussian truncated to $[3\,\Msun/m_1, 1]$ and normalized at each $m_1$. The bounds are as above, with $\mu_q, \mu_q' \in (0, 1)$ and $\sigma_q \in (0.02, 3)$. The objective has local minima with the Gaussian at a window edge, so each sample starts from six initial points and keeps the lowest divergence. The reported mass ratio of a peak, $\langle q \rangle$, is the mean of $\mathcal{T}(q; \mu_q, \sigma_q)$ on $[3\,\Msun/\mu, 1]$, which unlike $\mu_q$ cannot sit on the boundary.
+
+\textit{Samples without a peak.} A fit that fails, or ends with $\mu$ or $\sigma$ on a bound, has no peak in the window. We count these samples and exclude them from the summaries, so the reported peak parameters are conditional on a peak. Table~\ref{tab: fits} lists the results for both spin models.
+
+\begin{table}
+    \caption{Peak fits for both spin models (medians and 90\% intervals). Joint: the joint $(m_1, q)$ fits; 1D: fits to $p(m_1 \mid q \in Q)$ in each peak's mass ratio range.}
+    \label{tab: fits}
+    \begin{ruledtabular}
+    \begin{tabular}{lcccccc}
+        & \multicolumn{3}{c}{\flexiblespins} & \multicolumn{3}{c}{\gaussianspins} \\
+        Peak & $\mu$ (joint) & $\langle q \rangle$ (joint) & $\mu$ (1D) & $\mu$ (joint) & $\langle q \rangle$ (joint) & $\mu$ (1D) \\
+        \hline
+        10 & $\jointTenMuFlex$ & $\jointTenQMeanFlex$ & $\peakTenMuFlex$ & $\jointTenMuGauss$ & $\jointTenQMeanGauss$ & $\peakTenMuGauss$ \\
+        35 & $\jointThirtyFiveMuFlex$ & $\jointThirtyFiveQMeanFlex$ & $\peakThirtyFiveMuFlex$ & $\jointThirtyFiveMuGauss$ & $\jointThirtyFiveQMeanGauss$ & $\peakThirtyFiveMuGauss$ \\
+        20 & $\jointTwentyMuFlex$ & $\jointTwentyQMeanFlex$ & $\peakTwentyMuFlex$ & $\jointTwentyMuGauss$ & $\jointTwentyQMeanGauss$ & $\peakTwentyMuGauss$ \\
+        60 & $\jointSixtyMuFlex$ & $\jointSixtyQMeanFlex$ & $\peakSixtyMuFlex$ & $\jointSixtyMuGauss$ & $\jointSixtyQMeanGauss$ & $\peakSixtyMuGauss$ \\
+    \end{tabular}
+    \end{ruledtabular}
+\end{table}
+
+\textit{Mass bookkeeping.} For each pair of peaks, (10, 20) and (35, 60), we compute $f_{\rm ret} = \mu_{\rm hi}/[\mu_{\rm lo}(1 + \langle q \rangle_{\rm lo})]$ from the joint fits of the same posterior sample, so that correlations between the peaks carry through; samples without a peak in either window are dropped. We also report the location ratio $\mu_{\rm hi}/\mu_{\rm lo}$: $\pairTenTwentyLocRatioFlex$ and $\pairThirtyFiveSixtyLocRatioFlex$. The fit-free version replaces the fitted quantities by modes: the lower peak's total mass is the mode of $p(M \mid q \in Q_{\rm lo})$, $M = m_1(1 + q)$, computed by splitting each $(\ln m_1, q)$ cell into $4 \times 4$ sub-cells and binning in $\ln M$; the higher peak's location is the mode of $p(m_1 \mid q \in Q_{\rm hi})$. Each mode is the maximum of $\ln p$, refined by a parabola, within a search window ($[12, 30]$ and $[15, 30]\,\Msun$ for the 10--20 pair; $[45, 85]$ and $[40, 100]\,\Msun$ for the 35--60 pair); samples whose maximum is at a window edge are dropped.
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.6\linewidth]{draft/plots/m2_m1_windows.pdf}
+    \caption{The secondary mass distribution $p(m_2 \mid m_1)$ in windows around the 20 and 60\,\Msun peaks, for the \flexiblespins model. The $q \sim 0.5$ peaks map onto plateaus, not peaks, in $m_2$, because the width of their mass ratio distribution spreads a narrow peak in $m_1$ over a factor of $\sim 2$ in $m_2$. \todo{describe the bands}}
+    \label{fig: m2}
+\end{figure}
+
+\section{Significance of the peaks}
+\label{sm: significance}
+
+\textit{Excess over a local power law.} For each posterior sample, we take $p(\ln m_1, q \in Q)$, the windowed mass density summed over the $q$ bins of $Q$, and in each window draw the chord in $(\ln m_1, \ln p)$ between the centers of the window's first and last bins, a local power law. The excess is
+\begin{equation}
+    d(m_1) = \ln p(\ln m_1, q \in Q) - \mathrm{chord}(\ln m_1),
+\end{equation}
+which is independent of the normalization of $p$ within $Q$, and the same for densities in $m_1$ or $\ln m_1$, since these differ by a term linear in $\ln m_1$ that the chord absorbs. We report $P_{\rm loc}$, the fraction of samples with $d > 0$ at a fixed bin, the interior bin where the median of $d$ is largest. Table~\ref{tab: excess} lists these, the height and location of the maximum excess, and the signed integrated excess $F_{\rm int} = \sum_{\rm bins}(p - e^{\rm chord}) / \sum_{\rm bins} p$. The $m_2 > 3\,\Msun$ cut removes part of the low-$m_1$ end of the window at low $q$; so that the cut cannot create a rising edge, we keep only the bins where every $q$ bin of $Q$ is allowed, i.e.\ $m_1 \min Q \geq 3\,\Msun$.
+
+\begin{table}
+    \caption{Excess over a local power law, each peak in its own mass ratio range (\flexiblespins model; medians and 90\% intervals). $P_{\rm loc}$: posterior probability of a positive excess at the most prominent bin; $d_{\max}$: the maximum excess in $\ln p$; $\hat{m}$: its location; $F_{\rm int}$: the signed integrated excess fraction.}
+    \label{tab: excess}
+    \begin{ruledtabular}
+    \begin{tabular}{lcccc}
+        Peak & $P_{\rm loc}$ & $d_{\max}$ & $\hat{m}$ [\Msun] & $F_{\rm int}$ \\
+        \hline
+        10 & $\peakTenExcessPLocFlex$ & $\peakTenExcessHeightFlex$ & $\peakTenExcessLocFlex$ & $\peakTenExcessFIntFlex$ \\
+        35 & $\peakThirtyFiveExcessPLocFlex$ & $\peakThirtyFiveExcessHeightFlex$ & $\peakThirtyFiveExcessLocFlex$ & $\peakThirtyFiveExcessFIntFlex$ \\
+        20 & $\peakTwentyExcessPLocFlex$ & $\peakTwentyExcessHeightFlex$ & $\peakTwentyExcessLocFlex$ & $\peakTwentyExcessFIntFlex$ \\
+        60 & $\peakSixtyExcessPLocFlex$ & $\peakSixtyExcessHeightFlex$ & $\peakSixtyExcessLocFlex$ & $\peakSixtyExcessFIntFlex$ \\
+    \end{tabular}
+    \end{ruledtabular}
+\end{table}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=0.6\linewidth]{draft/plots/peak_excess_own_q.pdf}
+    \caption{The excess $d(m_1)$ for each peak in its own mass ratio range, per posterior sample, for the \flexiblespins (blue: 90\% and 99\% bands, median) and \gaussianspins (red: 90\% solid, 99\% dashed) models.}
+    \label{fig: excess}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/peak_excess.pdf}
+    \caption{As Fig.~\ref{fig: excess}, for every peak window (rows) in every mass ratio range (columns: all $q$, $0.3 < q < 0.65$, $0.8 < q < 1$); boxed: each peak's own mass ratio range. The excess appears only in the boxed panels; the others show what the statistic gives without a feature.}
+    \label{fig: excess grid}
+\end{figure}
+
+\textit{Mass ratio contrast.} The most direct feature in Figs.~\ref{fig: mass} and~\ref{fig: m2} is not a peak in $m_1$ but the change in the mass ratio distribution with $m_1$: near-equal masses at 10 and 35\,\Msun, unequal masses at 20 and 60\,\Msun. In the $q \sim 0.5$ range, a peak in $p(m_1, q \in Q)$ can come entirely from the factor $P(q \in Q \mid m_1)$, so the excess above and this contrast largely measure the same feature. We test it directly with the mean mass ratio in a window $W$ around each peak,
+\begin{equation}
+    \langle q \rangle_W = \frac{\int_W d\ln m_1 \int_{q_0}^1 dq\, q\, p(\ln m_1, q)}{\int_W d\ln m_1 \int_{q_0}^1 dq\, p(\ln m_1, q)},
+\end{equation}
+with the windows of Fig.~\ref{fig: m2}: $W_{10} = [8, 12]$, $W_{20} = [15, 25]$, $W_{35} = [28, 40]$ and $W_{60} = [50, 70]\,\Msun$. The lower limit $q_0 = 0.4$ is common to all windows and lies above $3\,\Msun/m_1$ everywhere in them. The $m_2 > 3\,\Msun$ cut removes more of the low-$q$ range at low $m_1$ and would by itself raise $\langle q \rangle$ there; with the common $q_0$, it does not enter. For each posterior sample we compute the contrasts
+\begin{equation}
+    \Delta_{10,20} = \langle q \rangle_{W_{10}} - \langle q \rangle_{W_{20}}, \quad
+    \Delta_{35,20} = \langle q \rangle_{W_{35}} - \langle q \rangle_{W_{20}}, \quad
+    \Delta_{35,60} = \langle q \rangle_{W_{35}} - \langle q \rangle_{W_{60}}.
+\end{equation}
+We report $P(\Delta > 0)$ and $z = \mathrm{median}(\Delta) / \sigma_\Delta$, with $\sigma_\Delta$ half the width of the central 68\% interval. Unlike $P(\Delta > 0)$ near one, $z$ does not rest on the few samples in the tail; we estimate its Monte Carlo error from the effective sample size of $\Delta$.
+
+The contrasts improve on the chord excess in three ways:
+\begin{itemize}
+    \item They do not depend on where a window's ends fall.
+    \item They are insensitive to a smooth curvature of $\ln p(m_1)$, which gives a positive chord excess without a peak.
+    \item There are three of them, fixed by the four peaks, rather than one per window and $q$ range, and they compare the peaks with one another rather than each with its own surroundings.
+\end{itemize}
+The prior is stationary in $(\ln m_1, q)$, so under it $\Delta$ is centered near zero, up to the different widths of the windows and edge effects of the grid. We give its distribution under the empirical-Bayes prior draws as a reference. The windows were still placed after inspecting the population, so these remain posterior probabilities. For the mock catalogs below, the natural statistic is the maximum of $\Delta$ over pairs of windows of a fixed width. \todo{compute $P(\Delta > 0)$, $z$, its effective sample size and the prior reference for both models; add a figure of the three posteriors}
+
+\textit{What these numbers do and do not show.} We tried several measures of significance, none of which yields a calibrated $p$-value from the posterior alone:
+\begin{itemize}
+    \item The peak fits always find the best Gaussian in a window; on draws of the mass field's prior (empirical Bayes, as in Sec.~\ref{sm: moments}), they find a peak in 70--85\% of draws, with a median peak fraction of $\approx 0.6$. They measure where a peak is, not whether there is one.
+    \item A Savage--Dickey ratio at zero peak fraction tests an exact power law, which almost no field satisfies, and is limited by the number of posterior samples.
+    \item Conditional simulation of the field inside a window, given the field outside (\lq\lq inpainting''), compares the posterior with the prior's prediction. Because the kernel is fitted to the same field, the posterior realization is a typical prior draw by construction, so this test has little power.
+    \item The chord excess above is positive about half the time for a featureless density with noise, and the windows were chosen after inspecting the population. It also measures curvature rather than a peak: any density whose $\ln p$ bends downward within the window, such as a steepening power law or a low-mass turn-on, gives a positive excess. The turn-on below the 10\,\Msun peak contributes much of that window's excess. $P_{\rm loc}$ close to one also rests on the few samples with $d < 0$, so its Monte Carlo error is comparable to $1 - P_{\rm loc}$. \todo{effective sample size of $d$ at $m_*$}
+\end{itemize}
+The off-diagonal mass ratio ranges in Fig.~\ref{fig: excess grid}, where $P_{\rm loc} \approx 0.3$--$0.6$, provide a built-in reference for the last point, but not a $p$-value.
+
+\textit{A calibrated test.} The standard is a set of mock catalogs from a null population without the feature: for example, the posterior median field with $\ln p$ in the window replaced by the chord, or by the conditional mean from outside, keeping all other features. Mock events would be drawn through the selection function, by reweighting and resampling the injections, with simulated \ac{PE} posteriors, for example Gaussian likelihoods in chirp mass, $q$ and $\chieff$ with widths calibrated on the real events. Each mock is then analyzed with exactly the same model, sampler and post-processing. The fraction of mocks with a statistic at least as large as observed is the $p$-value. Scanning the statistic over a fixed family of windows and using its maximum accounts for the look-elsewhere effect. Repeating with the feature left in measures the power. About 50--100 mocks resolve $p \sim 0.01$--$0.02$. \todo{run}
+
+\section{Robustness}
+\label{sm: robustness}
+
+\textit{Spin models.} Besides the two models of the main text, we ran the \flexiblespins model with $K = 5$ instead of 10 mass modes, the \gaussianspins model with $10 \times 10$ instead of $100 \times 100$ mass modes, and the split model. The widths of $\chieff$ agree to within $\sim 0.01$ between the \gaussianspins models with 10 and 100 mass modes, so ten modes miss no structure we can resolve. All models find the broadening of $\chieff$ at $\sim 18$--$20$ and $\gtrsim 45\,\Msun$ and at low $q$; the split model finds it with lower confidence. The peak locations and mass ratios agree between all models. \todo{compare the log-likelihoods of all models} \todo{figure comparing all spin models}
+
+\textit{Likelihood choices.} \todo{the variance-cut runs; weaker per-event $N_{\rm eff}$ thresholds; without the selection-bias correction}
+
+\textit{Influential events.} \todo{leave-one-out on the events that dominate each $q \sim 0.5$ window, including GW231123; split by observing run}
+
+\textit{Core threshold.} \todo{$\sigma_{\chieff}(q)$ for $|\chieff| < 0.6$, 0.7, 0.9 and without restriction}
+
+\section{Hierarchical-merger expectations}
+\label{sm: hierarchical}
+
+\textit{Remnant mass and spin.} A merger of two non-spinning \acp{BH} with mass ratio near one radiates $\approx 5\%$ of its total mass in gravitational waves and leaves a remnant with dimensionless spin $\chi_f \approx 0.69$; both depend weakly on mass ratio and on the component spins~\cite{Gerosa:2021mno}. The second-generation peak should therefore sit at $\approx 0.95\,\mu_{\rm lo}(1 + \langle q \rangle_{\rm lo})$, and its remnant spins should be large.
+
+\textit{Effective spins.} In a dense cluster, the second-generation \ac{BH} pairs dynamically with a first-generation companion, and its spin is isotropically oriented relative to the new orbit. With primary spin $\chi_1 = \chi_f$ at tilt $\theta_1$ and a slowly spinning secondary,
+\begin{equation}
+    \chieff \approx \frac{\chi_f \cos\theta_1}{1 + q}, \qquad \chip \approx \chi_f \sin\theta_1.
+\end{equation}
+For isotropic tilts, $\langle\cos\theta\rangle = 0$, $\langle\cos^2\theta\rangle = 1/3$, $\langle\sin\theta\rangle = \pi/4$ and $\langle\sin^2\theta\rangle = 2/3$, so at $q = 0.5$
+\begin{equation}
+    \langle\chieff\rangle = 0, \quad \sigma_{\chieff} = \frac{\chi_f}{(1+q)\sqrt{3}} \approx 0.27, \quad \langle\chip\rangle = \frac{\pi}{4}\chi_f \approx 0.54, \quad \sigma_{\chip} = \chi_f\sqrt{\frac{2}{3} - \frac{\pi^2}{16}} \approx 0.15.
+\end{equation}
+Including the secondary's term in $\chip = \max[\chi_1\sin\theta_1, \frac{3 + 4q}{4 + 3q} q\, \chi_2\sin\theta_2]$, with $\chi_2 \sim 0.1$--$0.2$, raises $\langle\chip\rangle$ by $\approx 0.01$--$0.02$. The distribution of $\chip$ is concentrated near $\chi_f$, since $\sin\theta$ is close to one over most of the sphere, and $\chieff$ and $\chip$ are uncorrelated but strongly dependent, lying near the arc $(1+q)^2\chieff^2 + \chip^2 \approx \chi_f^2$.
+
+\textit{Mixtures.} The window around a $q \sim 0.5$ peak also contains first-generation binaries. If a fraction $f$ of the window is second-generation, the expected moments are
+\begin{equation}
+    \langle\chieff\rangle = (1 - f)\langle\chieff\rangle_{\rm 1G}, \qquad \sigma^2_{\chieff} = f\,\sigma^2_{\rm 2G} + (1 - f)\,\sigma^2_{\rm 1G} + f(1 - f)\,\langle\chieff\rangle_{\rm 1G}^2,
+\end{equation}
+and similarly for $\chip$. The peak fractions of the window fits give $f$, and the near-equal-mass peaks give the first-generation moments, so this prediction has no free parameters. \todo{evaluate}
+
+\textit{Alternatives.} Hierarchical mergers in active galactic nuclei disks would instead produce preferentially aligned spins, and so positive $\chieff$ at low mass ratio~\cite{Li:2025iux}. The mean of $\chieff$ in our models is nearly independent of $q$ while its width grows, which favors isotropic orientations. \todo{quote $P(\mu_{\chieff} > 0)$ at the 20 and 60\,\Msun peaks}
+
+\section{Additional figures}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/chi_eff_mean_sd_q_core_lvk.pdf}
+    \caption{The mean (left) and width (right) of $\chieff$ as a function of mass ratio, as in Fig.~\ref{fig: width q}, with the GWTC-5 linear and spline $\chieff \mid q$ models.}
+    \label{fig: mean width q}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/spin_regions_flexible.pdf}
+    \caption{The joint spin distribution across the $(m_1, q)$ plane for the \flexiblespins model. \todo{caption}}
+    \label{fig: regions flexible}
+\end{figure}
+
+\begin{figure}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/spin_regions_gaussian.pdf}
+    \caption{As Fig.~\ref{fig: regions flexible}, for the \gaussianspins model.}
+    \label{fig: regions gaussian}
+\end{figure}
+
+\end{document}
