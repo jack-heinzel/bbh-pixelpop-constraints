@@ -6,7 +6,7 @@ The chain starts from a random draw from the prior of every latent site (keyed b
 evaluates the same draw), unless --init-from gives one (e.g. warmstart.py's output). Chains of one run (--chain 0, 1,
 ...; separate jobs) share its directory as chain_<N>_samples.h5, each from its own prior draw and sampler key.
 
-Run name: ppc_<catalog>_k<spin mass modes>[_<spin model>][_sdfloor<x>][_neff<floor>][_varcut<Var(ln L) cut>][_npe<max samples>][_no231123][_short][_<tag>];
+Run name: ppc_<catalog>_k<spin mass modes>[_<spin model>][_kq<q modes>][_kz<z modes>][_zb<z bins>][_zadd][_sdfloor<x>][_neff<floor>][_varcut<Var(ln L) cut>][_npe<max samples>][_no231123][_short][_<tag>];
 the spin model ('field', the default, 'split' or 'gauss'; model.py) is left out of the name for 'field'.
 
 This node caps processes + threads at 500 per user, and XLA sizes its thread pools from the CPU affinity, so the job
@@ -30,6 +30,14 @@ def make_parser():
     ap.add_argument('--spin-model', choices=['field', 'split', 'gauss'], default='field',
                     help="spin conditional: one 4D Matern field ('field'), mass-independent + mass-varying fields with "
                          "separate amplitudes ('split'), or a truncated Gaussian with field-valued parameters ('gauss')")
+    ap.add_argument('--spin-q-modes', type=int, default=None,
+                    help="modes along q (default: --spin-mass-modes); otherwise adds '_kq<n>'")
+    ap.add_argument('--spin-z-modes', type=int, default=0,
+                    help="field / gauss: modes along redshift (0: no redshift dependence); adds '_kz<n>'")
+    ap.add_argument('--z-bins', type=int, default=10, help="redshift bins for --spin-z-modes; not 10 adds '_zb<n>'")
+    ap.add_argument('--z-additive', action='store_true',
+                    help="gauss with --spin-z-modes: parameters offset + F(ln m1, q) + G(z) (model.py spin_z_additive); "
+                         "adds '_zadd'")
     ap.add_argument('--gauss-sd-floor', type=float, default=0.02,
                     help="spin_model gauss: soft floor on its sds (model.GAUSS_SD_FLOOR); not 0.02 adds '_sdfloor<x>'")
     ap.add_argument('--spin-bins', type=int, nargs=2, default=[100, 100], metavar=('B_CHIEFF', 'B_CHIP'))
@@ -64,6 +72,10 @@ def make_parser():
 def run_name(args):
     return (f'ppc_{args.catalog}_k{args.spin_mass_modes}'
             + (f'_{args.spin_model}' if args.spin_model != 'field' else '')
+            + (f'_kq{args.spin_q_modes}' if args.spin_q_modes not in (None, args.spin_mass_modes) else '')
+            + (f'_kz{args.spin_z_modes}' if args.spin_z_modes else '')
+            + (f'_zb{args.z_bins}' if args.spin_z_modes and args.z_bins != 10 else '')
+            + ('_zadd' if args.z_additive else '')
             + (f'_sdfloor{args.gauss_sd_floor:g}' if args.spin_model == 'gauss' and args.gauss_sd_floor != 0.02 else '')
             + (f'_neff{args.event_neff_cut:g}' if args.event_neff_cut != 100. else '')
             + (f'_varcut{args.variance_cut:g}' if args.variance_cut != float('inf') else '')
@@ -118,7 +130,9 @@ def build(args, name, record_weights=False):
     prob_model, init = model.setup_model(pp, spin_mass_modes=args.spin_mass_modes, n_spin_bins=tuple(args.spin_bins),
                                          likelihood_correction=not args.no_likelihood_correction,
                                          record_weights=record_weights, spin_model=args.spin_model,
-                                         gauss_sd_floor=args.gauss_sd_floor)
+                                         gauss_sd_floor=args.gauss_sd_floor, spin_q_modes=args.spin_q_modes,
+                                         spin_z_modes=args.spin_z_modes, z_bins=args.z_bins,
+                                         spin_z_additive=args.z_additive)
     return prob_model, init, posteriors, injections, pp
 
 
@@ -185,7 +199,7 @@ def main():
                    warmup=s['warmup'], tot_samples=s['tot_samples'], thinning=s['thinning'],
                    num_samples=max(1, min(100, s['tot_samples'] // 10)), pacc=0.7, maxtreedepth=args.maxtreedepth,
                    parallel=[args.chain], run_dir=RESULTS, name=name, print_keys=print_keys,
-                   dense_mass=model.mass_matrix_blocks(args.spin_model), pixelpop_data=pp,
+                   dense_mass=model.mass_matrix_blocks(args.spin_model, args.z_additive), pixelpop_data=pp,
                    rng_key=chain_key(args.seed, args.chain, 'sampler'))
 
 

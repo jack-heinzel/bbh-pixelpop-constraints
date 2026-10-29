@@ -94,3 +94,13 @@ belong in mass-gap-investigation. See README.md for the model.
   ~0.01), so k = 10 misses no structure; all four models show the chi_eff width pattern above, split least confidently
   (P ~ 0.85 vs 0.98-0.99 for gauss).
 
+- 2026-10-29 (Rusty): redshift-dependent spin conditionals (`model.py` `spin_z_modes`, `submit_redshift.sbatch`, job
+  7362165): Flexible `ppc_gwtc5_k10_kq5_kz5` (10 x 5 x 5 mass-redshift modes, 2 chains x 2000 draws) and Gaussian
+  `ppc_gwtc5_k100_gauss_kz10` (100 x 100 x 10; chains 1, 2 healthy, chain 0 froze -> `stuck_chain0/`). Post-processing:
+  `notebooks/analysis_z.py`, `z_figs.py` (`post_z.sbatch`). The Gaussian's apparent rise of sd chi_eff with z at q ~ 1
+  (P ~ 0.9) is not trusted (user): the joint (m1, q, z) fields stitch broad high-mass/high-z widths to narrow
+  low-mass/low-z ones in the unobserved low-mass, high-z corner (8-12 Msun events only at z < 0.4). Hence the additive
+  model (`--z-additive`, `submit_zadd.sbatch`, jobs 7364554, 7364670): offset + F(ln m1, q) + G(z), G a 100-mode 1D
+  Matern field shared by all (m1, q) (both mean modes pinned). Prior starts: chain 0 froze, chain 2 had no finite start;
+  chain 3 is warm-started (`WARM=1`, the baseline Gaussian's min-Var draw, G ~ 0). Cut runs (Neff > 50/30, Var < 1/4)
+  leave the conclusions unchanged; Var < 1 softens every feature slightly.
