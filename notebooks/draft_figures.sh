@@ -30,7 +30,7 @@ if [ "$what" = regions ] || [ "$what" = all ]; then
 fi
 if [ "$what" = macros ] || [ "$what" = all ]; then
     mkdir -p draft/macros
-    cp macros/peak_fits.tex macros/joint_fits.tex macros/peak_pairs.tex macros/peak_excess.tex macros/chi_q_broadening.tex draft/macros/
+    cp macros/peak_fits.tex macros/joint_fits.tex macros/peak_pairs.tex macros/peak_excess.tex macros/chi_q_broadening.tex macros/q_contrast.tex draft/macros/
 fi
 if [ "$what" = paper ] || [ "$what" = all ]; then
     $PY notebooks/paper_figs.py all || exit 1

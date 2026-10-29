@@ -30,6 +30,7 @@
 \inputmacros{peak_pairs}
 \inputmacros{peak_excess}
 \inputmacros{chi_q_broadening}
+\inputmacros{q_contrast}
 
 % math macros
 \newcommand{\Msun}{\ensuremath{\mathrm{M}_{\odot}}}
@@ -113,7 +114,7 @@ a Gaussian peak on a power-law background, each with its own truncated-Gaussian 
     \end{ruledtabular}
 \end{table}
 
-Are the peaks real? A flexible model can mistake noise for structure, and our fits return the best Gaussian in a window whether or not a peak is there. Nearly every posterior draw has a fitted peak in each window (fractions $\jointTenPeakFracFlex$, $\jointThirtyFivePeakFracFlex$, $\jointTwentyPeakFracFlex$ and $\jointSixtyPeakFracFlex$ for the 10, 35, 20 and 60\,\Msun peaks), but so do 70--85\% of draws from the prior, so this alone says little. A sharper test asks whether each peak rises above a local power law: the straight line in $(\ln m_1, \ln p)$ joining the window's edges, with $p$ integrated over the peak's own mass ratio range. The excess at the most prominent bin is positive with probability $\peakTenExcessPLocFlex$, $\peakThirtyFiveExcessPLocFlex$, $\peakTwentyExcessPLocFlex$ and $\peakSixtyExcessPLocFlex$, against $\approx 0.3$--$0.6$ for the same windows in the other mass ratio range, a built-in control. The cleanest signal, though, is in the mass ratio itself. The mean mass ratio is higher at 10 and 35\,\Msun than at 20 and 60\,\Msun, with $P(\Delta > 0) = $ \todo{values} for the three contrasts (Supplemental Material). These contrasts compare the peaks with one another rather than with a local power law, so they do not depend on where the windows end. All of these are posterior probabilities, not $p$-values, and we chose the windows after looking at the population. We therefore regard the $q \sim 0.5$ peaks as tentative. A calibrated significance requires mock catalogs analyzed with the same pipeline, which we outline in the Supplemental Material.
+Are the peaks real? A flexible model can mistake noise for structure, and our fits return the best Gaussian in a window whether or not a peak is there. Nearly every posterior draw has a fitted peak in each window (fractions $\jointTenPeakFracFlex$, $\jointThirtyFivePeakFracFlex$, $\jointTwentyPeakFracFlex$ and $\jointSixtyPeakFracFlex$ for the 10, 35, 20 and 60\,\Msun peaks), but so do 70--85\% of draws from the prior, so this alone says little. A sharper test asks whether each peak rises above a local power law: the straight line in $(\ln m_1, \ln p)$ joining the window's edges, with $p$ integrated over the peak's own mass ratio range. The excess at the most prominent bin is positive with probability $\peakTenExcessPLocFlex$, $\peakThirtyFiveExcessPLocFlex$, $\peakTwentyExcessPLocFlex$ and $\peakSixtyExcessPLocFlex$, against $\approx 0.3$--$0.6$ for the same windows in the other mass ratio range, a built-in control. The cleanest signal, though, is in the mass ratio itself. The mean mass ratio is higher at 10 and 35\,\Msun than at 20 and 60\,\Msun, by $\approx 0.24$ in each of the three contrasts, with $P(\Delta > 0) = \qContrastTenTwentyPFlex$, $\qContrastThirtyFiveTwentyPFlex$ and $\qContrastThirtyFiveSixtyPFlex$ (\flexiblespins; $\qContrastTenTwentyPGauss$, $\qContrastThirtyFiveTwentyPGauss$ and $\qContrastThirtyFiveSixtyPGauss$ for \gaussianspins), against $\approx 0.5$ under the prior (Supplemental Material). These contrasts compare the peaks with one another rather than with a local power law, so they do not depend on where the windows end. All of these are posterior probabilities, not $p$-values, and we chose the windows after looking at the population. We therefore regard the $q \sim 0.5$ peaks as tentative. A calibrated significance requires mock catalogs analyzed with the same pipeline, which we outline in the Supplemental Material.
 
 \subsection{Peak locations: consistent with dynamical \acp{BBH}?}
 
@@ -455,7 +456,26 @@ The contrasts improve on the chord excess in three ways:
     \item They are insensitive to a smooth curvature of $\ln p(m_1)$, which gives a positive chord excess without a peak.
     \item There are three of them, fixed by the four peaks, rather than one per window and $q$ range, and they compare the peaks with one another rather than each with its own surroundings.
 \end{itemize}
-The prior is stationary in $(\ln m_1, q)$, so under it $\Delta$ is centered near zero, up to the different widths of the windows and edge effects of the grid. We give its distribution under the empirical-Bayes prior draws as a reference. The windows were still placed after inspecting the population, so these remain posterior probabilities. For the mock catalogs below, the natural statistic is the maximum of $\Delta$ over pairs of windows of a fixed width. \todo{compute $P(\Delta > 0)$, $z$, its effective sample size and the prior reference for both models; add a figure of the three posteriors}
+The prior is stationary in $(\ln m_1, q)$, so under it $\Delta$ is centered near zero, up to the different widths of the windows and edge effects of the grid. We give its distribution under the empirical-Bayes prior draws as a reference. The windows were still placed after inspecting the population, so these remain posterior probabilities. For the mock catalogs below, the natural statistic is the maximum of $\Delta$ over pairs of windows of a fixed width.
+
+Table~\ref{tab: q contrast} lists the results. All three contrasts are $\approx 0.24$, from $\langle q \rangle \approx 0.85$--$0.88$ at the near-equal-mass peaks and $\approx 0.61$ at the $q \sim 0.5$ peaks, with $z = 3.2$--$4.7$ and $P(\Delta > 0) \geq 0.99$ in both models. Under the prior, $P(\Delta > 0) \approx 0.5$ and $z \approx 0$. The effective sample sizes are $\approx 500$ for $\Delta_{10,20}$ and $\approx 1500$ for the others, out of 2000 draws, so $P$ is resolved only to $\sim 0.002$; $z$ is the more stable measure. \todo{figure of the three posteriors}
+
+\begin{table}
+    \caption{Mass-ratio contrasts between the peaks: $\Delta$ (median and 90\% interval), $P(\Delta > 0)$, $z = \mathrm{median}(\Delta)/\sigma_\Delta$ and the effective sample size of $\Delta$, with $P(\Delta > 0)$ and $z$ under the empirical-Bayes prior.}
+    \label{tab: q contrast}
+    \begin{ruledtabular}
+    \begin{tabular}{llccccc}
+        Model & Contrast & $\Delta$ & $P(\Delta > 0)$ & $z$ & ESS & Prior $P$, $z$ \\
+        \hline
+        \flexiblespins & $\Delta_{10,20}$ & $\qContrastTenTwentyMedFlex$ & $\qContrastTenTwentyPFlex$ & $\qContrastTenTwentyZFlex$ & $\qContrastTenTwentyESSFlex$ & $\qContrastTenTwentyPPriorFlex$, $\qContrastTenTwentyZPriorFlex$ \\
+        & $\Delta_{35,20}$ & $\qContrastThirtyFiveTwentyMedFlex$ & $\qContrastThirtyFiveTwentyPFlex$ & $\qContrastThirtyFiveTwentyZFlex$ & $\qContrastThirtyFiveTwentyESSFlex$ & $\qContrastThirtyFiveTwentyPPriorFlex$, $\qContrastThirtyFiveTwentyZPriorFlex$ \\
+        & $\Delta_{35,60}$ & $\qContrastThirtyFiveSixtyMedFlex$ & $\qContrastThirtyFiveSixtyPFlex$ & $\qContrastThirtyFiveSixtyZFlex$ & $\qContrastThirtyFiveSixtyESSFlex$ & $\qContrastThirtyFiveSixtyPPriorFlex$, $\qContrastThirtyFiveSixtyZPriorFlex$ \\
+        \gaussianspins & $\Delta_{10,20}$ & $\qContrastTenTwentyMedGauss$ & $\qContrastTenTwentyPGauss$ & $\qContrastTenTwentyZGauss$ & $\qContrastTenTwentyESSGauss$ & $\qContrastTenTwentyPPriorGauss$, $\qContrastTenTwentyZPriorGauss$ \\
+        & $\Delta_{35,20}$ & $\qContrastThirtyFiveTwentyMedGauss$ & $\qContrastThirtyFiveTwentyPGauss$ & $\qContrastThirtyFiveTwentyZGauss$ & $\qContrastThirtyFiveTwentyESSGauss$ & $\qContrastThirtyFiveTwentyPPriorGauss$, $\qContrastThirtyFiveTwentyZPriorGauss$ \\
+        & $\Delta_{35,60}$ & $\qContrastThirtyFiveSixtyMedGauss$ & $\qContrastThirtyFiveSixtyPGauss$ & $\qContrastThirtyFiveSixtyZGauss$ & $\qContrastThirtyFiveSixtyESSGauss$ & $\qContrastThirtyFiveSixtyPPriorGauss$, $\qContrastThirtyFiveSixtyZPriorGauss$ \\
+    \end{tabular}
+    \end{ruledtabular}
+\end{table}
 
 \textit{What these numbers do and do not show.} We tried several measures of significance, none of which yields a calibrated $p$-value from the posterior alone:
 \begin{itemize}
