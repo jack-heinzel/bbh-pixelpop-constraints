@@ -38,6 +38,10 @@ def make_parser():
     ap.add_argument('--z-additive', action='store_true',
                     help="gauss with --spin-z-modes: parameters offset + F(ln m1, q) + G(z) (model.py spin_z_additive); "
                          "adds '_zadd'")
+    ap.add_argument('--parametric', action='store_true',
+                    help="parametric.py's q-split power law plus two peaks (mass-independent Gaussian spins) instead of "
+                         "PixelPop; run name ppc_<catalog>_plpp_qsplit<split> (the spin-field options are ignored)")
+    ap.add_argument('--q-split', type=float, default=0.7, help='--parametric: the mass-ratio split')
     ap.add_argument('--gauss-sd-floor', type=float, default=0.02,
                     help="spin_model gauss: soft floor on its sds (model.GAUSS_SD_FLOOR); not 0.02 adds '_sdfloor<x>'")
     ap.add_argument('--spin-bins', type=int, nargs=2, default=[100, 100], metavar=('B_CHIEFF', 'B_CHIP'))
@@ -70,6 +74,11 @@ def make_parser():
 
 
 def run_name(args):
+    if args.parametric:
+        return (f'ppc_{args.catalog}_plpp_qsplit{args.q_split:g}'
+                + (f'_neff{args.event_neff_cut:g}' if args.event_neff_cut != 100. else '')
+                + ('_short' if args.short else '') + (f'_{args.tag}' if args.tag else '')
+                + (f'_seed{args.seed}' if args.seed != 1 else ''))
     return (f'ppc_{args.catalog}_k{args.spin_mass_modes}'
             + (f'_{args.spin_model}' if args.spin_model != 'field' else '')
             + (f'_kq{args.spin_q_modes}' if args.spin_q_modes not in (None, args.spin_mass_modes) else '')
@@ -127,6 +136,13 @@ def build(args, name, record_weights=False):
                                                           exclude_events=tuple(args.exclude_events),
                                                           max_samples=args.max_samples, n_spin_bins=tuple(args.spin_bins),
                                                           variance_cut=args.variance_cut)
+    if args.parametric:
+        import parametric
+        prob_model, init = parametric.setup_parametric(pp, n_spin_bins=tuple(args.spin_bins),
+                                                       likelihood_correction=not args.no_likelihood_correction,
+                                                       record_weights=record_weights, gauss_sd_floor=args.gauss_sd_floor,
+                                                       q_split=args.q_split)
+        return prob_model, init, posteriors, injections, pp
     prob_model, init = model.setup_model(pp, spin_mass_modes=args.spin_mass_modes, n_spin_bins=tuple(args.spin_bins),
                                          likelihood_correction=not args.no_likelihood_correction,
                                          record_weights=record_weights, spin_model=args.spin_model,
@@ -172,7 +188,7 @@ def main():
             raise ValueError(f'{args.init_from}: not latent sites of this model: {unknown}')
         for k in loaded.files:
             init[k] = jnp.asarray(loaded[k])
-    else:
+    elif not args.parametric:      # --parametric starts from setup_parametric's values (prior draws: min event Neff ~1)
         init = prior_draw(prob_model, init, {'posteriors': posteriors, 'injections': injections}, args.seed, args.chain)
     if args.check_only:
         from numpyro.infer.util import log_density
@@ -195,11 +211,17 @@ def main():
     scalar_spin = [k for k in model.SPIN_SITES[args.spin_model] if k.startswith('lnsigma') and k != 'lnsigma_gauss']
     print_keys = (['log_likelihood', 'log_likelihood_variance', 'log_likelihood_correction', 'lnsigma', *scalar_spin,
                    'detection_efficiency'] + [h for h, (_, d) in pp.priors.items() if d is not dist.Delta])
+    dense = model.mass_matrix_blocks(args.spin_model, args.z_additive)
+    if args.parametric:
+        import parametric
+        print_keys = ['log_likelihood', 'log_likelihood_variance', 'log_likelihood_correction', 'zeta', 'mpp_1_hi',
+                      'mpp_2_hi', 'mpp_1_lo', 'mpp_2_lo', 'detection_efficiency']
+        dense = True                        # ~40 parameters: one dense mass matrix
     inference_loop(prob_model, model_kwargs={'posteriors': posteriors, 'injections': injections}, initial_value=init,
                    warmup=s['warmup'], tot_samples=s['tot_samples'], thinning=s['thinning'],
                    num_samples=max(1, min(100, s['tot_samples'] // 10)), pacc=0.7, maxtreedepth=args.maxtreedepth,
                    parallel=[args.chain], run_dir=RESULTS, name=name, print_keys=print_keys,
-                   dense_mass=model.mass_matrix_blocks(args.spin_model, args.z_additive), pixelpop_data=pp,
+                   dense_mass=dense, pixelpop_data=pp,
                    rng_key=chain_key(args.seed, args.chain, 'sampler'))
 
 

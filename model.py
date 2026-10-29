@@ -153,6 +153,56 @@ def split_spin_field(white0, lnsigma0, nu0, ranges0, white1, lnsigma1, nu1, rang
     return G.at[0, 0].add(G0 / (Vm[0, 0] * Vq[0, 0]))
 
 
+def parametric_terms(pp, posteriors, injections, event_weights, inj_weights):
+    """Add PixelPopData's parametric models (redshift, the m2 window) to the per-sample log weights, sampling their
+    non-fixed hyperparameters."""
+    sample = {}
+    for key, (args, distribution) in pp.priors.items():
+        sample[key] = args[0] if distribution.__name__ == 'Delta' else numpyro.sample(key, distribution(*args))
+    for p in pp.other_parameters:
+        hyp = [sample[h] for h in pp.parameter_to_hyperparameters[p]]
+        event_weights += pp.parametric_models[p](posteriors, *hyp)
+        inj_weights += pp.parametric_models[p](injections, *hyp)
+    return event_weights, inj_weights
+
+
+def population_likelihood(pp, posteriors, injections, event_weights, inj_weights, likelihood_correction=True,
+                          record_weights=False):
+    """The rate-marginalized hierarchical likelihood of per-sample log population weights (without the parametric
+    models, which this adds), with the event Neff taper, the optional variance cut and selection-bias correction, and
+    its diagnostics as deterministic sites; adds it to the model as a factor."""
+    event_weights, inj_weights = parametric_terms(pp, posteriors, injections, event_weights, inj_weights)
+    if record_weights:     # post-processing only (error statistics)
+        numpyro.deterministic('event_log_weights', event_weights)
+        numpyro.deterministic('injection_log_weights', inj_weights)
+
+    lnL, var, _, (pe_v, vt_v) = hierarchical_likelihood(
+        event_weights, inj_weights, injections['total_generated'], live_time=injections['analysis_time'],
+        rate_likelihood=False, return_likelihood_info=True, event_counts=pp.event_counts)
+    taper = smooth(var, pp.UncertaintyCut ** 2, 0.1) if np.isfinite(pp.UncertaintyCut) else 0.
+    cnt = jnp.asarray(pp.event_counts, dtype=float)
+    num = LSE(event_weights, axis=1); sq = LSE(2 * event_weights, axis=1)
+    event_neff = 1. / (jnp.exp(sq - 2 * num) - 1. / cnt)
+    selection_neff = jnp.exp(2 * LSE(inj_weights) - LSE(2 * inj_weights))
+    numpyro.deterministic('event_neff', event_neff)
+    numpyro.deterministic('selection_neff', selection_neff)
+    if pp.EventNeffCut > 0.:
+        taper = taper + jnp.sum(smooth(-jnp.log(event_neff), -jnp.log(pp.EventNeffCut), 0.1))
+    # selection-bias correction (arXiv:2509.07221): 1 / xi^Nobs is biased high by 1 + Nobs (Nobs + 1) sigma^2 / 2
+    n_inj = injections['total_generated']; n_obs = len(pp.event_counts)
+    sel_sigma2 = (n_inj * jnp.exp(LSE(2 * inj_weights) - 2 * LSE(inj_weights)) - 1.) / (n_inj - 1.)
+    log_correction = n_obs * (n_obs + 1.) * sel_sigma2 / 2.
+    numpyro.deterministic('log_likelihood_correction', log_correction)
+    if likelihood_correction:
+        taper = taper - log_correction
+    numpyro.deterministic('log_likelihood', lnL)
+    numpyro.deterministic('log_likelihood_variance', var)
+    numpyro.deterministic('pe_variance', pe_v)
+    numpyro.deterministic('vt_variance', vt_v)
+    numpyro.deterministic('detection_efficiency', jnp.exp(LSE(inj_weights) - jnp.log(injections['total_generated'])))
+    numpyro.factor('log_likelihood_plus_taper', lnL + taper)
+
+
 def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_range_floor=0.05,
                 likelihood_correction=True, record_weights=False, spin_model='field', gauss_sd_floor=GAUSS_SD_FLOOR,
                 spin_q_modes=None, spin_z_modes=0, z_bins=10, spin_z_additive=False, _dense_cube=False):
@@ -318,16 +368,6 @@ def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_
             theta = theta[..., None] + g[:, None, None, :]
         return theta
 
-    def parametric(posteriors, injections, event_weights, inj_weights):
-        sample = {}
-        for key, (args, distribution) in pp.priors.items():
-            sample[key] = args[0] if distribution.__name__ == 'Delta' else numpyro.sample(key, distribution(*args))
-        for p in pp.other_parameters:
-            hyp = [sample[h] for h in pp.parameter_to_hyperparameters[p]]
-            event_weights += pp.parametric_models[p](posteriors, *hyp)
-            inj_weights += pp.parametric_models[p](injections, *hyp)
-        return event_weights, inj_weights
-
     def probabilistic_model(posteriors, injections):
         # ---- mass: PixelPop's field (DC mode dropped; probability space, so no rate offset) ----
         lnsigma = numpyro.sample('lnsigma', pp.coupling_prior[1](*pp.coupling_prior[0]))
@@ -451,36 +491,8 @@ def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_
 
         event_weights = posteriors['ln_dVTc'] - posteriors['log_prior'] + log_p_at(event_index)
         inj_weights = injections['ln_dVTc'] - injections['log_prior'] + log_p_at(inj_index)
-        event_weights, inj_weights = parametric(posteriors, injections, event_weights, inj_weights)
-        if record_weights:     # post-processing only (error statistics)
-            numpyro.deterministic('event_log_weights', event_weights)
-            numpyro.deterministic('injection_log_weights', inj_weights)
-
-        lnL, var, _, (pe_v, vt_v) = hierarchical_likelihood(
-            event_weights, inj_weights, injections['total_generated'], live_time=injections['analysis_time'],
-            rate_likelihood=False, return_likelihood_info=True, event_counts=pp.event_counts)
-        taper = smooth(var, pp.UncertaintyCut ** 2, 0.1) if np.isfinite(pp.UncertaintyCut) else 0.
-        cnt = jnp.asarray(pp.event_counts, dtype=float)
-        num = LSE(event_weights, axis=1); sq = LSE(2 * event_weights, axis=1)
-        event_neff = 1. / (jnp.exp(sq - 2 * num) - 1. / cnt)
-        selection_neff = jnp.exp(2 * LSE(inj_weights) - LSE(2 * inj_weights))
-        numpyro.deterministic('event_neff', event_neff)
-        numpyro.deterministic('selection_neff', selection_neff)
-        if pp.EventNeffCut > 0.:
-            taper = taper + jnp.sum(smooth(-jnp.log(event_neff), -jnp.log(pp.EventNeffCut), 0.1))
-        # selection-bias correction (arXiv:2509.07221): 1 / xi^Nobs is biased high by 1 + Nobs (Nobs + 1) sigma^2 / 2
-        n_inj = injections['total_generated']; n_obs = len(pp.event_counts)
-        sel_sigma2 = (n_inj * jnp.exp(LSE(2 * inj_weights) - 2 * LSE(inj_weights)) - 1.) / (n_inj - 1.)
-        log_correction = n_obs * (n_obs + 1.) * sel_sigma2 / 2.
-        numpyro.deterministic('log_likelihood_correction', log_correction)
-        if likelihood_correction:
-            taper = taper - log_correction
-        numpyro.deterministic('log_likelihood', lnL)
-        numpyro.deterministic('log_likelihood_variance', var)
-        numpyro.deterministic('pe_variance', pe_v)
-        numpyro.deterministic('vt_variance', vt_v)
-        numpyro.deterministic('detection_efficiency', jnp.exp(LSE(inj_weights) - jnp.log(injections['total_generated'])))
-        numpyro.factor('log_likelihood_plus_taper', lnL + taper)
+        population_likelihood(pp, posteriors, injections, event_weights, inj_weights, likelihood_correction,
+                              record_weights)
 
     log_bins = lambda shape: jnp.clip(jnp.log(jnp.asarray(shape, float)) - jnp.log(4.), 0.3, None)
     rng = np.random.default_rng(0)
