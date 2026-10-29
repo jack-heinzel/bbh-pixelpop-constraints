@@ -117,11 +117,12 @@ def gauss_sd_floor(run):
     return float(m.group(1)) if m else GAUSS_SD_FLOOR
 
 
-def _spin_fns(km, logW, spin_model, sd_floor=None):
+def _spin_fns(km, logW, spin_model, sd_floor=None, cross=False):
     """Jitted spin rebuild for one draw of the given spin model; returns P_raw, P_win (population marginal,
     unwindowed / windowed mass weights, unnormalized), MOM (per-cell moments), PE_M, PP_M (p(chi_eff | m1),
     p(chi_p | m1): per-bin probabilities, averaged over the windowed p(q | m1)) and SLICE (per-cell
-    P(chi_eff in S | m1, q) for CHI_EFF_SLICES)."""
+    P(chi_eff in S | m1, q) for CHI_EFF_SLICES). With ``cross``, only CROSS (Bm, Bq, 4): per cell E[chi_eff chi_p],
+    and within |chi_eff| < CHI_CORE E[chi_p], E[chi_p^2], E[chi_eff chi_p] (with MOM and MOM_CORE, the correlations)."""
     import jax
     jax.config.update('jax_enable_x64', True)
     import jax.numpy as jnp
@@ -162,6 +163,14 @@ def _spin_fns(km, logW, spin_model, sd_floor=None):
             region = jnp.einsum('rq,q,qep->rep', RW[m], w_win[m], P)       # this m1 bin's share of each region
             return (jnp.einsum('q,qep->ep', w_raw[m], P), jnp.einsum('q,qep->ep', w_win[m], P), mom,
                     wq @ pe, wq @ pq, pe @ masks, mom_core, region)
+        def cross_slab(m):
+            T = slab_T(m) + log_support
+            P = jnp.exp(T - LSE(T + log_window, axis=(1, 2))[:, None, None] + log_window)       # (Bq, Be, Bp)
+            P_in = P * core[None, :, None]; inside = jnp.maximum(P_in.sum((1, 2)), 1e-300)
+            return jnp.stack([jnp.einsum('qep,e,p->q', P, ec, pc), P_in.sum(1) @ pc / inside,
+                              P_in.sum(1) @ pc ** 2 / inside, jnp.einsum('qep,e,p->q', P_in, ec, pc) / inside], -1)
+        if cross:
+            return (jax.lax.map(cross_slab, jnp.arange(B), batch_size=10),)
         raw, win, mom, pe_m, pp_m, sl, mom_core, region = jax.lax.map(slab, jnp.arange(B), batch_size=10)
         return raw.sum(0), win.sum(0), mom, pe_m, pp_m, sl, mom_core, region.sum(0)
 
@@ -246,6 +255,80 @@ def rebuild_chain(run, chain_file, n_draws=None, log_every=100, block=25):
                           f'{(time.time() - t0) / (i + 1):.2f} s each', flush=True)
     os.replace(tmp, path)
     return path
+
+
+def cross_path(run, chain_file):
+    return post_path(run, chain_file).replace('.h5', '_cross.h5')
+
+
+def rebuild_cross(run, chain_file, log_every=200, block=25):
+    """As rebuild_chain, for CROSS only (_spin_fns(cross=True)), into cross_path(run, chain_file)."""
+    import time
+    import jax.numpy as jnp
+    path = cross_path(run, chain_file)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.partial'
+    t0 = time.time()
+    with h5py.File(chain_file, 'r') as h, h5py.File(tmp, 'w') as g:
+        spin_model = spin_model_of(h)
+        km = (h['_spin_sites'].shape[1] if spin_model == 'field' else h['_spin1_sites'].shape[1] if spin_model == 'split'
+              else 1)
+        n = len(h['log_likelihood'])
+        fn, keys = _spin_fns(km, mass_window(), spin_model, gauss_sd_floor(run), cross=True)
+        g.attrs.update(n_draws=n, spin_model=spin_model, k=km, source=chain_file)
+        out = g.create_dataset('CROSS', (n, B, B, 4), 'f4', chunks=(1, B, B, 4), compression='gzip', compression_opts=1)
+        for b in range(0, n, block):
+            data = {k: h[k][b:min(b + block, n)] for k in keys}
+            for j in range(len(data['log_p_mass'])):
+                out[b + j] = np.asarray(fn(*(jnp.asarray(data[k][j], dtype=float) for k in keys))[0])
+                if log_every and (b + j + 1) % log_every == 0:
+                    print(f'{run} {os.path.basename(chain_file)}: {b + j + 1}/{n} draws, '
+                          f'{(time.time() - t0) / (b + j + 1):.2f} s each', flush=True)
+    os.replace(tmp, path)
+    return path
+
+
+def chi_correlations(r, axis, rng=None, core=False):
+    """Correlation coefficient of chi_eff and chi_p (per draw): per (m1, q) cell (axis=None, (draws, Bm, Bq)); given
+    m1 alone (axis='m1': the conditional averaged over the windowed p(q | m1), (draws, Bm)); or given q alone (axis='q':
+    over p(m1 | q), (draws, Bq)). ``rng`` = (lo, hi) keeps the q (axis='m1') or m1 [Msun] (axis='q') bins with centres
+    in it. With ``core``, of p(chi_eff, chi_p | ..., |chi_eff| < CHI_CORE). Needs r.MOM (all four moments), r.MOM_CORE
+    and r.CROSS (load_cross)."""
+    if core:
+        mx, sx, out = r.MOM_CORE[..., 0], r.MOM_CORE[..., 1], r.MOM_CORE[..., 2]
+        my, ey2, exy = r.CROSS[..., 1], r.CROSS[..., 2], r.CROSS[..., 3]
+        sy = np.sqrt(np.maximum(ey2 - my ** 2, 0.))
+    else:
+        mx, sx, my, sy = (r.MOM[..., i] for i in range(4))
+        exy, out = r.CROSS[..., 0], 0.
+    if axis is None:
+        with np.errstate(all='ignore'):
+            return (exy - mx * my) / (sx * sy)
+    w = r.p_mass.astype(np.float32) * (1 - out)
+    if rng is not None:
+        c = q_c if axis == 'm1' else m_c
+        sel = (c >= rng[0]) & (c <= rng[1])
+        w = w * (sel[None, None] if axis == 'm1' else sel[None, :, None])
+    ax = 2 if axis == 'm1' else 1
+    tot = w.sum(ax, keepdims=True)
+    w = w / np.maximum(tot, 1e-30)
+    E = lambda x: (w * x).sum(ax)
+    Ex, Ey = E(mx), E(my)
+    vx, vy = E(sx ** 2 + mx ** 2) - Ex ** 2, E(sy ** 2 + my ** 2) - Ey ** 2
+    with np.errstate(all='ignore'):
+        rho = (E(exy) - Ex * Ey) / np.sqrt(np.maximum(vx * vy, 0.))
+    return np.where(tot.squeeze(ax) > 0, rho, np.nan)
+
+
+def load_cross(r):
+    """Attach CROSS (cross_path caches, first r.n_draws of each chain) and the chi_p moments (MOM[..., 2:4], which
+    load_light leaves out) to r."""
+    files = sorted(glob.glob(os.path.join(REPO, 'results', r.run, 'chain_*_samples.h5')))
+    r.CROSS = np.concatenate([h5py.File(cross_path(r.run, f), 'r')['CROSS'][:r.n_draws] for f in files])
+    if r.MOM.shape[-1] == 2:
+        mp = np.concatenate([h5py.File(post_path(r.run, f), 'r')['MOM'][:r.n_draws, ..., 2:4] for f in files])
+        r.MOM = np.concatenate([r.MOM, mp.astype(r.MOM.dtype)], -1)
+    return r
 
 
 def cache_complete(path, n_draws):

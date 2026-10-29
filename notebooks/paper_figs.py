@@ -706,15 +706,92 @@ def chi_q_bands_figure(R, core, spin='chi_eff', bands=M1_BANDS):
     return fig
 
 
+Q_CURVE_COL = 'C4'                               # the given-q curve (C0, C1 are the q ranges of the m1 column)
+
+
+def corr_label(core, of):
+    cut = rf', $|\chi_\mathrm{{eff}}| < {A.CHI_CORE:g}$' if core else ''
+    return rf'$\rho_{{\chi_\mathrm{{eff}}\chi_p}}({of})$' + cut
+
+
+def corr_curves_figure(R, core):
+    """Rows: spin models; columns: the chi_eff-chi_p correlation coefficient given m1 alone (over p(q | m1); all q as
+    black 90% lines, each SUMMARY_Q_RANGES as bands) and given q alone (over p(m1 | q)), A.chi_correlations."""
+    D = {RUNS[run]: (A.chi_correlations(r, 'm1', core=core),
+                     [A.chi_correlations(r, 'm1', qr, core=core) for qr in A.SUMMARY_Q_RANGES],
+                     A.chi_correlations(r, 'q', core=core)) for run, r in R.items()}
+    qx, show = np.concatenate([[0.], A.q_c, [1.]]), A.q_c >= Q_MIN
+    with np.errstate(all='ignore'), __import__('warnings').catch_warnings():
+        __import__('warnings').simplefilter('ignore')
+        ys = [(y, vis) for d in D.values() for y in [d[0]] + d[1]] + [(d[2], show) for d in D.values()]
+        lo = min(np.nanmin(np.nanpercentile(y, 5, 0)[v]) for y, v in ys)
+        hi = max(np.nanmax(np.nanpercentile(y, 95, 0)[v]) for y, v in ys)
+    pad = 0.05 * (hi - lo)
+    fig, axes = plt.subplots(len(D), 2, figsize=(TWO_COL, 1.65 * len(D) + 0.45), squeeze=False)
+    for i, (name, (allq, byq, rq)) in enumerate(D.items()):
+        a, b = axes[i]
+        with __import__('warnings').catch_warnings():
+            __import__('warnings').simplefilter('ignore')
+            bands(a, allq, byq)
+            l, m, h = ext(q5(rq))
+        m1_axis(a, i == len(D) - 1)
+        b.fill_between(qx, l, h, color=Q_CURVE_COL, alpha=0.3, lw=0); b.plot(qx, m, color=Q_CURVE_COL)
+        b.set_xlim(Q_MIN, 1)
+        if i == len(D) - 1:
+            b.set_xlabel('$q$')
+        for ax, of in ((a, 'm_1'), (b, 'q')):
+            ax.axhline(0, color='0.5', lw=0.6, ls=':')
+            ax.set_ylim(lo - pad, hi + pad); ax.set_ylabel(corr_label(core, of))
+            ax.text(0.03, 0.93, name, transform=ax.transAxes, va='top', ha='left',
+                    bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.5))
+        if i < len(D) - 1:
+            a.tick_params(labelbottom=False); b.tick_params(labelbottom=False)
+    handles, names = band_legend()
+    handles = handles + [(Patch(color=Q_CURVE_COL, alpha=0.3, lw=0), Line2D([], [], color=Q_CURVE_COL))]
+    names = names + [r'given $q$ (median, 90\%)']
+    fig.legend(handles, names, loc='upper center', ncol=len(names), bbox_to_anchor=(0.5, 1.0), **LEG)
+    fig.tight_layout(rect=(0, 0, 1, 1 - 0.17 / fig.get_figheight())); fig.subplots_adjust(hspace=0.06)
+    return fig
+
+
+def corr_map_figure(R, core):
+    """Per spin model: the median chi_eff-chi_p correlation coefficient in each (m1, q) cell (cells with m2 < 3 Msun
+    blank), with the 50% and 90% highest-probability contours of the median windowed p(m1, q)."""
+    M = {}
+    for run, r in R.items():
+        with np.errstate(all='ignore'), __import__('warnings').catch_warnings():
+            __import__('warnings').simplefilter('ignore')
+            M[RUNS[run]] = (np.nanmedian(A.chi_correlations(r, None, core=core), 0), np.median(r.p_mass, 0))
+    ok = (A.q_c[None, :] * A.m_c[:, None] >= A.MIN_M) & vis[:, None]
+    lim = max(np.nanmax(np.abs(np.where(ok, m, np.nan))) for m, _ in M.values())
+    fig, axes = plt.subplots(1, len(M), figsize=(TWO_COL, 2.6), sharey=True, squeeze=False)
+    for ax, (name, (rho, pm)) in zip(axes[0], M.items()):
+        pc = ax.pcolormesh(m_edges, A.q_edges, np.where(ok, rho, np.nan).T, cmap='RdBu_r', vmin=-lim, vmax=lim,
+                           shading='flat', rasterized=True)
+        ax.contour(A.m_c, A.q_c, np.where(ok, pm, 0.).T, levels=hpd_levels_2d(np.where(ok, pm, 0.), (0.9, 0.5)),
+                   colors='k', linewidths=(0.6, 0.9), linestyles=('--', '-'))
+        m1_axis(ax); ax.set_ylim(0, 1)
+        ax.tick_params(which='both', direction='out')
+        ax.text(0.03, 0.06, name, transform=ax.transAxes, va='bottom', ha='left', bbox=LABEL_BOX)
+    axes[0, 0].set_ylabel('$q$')
+    cb = fig.colorbar(pc, cax=axes[0, -1].inset_axes([1.03, 0, 0.03, 1]))
+    cb.set_label(corr_label(core, 'm_1, q')); cb.ax.tick_params(direction='out')
+    dark = lambda ls, lw: Line2D([], [], color='k', lw=lw, ls=ls)
+    axes[0, 0].legend([dark('-', 0.9), dark('--', 0.6)], [r'$p(m_1, q)$: 50\%', r'90\%'], loc='upper right',
+                      **dict(LEG, frameon=True, framealpha=0.85, edgecolor='none'))
+    fig.tight_layout(); fig.subplots_adjust(wspace=0.06, right=0.9)
+    return fig
+
+
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'chip', 'chiq', 'chiqm', 'm2', 'spin', 'book', 'talk', 'all'))
+    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'chip', 'chiq', 'chiqm', 'corr', 'm2', 'spin', 'book', 'talk', 'all'))
     ap.add_argument('--core', action='store_true')
     ap.add_argument('--prior', action='store_true', help='chi / chip: overlay the spin prior (macros/spin_prior.py)')
     ap.add_argument('--lvk', action='store_true', help='chiq: overlay the GWTC-5 chi_eff | q models (lvk_chi_q)')
     ap.add_argument('--mean-asinh', type=float, default=0.03)
     args = ap.parse_args()
-    need = {'mass': list(RUNS)[:1], 'chi': list(RUNS), 'chip': list(RUNS), 'chiq': list(RUNS), 'chiqm': list(RUNS), 'm2': list(RUNS), 'talk': list(RUNS)[:1],
+    need = {'mass': list(RUNS)[:1], 'chi': list(RUNS), 'chip': list(RUNS), 'chiq': list(RUNS), 'chiqm': list(RUNS), 'corr': list(RUNS), 'm2': list(RUNS), 'talk': list(RUNS)[:1],
             'all': list(RUNS)}.get(args.what, [])
     R = {run: A.load_light(run) for run in need}
     import pixelpop  # noqa: F401  (its import resets matplotlib's rcParams; import it before the style)
@@ -752,6 +829,11 @@ def main():
             for stats, name in ((('mean',), 'mean'), (('sd',), 'sd'), (('mean', 'sd'), 'mean_sd')):
                 plot_style.save(chi_q_figure(D, stats, core_, spin, prior=Pr, lvk=lvk if spin == 'chi_eff' else None),
                                 f'{spin}_{name}_q{c}{tag}')
+    if args.what == 'corr':                     # chi_eff-chi_p correlation (needs the CROSS caches, post_cross.sbatch)
+        for r in R.values():
+            A.load_cross(r)
+        plot_style.save(corr_curves_figure(R, args.core), f'chi_corr_m1_q{core}')
+        plot_style.save(corr_map_figure(R, args.core), f'chi_corr_map{core}')
     if args.what == 'chiqm':                                          # internal: by m1 band
         plot_style.save(chi_q_bands_figure(R, args.core), f'chi_eff_mean_sd_q_m1bands{core}')
     if args.what in ('m2', 'all'):
