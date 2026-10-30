@@ -112,3 +112,27 @@ def test_additive_gauss():
     np.testing.assert_allclose(G.mean(1), 0., atol=1e-6)                               # mean mode pinned
     assert 'spin_moments' not in t
     assert np.isfinite(float(t['log_likelihood']['value']))
+
+
+def test_fully_additive_gauss():
+    """spin_mass_additive + spin_z_additive: theta = offset + F1(ln m1) + F2(q) + G(z), each 1D field zero-mean; with
+    F2 = G = 0 the likelihood depends on (m1, q) only through F1."""
+    pp, kw = synthetic()
+    b, init = setup_model(pp, spin_mass_modes=KM, n_spin_bins=SPIN_BINS, spin_model='gauss', spin_q_modes=KQ,
+                          spin_z_modes=KZ, z_bins=BZ, spin_z_additive=True, spin_mass_additive=True)
+    assert init['_gauss_sites'].shape == (5, KM) and init['_gauss_q_sites'].shape == (5, KQ)
+    rng = np.random.default_rng(17)
+    lat = dict(common_latents(init), **{k: jnp.asarray(rng.normal(size=np.shape(init[k])))
+                                        for k in ('_gauss_sites', '_gauss_q_sites', '_gauss_z_sites')})
+    t = trace_at(b, lat, **kw)
+    off = np.asarray(lat['gauss_offsets'])
+    F1, F2 = np.asarray(t['gauss_params_m']['value']), np.asarray(t['gauss_params_q']['value'])
+    assert F1.shape == (5, pp.bins[0]) and F2.shape == (5, pp.bins[1])
+    np.testing.assert_allclose(F1.mean(1), 0., atol=1e-6)
+    np.testing.assert_allclose(F2.mean(1), 0., atol=1e-6)
+    np.testing.assert_allclose(np.asarray(t['gauss_params']['value']), off[:, None, None] + F1[:, :, None]
+                               + F2[:, None, :], rtol=1e-5, atol=1e-6)
+    assert np.isfinite(float(t['log_likelihood']['value']))
+    with np.testing.assert_raises(ValueError):
+        setup_model(pp, spin_mass_modes=KM, n_spin_bins=SPIN_BINS, spin_model='gauss', spin_z_modes=KZ, z_bins=BZ,
+                    spin_mass_additive=True)

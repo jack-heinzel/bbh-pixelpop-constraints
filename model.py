@@ -49,6 +49,7 @@ SPIN_SITES = {
     'gauss': ('gauss_offsets', 'lnsigma_gauss', 'log_nu_gauss', 'log_ranges_gauss'),
 }
 GAUSS_Z_SITES = ('lnsigma_gauss_z', 'log_nu_gauss_z', 'log_ranges_gauss_z')     # spin_z_additive's z fields
+GAUSS_Q_SITES = ('lnsigma_gauss_q', 'log_nu_gauss_q', 'log_ranges_gauss_q')     # spin_mass_additive's q fields
 SPIN_MODELS = tuple(SPIN_SITES)
 # spin_model='gauss': the five parameter fields over (ln m1, q), their offset priors (uniform bounds) and the centres of
 # their lnsigma priors (Normal(centre, 1)): mean chi_eff, mean chi_p, ln sd chi_eff, ln sd chi_p, atanh rho
@@ -205,7 +206,8 @@ def population_likelihood(pp, posteriors, injections, event_weights, inj_weights
 
 def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_range_floor=0.05,
                 likelihood_correction=True, record_weights=False, spin_model='field', gauss_sd_floor=GAUSS_SD_FLOOR,
-                spin_q_modes=None, spin_z_modes=0, z_bins=10, spin_z_additive=False, _dense_cube=False):
+                spin_q_modes=None, spin_z_modes=0, z_bins=10, spin_z_additive=False, spin_mass_additive=False,
+                _dense_cube=False):
     """NumPyro model and initial values. ``pixelpop_data`` pixelates the mass plane (log_mass_1, mass_ratio) with
     ``spde_matern=True``; its posteriors and injections carry chi_eff and chi_p, binned here onto ``n_spin_bins`` over
     [-1, 1] x [0, 1]. ``spin_mass_modes`` = 0 makes the spins independent of mass (a 2D field on chi). ``_dense_cube``
@@ -233,6 +235,10 @@ def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_
     and range (GAUSS_Z_SITES), mean mode pinned. One redshift shift shared by every (m1, q), so a trend has to appear
     wherever the data reach rather than in the unobserved low-mass, high-z corner. Saves F (+ offset) as
     'gauss_params' (5, Bm, Bq) and G as 'gauss_params_z' (5, Bz); no 'spin_moments' (rebuild them).
+    ``spin_mass_additive`` ('gauss'; user, 2026-10-30): F(ln m1, q) = F1(ln m1) + F2(q) instead, 1D Matern fields on
+    ``spin_mass_modes`` and ``spin_q_modes`` modes, each with its own amplitude, nu and range (F1: the 'gauss' sites,
+    F2: GAUSS_Q_SITES), mean modes pinned. With ``spin_z_additive`` every parameter is offset + F1 + F2 + G: no
+    interaction between m1, q and z. Also saves F1 as 'gauss_params_m' (5, Bm) and F2 as 'gauss_params_q' (5, Bq).
     """
     pp = pixelpop_data
     if spin_model not in SPIN_MODELS:
@@ -256,6 +262,8 @@ def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_
                          'factorized path')
     if spin_z_additive and not (zdep and spin_model == 'gauss'):
         raise ValueError('spin_z_additive needs spin_model gauss and spin_z_modes > 0')
+    if spin_mass_additive and not (spin_model == 'gauss' and (spin_z_additive or not zdep)):
+        raise ValueError('spin_mass_additive needs spin_model gauss and, with spin_z_modes, spin_z_additive')
     if zdep and kz > Bz:
         raise ValueError(f'spin_z_modes {kz} exceeds z_bins {Bz}')
 
@@ -340,30 +348,37 @@ def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_
         return split_spin_field(white0, lnsigma0, nu0, r0, white1, lnsigma1, nu1, r1,
                                 ((wm[:km], Vm), (wq[:km], Vq)), ((we, ve), (wp, vp)), Bm * Bq * Be * Bp)
 
+    def gauss_component(tag, axes):
+        """(5, *n) additive Gaussian-parameter fields over ``axes`` [(eigvals, eigvecs, n bins)], mean mode pinned:
+        sites '_gauss{tag}_sites', 'lnsigma_gauss{tag}', 'log_nu_gauss{tag}', 'log_ranges_gauss{tag}'."""
+        lnsig = numpyro.sample(f'lnsigma_gauss{tag}', dist.Normal(jnp.asarray(GAUSS_LNSIGMA_CENTRES), 1.))
+        white = numpyro.sample(f'_gauss{tag}_sites',
+                               dist.Normal(0., 1.).expand([len(GAUSS_PARAMS)] + [len(a[0]) for a in axes]))
+        nu = jnp.exp(numpyro.sample(f'log_nu_gauss{tag}', pp.smoothness_prior[1](*pp.smoothness_prior[0])))
+        r = numpyro.sample(f'log_ranges_gauss{tag}', dist.Uniform(0., jnp.log(jnp.asarray([[a[2] for a in axes]] *
+                                                                                         len(GAUSS_PARAMS), dtype=float))))
+        n_cells = int(np.prod([a[2] for a in axes]))
+        return jnp.stack([to_grid(matern_spectrum([a[0] for a in axes], lnsig[i], r[i], nu, n_cells), white[i],
+                                  [a[1] for a in axes]) for i in range(len(GAUSS_PARAMS))])
+
     def gauss_fields():
         """(5, Bm, Bq) Gaussian parameters of spin_model='gauss': offset + Matern field over km x kq mass modes
-        ((5, Bm, Bq, Bz) over km x kq x kz mass-redshift modes with spin_z_modes)."""
+        ((5, Bm, Bq, Bz) over km x kq x kz mass-redshift modes with spin_z_modes; offset + F1(ln m1) + F2(q) with
+        spin_mass_additive; + G(z) with spin_z_additive)."""
         lo, hi = (jnp.asarray(b, dtype=float) for b in GAUSS_OFFSET_BOUNDS)
         offsets = numpyro.sample('gauss_offsets', dist.Uniform(lo, hi))
-        lnsig = numpyro.sample('lnsigma_gauss', dist.Normal(jnp.asarray(GAUSS_LNSIGMA_CENTRES), 1.))
-        axes = [(wm[:km], Vm, Bm), (wq[:kq], Vq, Bq)] + ([(wz[:kz], Vz, Bz)] if zdep and not spin_z_additive else [])
-        white = numpyro.sample('_gauss_sites', dist.Normal(0., 1.).expand([len(GAUSS_PARAMS)] + [len(a[0]) for a in axes]))
-        nu = jnp.exp(numpyro.sample('log_nu_gauss', pp.smoothness_prior[1](*pp.smoothness_prior[0])))
-        r = numpyro.sample('log_ranges_gauss', dist.Uniform(0., jnp.log(jnp.asarray([[a[2] for a in axes]] *
-                                                                                    len(GAUSS_PARAMS), dtype=float))))
-        n_cells = int(np.prod([a[2] for a in axes]))
-        fields = [to_grid(matern_spectrum([a[0] for a in axes], lnsig[i], r[i], nu, n_cells), white[i],
-                          [a[1] for a in axes]) for i in range(len(GAUSS_PARAMS))]
-        theta = offsets.reshape((-1,) + (1,) * len(axes)) + jnp.stack(fields)
+        if spin_mass_additive:
+            f_m = gauss_component('', [(wm[:km], Vm, Bm)])                                 # (5, Bm)
+            f_q = gauss_component('_q', [(wq[:kq], Vq, Bq)])                               # (5, Bq)
+            numpyro.deterministic('gauss_params_m', f_m)
+            numpyro.deterministic('gauss_params_q', f_q)
+            theta = offsets[:, None, None] + f_m[:, :, None] + f_q[:, None, :]
+        else:
+            axes = [(wm[:km], Vm, Bm), (wq[:kq], Vq, Bq)] + ([(wz[:kz], Vz, Bz)] if zdep and not spin_z_additive else [])
+            theta = offsets.reshape((-1,) + (1,) * len(axes)) + gauss_component('', axes)
         numpyro.deterministic('gauss_params', theta)
         if spin_z_additive:
-            lnsig_z = numpyro.sample('lnsigma_gauss_z', dist.Normal(jnp.asarray(GAUSS_LNSIGMA_CENTRES), 1.))
-            white_z = numpyro.sample('_gauss_z_sites', dist.Normal(0., 1.).expand([len(GAUSS_PARAMS), kz]))
-            nu_z = jnp.exp(numpyro.sample('log_nu_gauss_z', pp.smoothness_prior[1](*pp.smoothness_prior[0])))
-            r_z = numpyro.sample('log_ranges_gauss_z', dist.Uniform(0., jnp.log(jnp.full((len(GAUSS_PARAMS), 1),
-                                                                                       float(Bz)))))
-            g = jnp.stack([to_grid(matern_spectrum([wz[:kz]], lnsig_z[i], r_z[i], nu_z, Bz), white_z[i], [Vz])
-                           for i in range(len(GAUSS_PARAMS))])                              # (5, Bz)
+            g = gauss_component('_z', [(wz[:kz], Vz, Bz)])                                 # (5, Bz)
             numpyro.deterministic('gauss_params_z', g)
             theta = theta[..., None] + g[:, None, None, :]
         return theta
@@ -522,6 +537,13 @@ def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_
             'log_ranges_gauss': jnp.asarray(np.tile(np.asarray(log_bins([Bm, Bq] + ([Bz] if zdep and not spin_z_additive
                                                                                      else []))),
                                                     (len(GAUSS_PARAMS), 1)))})
+        if spin_mass_additive:
+            initial_value.update({
+                '_gauss_sites': jnp.asarray(0.1 * rng.normal(size=(len(GAUSS_PARAMS), km))),
+                'log_ranges_gauss': jnp.asarray(np.tile(np.asarray(log_bins([Bm])), (len(GAUSS_PARAMS), 1))),
+                '_gauss_q_sites': jnp.asarray(0.1 * rng.normal(size=(len(GAUSS_PARAMS), kq))),
+                'lnsigma_gauss_q': jnp.asarray(GAUSS_LNSIGMA_CENTRES), 'log_nu_gauss_q': jnp.asarray(0.),
+                'log_ranges_gauss_q': jnp.asarray(np.tile(np.asarray(log_bins([Bq])), (len(GAUSS_PARAMS), 1)))})
         if spin_z_additive:
             initial_value.update({
                 '_gauss_z_sites': jnp.asarray(0.1 * rng.normal(size=(len(GAUSS_PARAMS), kz))),
@@ -533,6 +555,7 @@ def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_
     return probabilistic_model, initial_value
 
 
-def mass_matrix_blocks(spin_model='field', spin_z_additive=False):
+def mass_matrix_blocks(spin_model='field', spin_z_additive=False, spin_mass_additive=False):
     """Dense mass-matrix blocks for NUTS: each field's hyperparameters together (latent white sites stay diagonal)."""
-    return [L_SITES, SPIN_SITES[spin_model]] + ([GAUSS_Z_SITES] if spin_z_additive else [])
+    return ([L_SITES, SPIN_SITES[spin_model]] + ([GAUSS_Q_SITES] if spin_mass_additive else [])
+            + ([GAUSS_Z_SITES] if spin_z_additive else []))

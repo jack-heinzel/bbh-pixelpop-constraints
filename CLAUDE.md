@@ -104,3 +104,10 @@ belong in mass-gap-investigation. See README.md for the model.
   Matern field shared by all (m1, q) (both mean modes pinned). Prior starts: chain 0 froze, chain 2 had no finite start;
   chain 3 is warm-started (`WARM=1`, the baseline Gaussian's min-Var draw, G ~ 0). Cut runs (Neff > 50/30, Var < 1/4)
   leave the conclusions unchanged; Var < 1 softens every feature slightly.
+- 2026-10-30 (Rusty): fully additive Gaussian, offset + F1(ln m1) + F2(q) + G(z) (`--mq-additive --z-additive`,
+  `model.py` spin_mass_additive, `submit_mqzadd.sbatch`, job 7372565): chain 0 (prior draw) froze and was cancelled;
+  chains 1, 2 warm-started from `results/inits/ppc_gwtc5_k100_gauss_minvar_massoffsets.npz`. Mass-ratio contrasts now
+  use q0 = 0 (`macros/q_contrast.py`), tested against the prior's median Delta (the m2 > 3 cut offsets Delta_10,20 by
+  ~0.07) and as sign Bayes factors (~1e2-1e3); not against the prior's whole Delta distribution (user). Conditional-prior
+  inpainting of <q> (`macros/q_inpaint.py`) falls to ~0.5-1 sigma once the buffer approaches the field's ln m1 range
+  (~20 bins), longer than the spacing of the peaks: dropped as too finicky to interpret.

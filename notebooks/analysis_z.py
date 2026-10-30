@@ -38,13 +38,15 @@ MAX_CELL_BZ = 20
 
 def z_config(run):
     """(spin model, km, kq, kz, Bz, z_max) of a redshift-dependent run, from its name (run.py's run_name); spin model
-    'gauss_zadd' for model.py's spin_z_additive."""
+    'gauss_zadd' for model.py's spin_z_additive, 'gauss_mqzadd' with spin_mass_additive too."""
     km = int(re.search(r'_k(\d+)', run).group(1))
     kq = int(m.group(1)) if (m := re.search(r'_kq(\d+)', run)) else km
     kz = int(re.search(r'_kz(\d+)', run).group(1))
     Bz = int(m.group(1)) if (m := re.search(r'_zb(\d+)', run)) else 10
     from data import MAX_Z
-    return ('gauss_zadd' if '_zadd' in run else 'gauss' if '_gauss' in run else 'field'), km, kq, kz, Bz, MAX_Z
+    spin_model = ('gauss_mqzadd' if '_mqadd' in run and '_zadd' in run else 'gauss_zadd' if '_zadd' in run
+                  else 'gauss' if '_gauss' in run else 'field')
+    return spin_model, km, kq, kz, Bz, MAX_Z
 
 
 def z_edges(run):
@@ -139,6 +141,22 @@ def _z_fns(run):
                          log_p_mass)
         keys = ('_gauss_sites', 'gauss_offsets', 'lnsigma_gauss', 'log_nu_gauss', 'log_ranges_gauss', '_gauss_z_sites',
                 'lnsigma_gauss_z', 'log_nu_gauss_z', 'log_ranges_gauss_z', 'log_p_mass')
+    elif spin_model == 'gauss_mqzadd':
+        @jax.jit
+        def fn(white, offsets, lnsig, lognu, logr, white_q, lnsig_q, lognu_q, logr_q, white_z, lnsig_z, lognu_z, logr_z,
+               log_p_mass):
+            one = lambda w, v, ls, lr, ln, wh, n: jnp.stack([to_grid(matern_spectrum([w], ls[i], lr[i], jnp.exp(ln), n),
+                                                                     wh[i], [v]) for i in range(5)])
+            F1 = one(w_ax[:km], Vm, lnsig, logr, lognu, white, B)                          # (5, Bm)
+            F2 = one(w_ax[:kq], Vq, lnsig_q, logr_q, lognu_q, white_q, B)                  # (5, Bq)
+            G = one(wz[:kz], Vz, lnsig_z, logr_z, lognu_z, white_z, Bz)                     # (5, Bz)
+            theta = (offsets[:, None, None, None] + F1[:, :, None, None] + F2[:, None, :, None]
+                     + G[:, None, None, :])                                                 # (5, Bm, Bq, Bz)
+            return stats(lambda m: gauss_log_kernel(theta[:, m][..., None, None], ec[:, None], pc[None, :], sd_floor),
+                         log_p_mass)
+        keys = ('_gauss_sites', 'gauss_offsets', 'lnsigma_gauss', 'log_nu_gauss', 'log_ranges_gauss', '_gauss_q_sites',
+                'lnsigma_gauss_q', 'log_nu_gauss_q', 'log_ranges_gauss_q', '_gauss_z_sites', 'lnsigma_gauss_z',
+                'log_nu_gauss_z', 'log_ranges_gauss_z', 'log_p_mass')
     else:
         @jax.jit
         def fn(white, offsets, lnsig, lognu, logr, log_p_mass):
@@ -200,4 +218,7 @@ def load_curves(run):
 if __name__ == '__main__':
     for run in sys.argv[1:]:
         for f in chain_files(run):
+            if os.path.exists(cache_path(run, f)) and os.path.getmtime(cache_path(run, f)) > os.path.getmtime(f):
+                print('up to date:', cache_path(run, f), flush=True)       # newer than its chain file
+                continue
             print('wrote', rebuild_chain(run, f), flush=True)

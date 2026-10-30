@@ -6,7 +6,7 @@ The chain starts from a random draw from the prior of every latent site (keyed b
 evaluates the same draw), unless --init-from gives one (e.g. warmstart.py's output). Chains of one run (--chain 0, 1,
 ...; separate jobs) share its directory as chain_<N>_samples.h5, each from its own prior draw and sampler key.
 
-Run name: ppc_<catalog>_k<spin mass modes>[_<spin model>][_kq<q modes>][_kz<z modes>][_zb<z bins>][_zadd][_sdfloor<x>][_neff<floor>][_varcut<Var(ln L) cut>][_npe<max samples>][_no231123][_short][_<tag>];
+Run name: ppc_<catalog>_k<spin mass modes>[_<spin model>][_kq<q modes>][_kz<z modes>][_zb<z bins>][_mqadd][_zadd][_sdfloor<x>][_neff<floor>][_varcut<Var(ln L) cut>][_npe<max samples>][_no231123][_short][_<tag>];
 the spin model ('field', the default, 'split' or 'gauss'; model.py) is left out of the name for 'field'.
 
 This node caps processes + threads at 500 per user, and XLA sizes its thread pools from the CPU affinity, so the job
@@ -38,6 +38,9 @@ def make_parser():
     ap.add_argument('--z-additive', action='store_true',
                     help="gauss with --spin-z-modes: parameters offset + F(ln m1, q) + G(z) (model.py spin_z_additive); "
                          "adds '_zadd'")
+    ap.add_argument('--mq-additive', action='store_true',
+                    help="gauss: F(ln m1, q) = F1(ln m1) + F2(q), 1D fields on --spin-mass-modes / --spin-q-modes modes "
+                         "(model.py spin_mass_additive; with --z-additive, offset + F1 + F2 + G(z)); adds '_mqadd'")
     ap.add_argument('--parametric', action='store_true',
                     help="parametric.py's q-split power law plus two peaks (mass-independent Gaussian spins) instead of "
                          "PixelPop; run name ppc_<catalog>_plpp_qsplit<split> (the spin-field options are ignored)")
@@ -84,6 +87,7 @@ def run_name(args):
             + (f'_kq{args.spin_q_modes}' if args.spin_q_modes not in (None, args.spin_mass_modes) else '')
             + (f'_kz{args.spin_z_modes}' if args.spin_z_modes else '')
             + (f'_zb{args.z_bins}' if args.spin_z_modes and args.z_bins != 10 else '')
+            + ('_mqadd' if args.mq_additive else '')
             + ('_zadd' if args.z_additive else '')
             + (f'_sdfloor{args.gauss_sd_floor:g}' if args.spin_model == 'gauss' and args.gauss_sd_floor != 0.02 else '')
             + (f'_neff{args.event_neff_cut:g}' if args.event_neff_cut != 100. else '')
@@ -148,7 +152,7 @@ def build(args, name, record_weights=False):
                                          record_weights=record_weights, spin_model=args.spin_model,
                                          gauss_sd_floor=args.gauss_sd_floor, spin_q_modes=args.spin_q_modes,
                                          spin_z_modes=args.spin_z_modes, z_bins=args.z_bins,
-                                         spin_z_additive=args.z_additive)
+                                         spin_z_additive=args.z_additive, spin_mass_additive=args.mq_additive)
     return prob_model, init, posteriors, injections, pp
 
 
@@ -211,7 +215,7 @@ def main():
     scalar_spin = [k for k in model.SPIN_SITES[args.spin_model] if k.startswith('lnsigma') and k != 'lnsigma_gauss']
     print_keys = (['log_likelihood', 'log_likelihood_variance', 'log_likelihood_correction', 'lnsigma', *scalar_spin,
                    'detection_efficiency'] + [h for h, (_, d) in pp.priors.items() if d is not dist.Delta])
-    dense = model.mass_matrix_blocks(args.spin_model, args.z_additive)
+    dense = model.mass_matrix_blocks(args.spin_model, args.z_additive, args.mq_additive)
     if args.parametric:
         import parametric
         print_keys = ['log_likelihood', 'log_likelihood_variance', 'log_likelihood_correction', 'zeta', 'mpp_1_hi',

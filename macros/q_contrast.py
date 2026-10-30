@@ -1,5 +1,5 @@
 """Mass-ratio contrasts between the peaks (draft/temp.tex, SM "Mass ratio contrast"; user, 2026-10-29): the mean mass
-ratio over q in [Q0, 1] in a window W around each peak,
+ratio over q in [Q0, 1] (Q0 = 0: every q allowed by m2 > 3 Msun) in a window W around each peak,
 
     <q>_W = int_W dln m1 int_Q0^1 dq q p(ln m1, q) / int_W dln m1 int_Q0^1 dq p(ln m1, q),
 
@@ -12,7 +12,12 @@ parameters, fresh white noise).
 Macros per contrast (TenTwenty, ThirtyFiveTwenty, ThirtyFiveSixty) and run (Flex, Gauss): \\qContrast<Name>{Med, P, Z,
 ESS, PPrior, ZPrior}<Run>. Med: median and 90% of Delta; P: P(Delta > 0); Z: median / sigma (sigma: half the central 68%
 interval); ESS: the effective sample size of Delta over the chains (numpyro's estimator); PPrior, ZPrior: the same under
-the prior. Also the window means <q>_W: \\qWindow<Peak><Run>.
+the prior. Calibrated against the prior (user, 2026-10-30: the m2 > 3 Msun cut removes more low q at low m1, so Delta
+is offset from 0 under the prior too): MedPrior, the prior's median and 90%; PShift = P(Delta_post > median Delta_prior) and ZShift = (median Delta_post -
+median Delta_prior) / s_post (s: half the central 68% interval), the posterior tested against the prior's offset in
+place of 0. BF: the Bayes factor for Delta > 0 against Delta < 0, posterior odds over prior odds (counts of draws;
+'> x' when no posterior draw has Delta < 0, from 1 - P < 1/n). (Not Delta_post against the whole prior distribution of Delta: that asks how often a random Matern-field
+universe has such an offset, not how significantly the data measure one; user, 2026-10-30.) Also the window means <q>_W: \\qWindow<Peak><Run>.
 """
 import os
 import sys
@@ -27,7 +32,7 @@ import analysis as A
 from peak_fits import RUN_NAMES, fmt
 from prior_fits import load_hyper, prior_p_mass
 
-Q0 = 0.4
+Q0 = 0.   # every q the m2 > 3 Msun window allows (user, 2026-10-30; was 0.4)
 WINDOWS = {'Ten': (8., 12.), 'Twenty': (15., 25.), 'ThirtyFive': (28., 40.), 'Sixty': (50., 70.)}
 CONTRASTS = (('Ten', 'Twenty'), ('ThirtyFive', 'Twenty'), ('ThirtyFive', 'Sixty'))
 
@@ -38,10 +43,10 @@ def pfmt(p, n):
 
 
 def window_q(p_mass, window, q0=Q0):
-    """<q> over m1 bins with centres in ``window`` and q bins with centres >= q0, per draw."""
+    """<q> over m1 bins with centres in ``window`` and q bins with centres >= q0, per draw, on the windowed field
+    (so below 3 Msun / m1 the m2 > 3 Msun window, not q0, sets the lower limit)."""
     s = (A.m_c >= window[0]) & (A.m_c <= window[1])
     t = A.q_c >= q0
-    assert np.all(A.q_c[t].min() * A.m_c[s] >= A.MIN_M), 'q0 must lie above 3 Msun / m1 in the window'
     pq = p_mass[:, s][:, :, t].astype(float).sum(1)
     return (pq @ A.q_c[t]) / pq.sum(1)
 
@@ -49,6 +54,19 @@ def window_q(p_mass, window, q0=Q0):
 def z_score(d):
     lo, md, hi = np.percentile(d, [16, 50, 84])
     return md / (0.5 * (hi - lo))
+
+
+def half68(d):
+    lo, hi = np.percentile(d, [16, 84])
+    return 0.5 * (hi - lo)
+
+
+def sign_bf(d, dr):
+    """Posterior odds of Delta > 0 over the prior's, as a string; a lower bound when every posterior draw is > 0."""
+    n_neg, prior_odds = np.sum(d <= 0), np.mean(dr > 0) / np.mean(dr <= 0)
+    bf = (len(d) - max(n_neg, 1)) / max(n_neg, 1) / prior_odds
+    s = f'{float(f"{bf:.2g}"):g}'
+    return f'> {s}' if n_neg == 0 else s
 
 
 def ess(d, n_chains):
@@ -76,7 +94,9 @@ def main():
             name = a + b
             vals = {'Med': fmt(d), 'P': pfmt(np.mean(d > 0), len(d)), 'Z': f'{z_score(d):.1f}',
                     'ESS': f'{ess(d, n_chains):.0f}', 'PPrior': pfmt(np.mean(dr > 0), len(dr)),
-                    'ZPrior': f'{z_score(dr) + 0.:.1f}'.replace('-0.0', '0.0')}
+                    'ZPrior': f'{z_score(dr) + 0.:.1f}'.replace('-0.0', '0.0'), 'MedPrior': fmt(dr),
+                    'PShift': pfmt(np.mean(d > np.median(dr)), len(d)),
+                    'ZShift': f'{(np.median(d) - np.median(dr)) / half68(d):.1f}', 'BF': sign_bf(d, dr)}
             print(f'{run} Delta_{a},{b}: ' + ', '.join(f'{k} {v}' for k, v in vals.items()), flush=True)
             for k, v in vals.items():
                 lines.append(rf'\newcommand{{\qContrast{name}{k}{suffix}}}{{{v}}}')

@@ -15,7 +15,8 @@ import numpy as np
 import analysis_z as Z
 
 RUNS = {'ppc_gwtc5_k10_kq5_kz5': 'Flexible', 'ppc_gwtc5_k100_gauss_kz10': 'Gaussian',
-        'ppc_gwtc5_k100_gauss_kz100_zb100_zadd': r'Gaussian, $F(m_1, q) + G(z)$'}
+        'ppc_gwtc5_k100_gauss_kz100_zb100_zadd': r'Gaussian, $F(m_1, q) + G(z)$',
+        'ppc_gwtc5_k100_gauss_kz100_zb100_mqadd_zadd': r'Gaussian, $F_1(m_1) + F_2(q) + G(z)$'}
 Q_BAND_COLS = ('C0', 'C1')                       # as paper_figs.COLS for SUMMARY_Q_RANGES
 
 
@@ -88,7 +89,8 @@ def main():
     for run in args.runs:
         C[RUNS.get(run, run)], ze = Z.load_curves(run)
     spin, tag = ('chi_eff_core', '_core') if args.core else ('chi_eff', '')
-    tag += '_zadd' if all('_zadd' in r for r in args.runs) else ''      # the additive model alone: its own files
+    tag += ('_mqzadd' if all('_mqadd' in r for r in args.runs) else '_zadd' if all('_zadd' in r for r in args.runs)
+            else '')                                                    # an additive model alone: its own files
     plot_style.save(z_figure(C, ze, spin, 'm1'), f'chi_eff_mean_sd_z_m1bands{tag}')
     plot_style.save(z_figure(C, ze, spin, 'q'), f'chi_eff_mean_sd_z_qbands{tag}')
     if not args.core:
