@@ -246,13 +246,16 @@ def region_label(mr, qr):
     return rf'$m_1 \in [{mr[0]:g}, {mr[1]:g}]\,M_\odot$' '\n' rf'$q \in [{qr[0]:g}, {qr[1]:g}]$'
 
 
-def spin_heatmap(ax, med_f, med_g, norm, slices=False):
+def spin_heatmap(ax, med_f, med_g, norm, slices=False, contour=None):
     """The flexible model's median p(chi_eff, chi_p) (heatmap) and the Gaussian model's 50% / 90% regions; with
     ``slices``, dashed lines at the slice values (analysis.REGION_CHI_P_SLICES, REGION_CHI_EFF_SLICES)."""
     pcm = ax.pcolormesh(A.e_edges, A.p_edges, np.where(med_f > 0, med_f, np.nan).T, norm=norm, cmap='inferno',
                         shading='flat', rasterized=True)
-    ax.contour(A.e_c, A.p_c, med_g.T, levels=hpd_levels_2d(med_g, (0.9, 0.5)), colors='c', linewidths=(0.7, 1.0),
-               linestyles=('--', '-'))
+    if contour is None:                                    # the Gaussian's 50% / 90% regions
+        ax.contour(A.e_c, A.p_c, med_g.T, levels=hpd_levels_2d(med_g, (0.9, 0.5)), colors='c', linewidths=(0.7, 1.0),
+                   linestyles=('--', '-'))
+    else:                                                  # its 90% region only, in the colour ``contour``
+        ax.contour(A.e_c, A.p_c, med_g.T, levels=hpd_levels_2d(med_g, (0.9,)), colors=contour, linewidths=0.9)
     if slices:
         for v, c in zip(A.REGION_CHI_P_SLICES, SLICE_COLOURS):
             ax.axhline(A.p_c[_bin(A.p_edges, v)], color=c, lw=0.8, ls='--')
@@ -300,25 +303,28 @@ def spin_block(fig, spec, Df, med_g, mr, qr, norm, label=True, ylabel=True, xlab
     return ax_m, pcm
 
 
-MARG_COLOURS = ('0.2', 'c')                      # marginal panels: flexible, Gaussian (as its contours)
+FLEX_COLOUR, GAUSS_COLOUR = 'C1', 'k'             # marginal figure: flexible as Fig. 1's q ~ 1 colour; Gaussian 90% only
 
 
 def marginal_block(fig, spec, Df, Dg, mr, qr, norm, tops, ylabel=True, fontsize=6):
     """The flexible model's median heatmap and the Gaussian model's contours (spin_heatmap), with the 1D marginals
-    p(chi_eff | region) above and p(chi_p | region) to the right: median and 90% band over draws of each model
-    (Df, Dg: draws, Be, Bp densities). ``tops``: the (chi_eff, chi_p) density axis limits, shared by all blocks."""
+    p(chi_eff | region) above and p(chi_p | region) to the right (Df, Dg: draws, Be, Bp densities): the flexible
+    model's median and 90% band, the Gaussian model's 90% interval only (lines; its 90% region on the heatmap). ``tops``: the (chi_eff, chi_p) density axis limits, shared by all blocks."""
     sub = spec.subgridspec(2, 2, width_ratios=(3, 1.1), height_ratios=(1.1, 3), hspace=0.05, wspace=0.05)
     ax_m, ax_t, ax_r = fig.add_subplot(sub[1, 0]), fig.add_subplot(sub[0, 0]), fig.add_subplot(sub[1, 1])
-    pcm = spin_heatmap(ax_m, np.median(Df, 0), np.median(Dg, 0), norm)
+    pcm = spin_heatmap(ax_m, np.median(Df, 0), np.median(Dg, 0), norm, contour=GAUSS_COLOUR)
     ex, px = np.repeat(A.e_edges, 2)[1:-1], np.repeat(A.p_edges, 2)[1:-1]
     step = lambda y: np.repeat(y, 2)
-    for D, c in zip((Df, Dg), MARG_COLOURS):
-        lo, md, hi = np.percentile(D.sum(2) * A.dp, [5, 50, 95], axis=0)            # p(chi_eff | region)
-        ax_t.fill_between(ex, step(lo), step(hi), color=c, alpha=0.25, lw=0)
-        ax_t.plot(ex, step(md), color=c, lw=0.8)
-        lo, md, hi = np.percentile(D.sum(1) * A.de, [5, 50, 95], axis=0)            # p(chi_p | region)
-        ax_r.fill_betweenx(px, step(lo), step(hi), color=c, alpha=0.25, lw=0)
-        ax_r.plot(step(md), px, color=c, lw=0.8)
+    lo, md, hi = np.percentile(Df.sum(2) * A.dp, [5, 50, 95], axis=0)              # p(chi_eff | region)
+    ax_t.fill_between(ex, step(lo), step(hi), color=FLEX_COLOUR, alpha=0.3, lw=0)
+    ax_t.plot(ex, step(md), color=FLEX_COLOUR, lw=0.8)
+    lo, md, hi = np.percentile(Df.sum(1) * A.de, [5, 50, 95], axis=0)              # p(chi_p | region)
+    ax_r.fill_betweenx(px, step(lo), step(hi), color=FLEX_COLOUR, alpha=0.3, lw=0)
+    ax_r.plot(step(md), px, color=FLEX_COLOUR, lw=0.8)
+    for y in np.percentile(Dg.sum(2) * A.dp, [5, 95], axis=0):
+        ax_t.plot(ex, step(y), color=GAUSS_COLOUR, lw=0.6)
+    for y in np.percentile(Dg.sum(1) * A.de, [5, 95], axis=0):
+        ax_r.plot(step(y), px, color=GAUSS_COLOUR, lw=0.6)
     ax_t.set_xlim(ax_m.get_xlim()); ax_t.set_ylim(0, tops[0])
     ax_r.set_ylim(0, 1); ax_r.set_xlim(0, tops[1])
     ax_t.tick_params(labelbottom=False, labelleft=False, which='both', direction='out')
@@ -365,9 +371,10 @@ def spin_peaks_figure(slices=False, marginals=False):
         for k, ((mr, qr), f, g) in enumerate(zip(SPIN_PEAK_REGIONS, np.moveaxis(Df, 1, 0), np.moveaxis(Dg, 1, 0))):
             ref, pcm = marginal_block(fig, gs[0, k], f, g, mr, qr, norm, tops, ylabel=k == 0)
         from matplotlib.patches import Patch
-        hm = [(Patch(color=c, alpha=0.25, lw=0), Line2D([], [], color=c, lw=0.8)) for c in MARG_COLOURS]
-        fig.legend(hm + handles, ['Flexible marginal, median and 90\\%', 'Gaussian marginal, median and 90\\%'] + names,
-                   loc='upper center', ncol=4, bbox_to_anchor=(0.5, 1.0), **LEG)
+        fig.legend([(Patch(color=FLEX_COLOUR, alpha=0.3, lw=0), Line2D([], [], color=FLEX_COLOUR, lw=0.8)),
+                    Line2D([], [], color=GAUSS_COLOUR, lw=0.8)],
+                   ['Flexible, median and 90\\%', 'Gaussian, 90\\%'], loc='upper center', ncol=2,
+                   bbox_to_anchor=(0.5, 1.0), **LEG)
     elif not slices:
         fig, axes = plt.subplots(1, len(SPIN_PEAK_REGIONS), figsize=(TWO_COL, 2.05), sharey=True)
         for ax, (mr, qr), f, g in zip(axes, SPIN_PEAK_REGIONS, Mf, Mg):
