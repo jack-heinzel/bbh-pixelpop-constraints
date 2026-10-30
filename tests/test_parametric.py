@@ -46,3 +46,23 @@ def test_spin_split_reduces_to_shared_spins():
     np.testing.assert_allclose(lnl(b, lat_b), lnl(a, lat_a), rtol=1e-6, atol=1e-4)
     lat_b['gauss_offsets_lo'] = jnp.asarray([-0.1, 0.5, np.log(0.4), np.log(0.3), -0.3])
     assert abs(lnl(b, lat_b) - lnl(a, lat_a)) > 1e-3
+
+
+def test_shared_continuum_reduces_to_separate():
+    """shared_continuum equals the separate model with the same continuum in both ranges; a different alpha_lo in the
+    separate model changes the likelihood."""
+    sys.path.insert(0, os.path.dirname(__file__))
+    from parametric import CONTINUUM, RANGES, setup_parametric
+    from test_model import synthetic, trace_at
+    pp, kw = synthetic()
+    a, init_a = setup_parametric(pp, n_spin_bins=(10, 8))
+    pp, kw = synthetic()
+    b, init_b = setup_parametric(pp, n_spin_bins=(10, 8), shared_continuum=True)
+    assert not any(f'{k}_{r}' in init_b for k in CONTINUUM for r in RANGES)
+    cont = {'alpha': 2.2, 'mmin': 4.5, 'delta_m': 2.5}
+    lat_a = dict(init_a, **{f'{k}_{r}': jnp.asarray(v) for k, v in cont.items() for r in RANGES})
+    lat_b = dict(init_b, **{k: jnp.asarray(v) for k, v in cont.items()})
+    lnl = lambda m, lat: float(trace_at(m, lat, **kw)['log_likelihood']['value'])
+    np.testing.assert_allclose(lnl(b, lat_b), lnl(a, lat_a), rtol=1e-6, atol=1e-4)
+    lat_a['alpha_lo'] = jnp.asarray(5.)
+    assert abs(lnl(b, lat_b) - lnl(a, lat_a)) > 1e-3

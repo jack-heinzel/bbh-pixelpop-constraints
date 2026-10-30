@@ -12,6 +12,10 @@ correction) are model.py's. Run with ``run.py --parametric``.
 
 ``spin_split`` (user, 2026-10-30): each range has its own mass-independent spin Gaussian (offsets 'gauss_offsets_hi',
 'gauss_offsets_lo', same priors), so p(chi | m1, q) jumps at the split; ``run.py --spin-split``.
+
+``shared_continuum`` (user, 2026-10-30): both ranges share the continuum, the power-law slope and the low-mass taper
+(sites 'alpha', 'mmin', 'delta_m', CONTINUUM); the peaks, their fractions lam and the pairing beta stay separate. With
+separate slopes alpha_lo was unidentified (the q < Q_SPLIT range is mostly its two peaks); ``run.py --shared-continuum``.
 """
 import jax.numpy as jnp
 import numpy as np
@@ -31,6 +35,7 @@ M_GRID = np.linspace(MIN_M, MAX_M, 4000)  # normalization of p_r(m1) (Riemann su
 PRIORS = {'alpha': (-4., 12.), 'mmin': (MIN_M, 10.), 'delta_m': (0., 10.), 'mpp_1': (5., 30.), 'sigpp_1': (0.5, 10.),
           'mpp_2': (25., 100.), 'sigpp_2': (1., 20.), 'beta': (-10., 10.)}
 MASS_SITES = tuple(f'{k}_{r}' for r in RANGES for k in PRIORS) + tuple(f'lam_{r}' for r in RANGES) + ('zeta',)
+CONTINUUM = ('alpha', 'mmin', 'delta_m')     # shared by both ranges with shared_continuum
 
 
 def log_p_m1(m1, alpha, mmin, delta_m, lam, mpp_1, sigpp_1, mpp_2, sigpp_2, m_floor=MIN_M):
@@ -53,7 +58,7 @@ def log_p_q(q, m1, beta, q_lo, q_hi):
 
 
 def setup_parametric(pixelpop_data, n_spin_bins=(100, 100), likelihood_correction=True, record_weights=False,
-                     gauss_sd_floor=GAUSS_SD_FLOOR, q_split=Q_SPLIT, spin_split=False):
+                     gauss_sd_floor=GAUSS_SD_FLOOR, q_split=Q_SPLIT, spin_split=False, shared_continuum=False):
     """NumPyro model and initial values of the q-split power law plus two peaks (module docstring), on
     ``pixelpop_data``'s posteriors and injections (data.build_pixelpop_data)."""
     pp = pixelpop_data
@@ -100,8 +105,10 @@ def setup_parametric(pixelpop_data, n_spin_bins=(100, 100), likelihood_correctio
 
     def probabilistic_model(posteriors, injections):
         theta = {'zeta': numpyro.sample('zeta', dist.Uniform(0., 1.))}
+        shared = {k: numpyro.sample(k, dist.Uniform(*PRIORS[k])) for k in CONTINUUM} if shared_continuum else {}
         for r in RANGES:
-            theta[r] = {k: numpyro.sample(f'{k}_{r}', dist.Uniform(*b)) for k, b in PRIORS.items()}
+            theta[r] = {k: shared[k] if k in shared else numpyro.sample(f'{k}_{r}', dist.Uniform(*b))
+                        for k, b in PRIORS.items()}
             theta[r]['lam'] = numpyro.sample(f'lam_{r}', dist.Dirichlet(jnp.ones(3)))
         lo, hi = (jnp.asarray(b, dtype=float) for b in GAUSS_OFFSET_BOUNDS)
         if spin_split:
@@ -119,8 +126,10 @@ def setup_parametric(pixelpop_data, n_spin_bins=(100, 100), likelihood_correctio
     init = {'zeta': jnp.asarray(0.5)}
     init.update({f'gauss_offsets_{r}': g0 for r in RANGES} if spin_split else {'gauss_offsets': g0})
     start = {'alpha': 3., 'mmin': 5., 'delta_m': 3., 'mpp_1': 10., 'sigpp_1': 2., 'mpp_2': 35., 'sigpp_2': 5., 'beta': 1.}
+    if shared_continuum:
+        init.update({k: jnp.asarray(start[k]) for k in CONTINUUM})
     for r in RANGES:
-        init.update({f'{k}_{r}': jnp.asarray(v) for k, v in start.items()})
+        init.update({f'{k}_{r}': jnp.asarray(v) for k, v in start.items() if not (shared_continuum and k in CONTINUUM)})
         init[f'lam_{r}'] = jnp.asarray([0.6, 0.3, 0.1])
     for key, (args, distribution) in pp.priors.items():      # redshift hyperparameters at their prior means
         if distribution.__name__ != 'Delta':
