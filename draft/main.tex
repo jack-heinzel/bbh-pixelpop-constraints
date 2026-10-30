@@ -142,26 +142,7 @@ Though a Gaussian model may be misspecified against the astrophysical shape of t
 
 \section{Mass peaks}
 
-We show the inferred binary mass distribution in Fig.~\ref{fig: mass peaks}. In the top panel, we compare the marginal primary mass distribution with slices of primary mass with mass ratio close to 1, and with mass ratio close to $q\sim 1/2$. For mass ratios close to 1, $q\in [0.8,1]$, the primary mass spectrum has a peak at $\sim \featTen\,\Msun$, and a peak at $\sim \featThirtyFive\,\Msun$; for mass ratios $q\in [0.3,0.65]$, the mass spectrum instead appears to show a peak at $\sim \featTwenty\,\Msun$ and $\sim \featSixty\,\Msun$. 
-
-It is interesting to note that the mass spectrum for $q\in [0.8, 1]$ appears to unequivocally show a \textit{peaked} \featThirtyFive $\Msun$ feature rather than a steepening of an already decreasing powerlaw \citep[c.f.,][]{LIGOScientific:2025pvj, LIGOScientific:2026ctl}. \red{For $q \in [0.8, 1]$ (Table~\ref{tab: peak odds}), the integrated rate in $m_1 \in [30, 35]\,\Msun$ exceeds those in both $[25, 30]$ and $[35, 40]\,\Msun$ with posterior probability $\peakOddsHiPFlex$ ($\peakOddsHiPGauss$ for \gaussianspins), against $\peakOddsHiPPriorFlex$ under the prior, posterior-to-prior odds of $\peakOddsHiBFFlex$ ($\peakOddsHiBFGauss$). Marginalized over $q$, the probability is only $\peakOddsAllPFlex$ ($\peakOddsAllPGauss$; odds $\peakOddsAllBFFlex$): the rate in $[30, 35]$ is then about equal to that in $[25, 30]$ ($R_{30\text{--}35}/R_{25\text{--}30} = \peakOddsAllRatioLoFlex$, against $\peakOddsHiRatioLoFlex$ for $q \in [0.8, 1]$), so the peak is only visible once the unequal-mass binaries at 20--30\,\Msun are separated out.}
-
-\begin{table}
-    \renewcommand{\arraystretch}{1.3}
-    \caption{\red{Is the \featThirtyFive\,\Msun feature a peak? The integrated rates $R$ in $m_1 \in [25, 30]$, $[30, 35]$ and $[35, 40]\,\Msun$, over all mass ratios allowed by $m_2 > 3\,\Msun$ or over $q \in [0.8, 1]$. $P$: the posterior probability that $R_{30\text{--}35}$ exceeds both neighbors; $P_{\rm prior}$: the same under the empirical-Bayes prior; $\mathcal{O}$: their odds ratio. Last two columns: posterior medians and 90\% intervals of the rate ratios.}}
-    \label{tab: peak odds}
-    \begin{ruledtabular}
-    \begin{tabular}{llccccc}
-        $q$ & Model & $P$ & $P_{\rm prior}$ & $\mathcal{O}$ & $R_{30\text{--}35}/R_{25\text{--}30}$ & $R_{30\text{--}35}/R_{35\text{--}40}$ \\
-        \hline
-        all $q$ & \flexiblespins & $\peakOddsAllPFlex$ & $\peakOddsAllPPriorFlex$ & $\peakOddsAllBFFlex$ & $\peakOddsAllRatioLoFlex$ & $\peakOddsAllRatioHiFlex$ \\
-         & \gaussianspins & $\peakOddsAllPGauss$ & $\peakOddsAllPPriorGauss$ & $\peakOddsAllBFGauss$ & $\peakOddsAllRatioLoGauss$ & $\peakOddsAllRatioHiGauss$ \\
-        $[0.8, 1]$ & \flexiblespins & $\peakOddsHiPFlex$ & $\peakOddsHiPPriorFlex$ & $\peakOddsHiBFFlex$ & $\peakOddsHiRatioLoFlex$ & $\peakOddsHiRatioHiFlex$ \\
-         & \gaussianspins & $\peakOddsHiPGauss$ & $\peakOddsHiPPriorGauss$ & $\peakOddsHiBFGauss$ & $\peakOddsHiRatioLoGauss$ & $\peakOddsHiRatioHiGauss$ \\
-    \end{tabular}
-    \end{ruledtabular}
-\end{table}
-
+We show the inferred binary mass distribution in Fig.~\ref{fig: mass peaks}. In the top panel, we compare the marginal primary mass distribution with slices of primary mass with mass ratio close to 1, and with mass ratio close to $q\sim 1/2$. For mass ratios close to 1, $q\in [0.8,1]$, the primary mass spectrum has a peak at $\sim \featTen\,\Msun$, and a peak at $\sim \featThirtyFive\,\Msun$; for mass ratios $q\in [0.3,0.65]$, the mass spectrum instead appears to show a peak at $\sim \featTwenty\,\Msun$ and $\sim \featSixty\,\Msun$.
 
 \begin{figure}
     \centering
@@ -188,21 +169,49 @@ It is interesting to note that the mass spectrum for $q\in [0.8, 1]$ appears to 
 \end{table}
 \todo{SM: refit $\mu$ with the $Q$ edges shifted by $\pm 0.05$ to show the locations do not depend on the band choice}
 
-\begin{figure*}
-    \centering
-    \includegraphics[width=\linewidth]{draft/plots/spin_peak_regions_marginals.pdf}
-    \caption{\red{Draft caption. The joint spin distribution $p(\chieff, \chip \mid m_1, q)$ in the four peak regions: the two near-equal-mass peaks ($m_1 \in [8, 12]$ and $[30, 40]\,\Msun$, $q \in [0.8, 1]$) and the two $q \approx 0.5$ peaks ($m_1 \in [16, 22]$ and $[55, 65]\,\Msun$, $q \in [0.3, 0.65]$). Heatmap: the flexible spin model's median density (shared logarithmic colour scale); contours: the Gaussian spin model's 50\% (solid) and 90\% (dashed) regions. Side panels: the marginals $p(\chieff \mid m_1, q)$ (top) and $p(\chip \mid m_1, q)$ (right) of the flexible (grey) and Gaussian (cyan) models, median and 90\% band over posterior draws. The near-equal-mass peaks have narrow, slightly positive $\chieff$; the $q \approx 0.5$ peaks have broad, nearly symmetric $\chieff$ and larger $\chip$. The blank corner is outside the physical $(\chieff, \chip)$ range. (\texttt{plots/spin\_peak\_regions.pdf}, two columns, $\approx$150--200 words; the full grids move to the SM.)}}
-    \label{fig: spin peaks}
-\end{figure*}
+\subsection{The \featTen $\Msun$ feature}
 
-\begin{figure*}
-    \centering
-    \includegraphics[height=\textheight]{draft/plots/spin_regions_gaussian_T.pdf}
-    \caption{\red{Move to the SM: full spin-region grid for the Gaussian model.}}
-    \label{fig:placeholder}
-\end{figure*}
+The global peak of the \ac{BH} mass spectrum sits at $m_1 = \peakTenMuFlex\,\Msun$ with a narrow width $\sigma = \peakTenSigmaFlex\,\Msun$ (Table~\ref{tab: peaks}), \jh{too many sig figs again} consistent with the $\sim 10\,\Msun$ peak found in previous analyses~\cite{LIGOScientific:2020kqk, KAGRA:2021duu, LIGOScientific:2025pvj, LIGOScientific:2026ctl}. Its existence is not in question, though because it sits just above the low-mass turn-on of the \ac{BH} mass spectrum, its precise shape is partly degenerate with how that turn-on is modeled~\cite{Farah:2021qom} \todo{more citations on the lower edge}. Binaries in this feature are strongly near-equal mass: the mean mass ratio is $\langle q \rangle = \qWindowTenFlex$, and the \featTen $\Msun$ feature is absent from the $q \in [0.3, 0.65]$ slice in Fig.~\ref{fig: mass peaks}. \citet{LIGOScientific:2025pvj} reported that this peak may contain a subpopulation with mass ratios near $q \approx 0.7$, with reduced support in \ac{GWTC-5}~\cite{LIGOScientific:2026ctl}; we instead find a mass ratio distribution concentrated near $q = 1$. The spins are small and preferentially aligned with the orbit: the effective spin distribution is narrow, with standard deviation \todo{$\sigma_{\chieff}$ at the \featTen\,\Msun feature} and a mean, \todo{$\mu_{\chieff}$}, that is small but positive (Fig.~\ref{fig: spin peaks}) \jh{sharpness of 10M peak and maybe sharpness of Xeff is limited by MC?}. The precessing spin is poorly measured at these masses and close to its prior, so we do not interpret it. The origin of the peak is debated: a pile-up near $10\,\Msun$ may be set by core-collapse physics, independent of the binary formation channel \todo{cite, e.g.\ Schneider et al.\ on explodability}, and cluster models also produce many mergers at these masses \todo{cite}. Near-equal masses with small, aligned spins are, however, the expected signature of isolated binary evolution \todo{cite isolated-binary predictions}, and we take this feature to be dominated by such first-generation binaries.
 
-\subsection{Peak locations: consistent with dynamical \ac{BBH}?}
+\subsection{\texorpdfstring{The \featTwenty\,\Msun feature}{The 21 Msun feature}}
+
+\todo{appears only at $q \sim 0.5$ ($\langle q \rangle = \qWindowTwentyFlex$); broad, nearly symmetric $\chieff$; GWTC-4's possible third feature near $20\,\Msun$~\cite{LIGOScientific:2025pvj}; tentative (see Relationships)}
+
+\subsection{\texorpdfstring{The \featThirtyFive\,\Msun feature}{The 33 Msun feature}}
+
+A peak near $\featThirtyFive\,\Msun$ has been reported since the earliest population analyses~\cite{Talbot:2018cva, LIGOScientific:2018jsj, LIGOScientific:2020kqk, KAGRA:2021duu, Farah:2023vsc}, and more detailed analyses find that the binaries in this peak prefer near-equal masses~\cite{Roy:2025ktr, Sridhar:2025kvi}.
+
+
+We emphasize that the mass spectrum for $q\in [0.8, 1]$ appears to prefer a \textit{peaked} $\featThirtyFive\,\Msun$ feature rather than the steepening of an already decreasing power law continuum. This shape has previously been uncertain: \citet{LIGOScientific:2025pvj} found that the marginal primary mass distribution was consistent with either a peak or a steepening, but could not distinguish which, and using the latest \ac{GWTC-5} dataset, \citet{LIGOScientific:2026ctl} indicated that the behavior across the $\featThirtyFive\,\Msun$ feature was more consistent with a steepening powerlaw slope. We observe this same behavior in the marginal primary mass distribution: the merger rate in $m_1 \in [30, 35]\,\Msun$ is consistent with that in $[25, 30]\,\Msun$, but larger than that in $[35, 40]\,\Msun$ (Table~\ref{tab: peak odds}). For $q \in [0.8, 1]$, however, the merger rate rises into the feature as well as falling out of it, with posterior probability $P_{\rm peak} = \peakOddsHiPFlex$ for a peak, against $P_{\rm peak}^{\rm prior} = \peakOddsHiPPriorFlex$ under the prior (posterior-to-prior odds $\mathcal{O}_{\rm peak} = \peakOddsHiBFFlex$); marginalized over all mass ratios, the odds drop to $\mathcal{O}_{\rm peak} = \peakOddsAllBFFlex$. The difference comes from the low-mass side of the feature: the $\featTwenty\,\Msun$ feature populates the region between $\featTen$ and $\featThirtyFive\,\Msun$ at unequal mass ratios, filling in the rise toward $\featThirtyFive\,\Msun$ in the marginal distribution. We argue this clarifies the degeneracy identified by \citet{LIGOScientific:2025pvj}: the steepening seen in the marginal distribution is what a near-equal-mass peak looks like once the unequal-mass binaries from the \featTwenty $\Msun$ feature are averaged in.
+
+\begin{table}
+    \renewcommand{\arraystretch}{1.3}
+    \caption{Is the $\featThirtyFive\,\Msun$ feature a peak? The integrated rates $R$ in $m_1 \in [25, 30]$, $[30, 35]$ and $[35, 40]\,\Msun$, over all mass ratios allowed by $m_2 > 3\,\Msun$ or over $q \in [0.8, 1]$. $P_{\rm peak}$: the posterior probability that $R_{30\text{--}35}$ exceeds both neighbors; $P_{\rm peak}^{\rm prior}$: the same under the empirical-Bayes prior; $\mathcal{O}_{\rm peak}$: their odds ratio. The last two columns show posterior medians and 90\% intervals of ratios on merger rates in neighboring windows. Note the prior probability of $\sim \peakOddsAllPPriorFlex$ is smaller than the $1/3$ chance one would expect for an uncorrelated field; the Mat\'ern field prior favors monotonic behavior which disfavors a peak in the central window. 
+}
+    \label{tab: peak odds}
+    \begin{ruledtabular}
+    \begin{tabular}{llccccc}
+        $q$ & Model & $P_{\rm peak}$ & $P_{\rm peak}^{\rm prior}$ & $\mathcal{O}_{\rm peak}$ & $R_{30\text{--}35}/R_{25\text{--}30}$ & $R_{30\text{--}35}/R_{35\text{--}40}$ \\
+        \hline
+        all $q$ & \flexiblespins & $\peakOddsAllPFlex$ & $\peakOddsAllPPriorFlex$ & $\peakOddsAllBFFlex$ & $\peakOddsAllRatioLoFlex$ & $\peakOddsAllRatioHiFlex$ \\
+         & \gaussianspins & $\peakOddsAllPGauss$ & $\peakOddsAllPPriorGauss$ & $\peakOddsAllBFGauss$ & $\peakOddsAllRatioLoGauss$ & $\peakOddsAllRatioHiGauss$ \\
+        $[0.8, 1]$ & \flexiblespins & $\peakOddsHiPFlex$ & $\peakOddsHiPPriorFlex$ & $\peakOddsHiBFFlex$ & $\peakOddsHiRatioLoFlex$ & $\peakOddsHiRatioHiFlex$ \\
+         & \gaussianspins & $\peakOddsHiPGauss$ & $\peakOddsHiPPriorGauss$ & $\peakOddsHiBFGauss$ & $\peakOddsHiRatioLoGauss$ & $\peakOddsHiRatioHiGauss$ \\
+    \end{tabular}
+    \end{ruledtabular}
+\end{table}
+
+\subsection{\texorpdfstring{The \featSixty\,\Msun feature}{The 59 Msun feature}}
+
+\todo{appears only at $q \sim 0.5$ ($\langle q \rangle = \qWindowSixtyFlex$); broad $\chieff$; GWTC-5's flatter mass ratio distribution above $\sim 40\,\Msun$~\cite{LIGOScientific:2026ctl}; tentative}
+
+\section{Relationships between the features}
+
+\subsection{Mass ratio}
+
+\todo{the swing in $\langle q \rangle$ between the families and the contrasts $\Delta$ (\texttt{q\_contrast} macros); the significance argument}
+
+\subsection{Masses}
 
 \red{Mass bookkeeping, target $\sim$400 words.
 \begin{itemize}
@@ -225,8 +234,9 @@ For each potential peak in the mass spectrum, we fit a Gaussian plus powerlaw in
     p(m_1, q \mid \Lambda) = \eta \, PL(m_1\mid \alpha, m_{\rm min}, m_{\rm max}) + (1-\eta)\mathcal{N}_{[m_{\rm min}, m_{\rm max}]}(m_1 \mid \mu, \sigma)
 \end{equation}
 
+\todo{cite Ginat et al.\ 2026 (arXiv:2604.07456; not yet in main.bib) for the predicted second-generation peak}
 
-\section{Spin behavior}
+\subsection{Spins}
 
 \red{Target $\sim$500 words.
 \begin{itemize}
@@ -235,6 +245,20 @@ For each potential peak in the mass spectrum, we fit a Gaussian plus powerlaw in
 \item Fig.~\ref{fig: chi_eff width q}: the core width $\sigma_{\chieff}(q)$ falls from $\sim$0.2--0.3 at $q \lesssim 0.4$ to $\sim$0.08 near $q = 1$ in both spin models, in agreement with the GWTC-5 linear and spline $\chieff \mid q$ models; the mass-ratio dependence behind the $m_1$ structure. Our models recover it without assuming a functional form in $q$.
 \item Robust across the spin models (field, split, Gaussian $k = 10$ and 100); details in the SM.
 \end{itemize}}
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/spin_peak_regions_marginals.pdf}
+    \caption{\red{Draft caption. The joint spin distribution $p(\chieff, \chip \mid m_1, q)$ in the four peak regions: the two near-equal-mass peaks ($m_1 \in [8, 12]$ and $[30, 40]\,\Msun$, $q \in [0.8, 1]$) and the two $q \approx 0.5$ peaks ($m_1 \in [16, 22]$ and $[55, 65]\,\Msun$, $q \in [0.3, 0.65]$). Heatmap: the flexible spin model's median density (shared logarithmic colour scale); contours: the Gaussian spin model's 50\% (solid) and 90\% (dashed) regions. Side panels: the marginals $p(\chieff \mid m_1, q)$ (top) and $p(\chip \mid m_1, q)$ (right) of the flexible (grey) and Gaussian (cyan) models, median and 90\% band over posterior draws. The near-equal-mass peaks have narrow, slightly positive $\chieff$; the $q \approx 0.5$ peaks have broad, nearly symmetric $\chieff$ and larger $\chip$. The blank corner is outside the physical $(\chieff, \chip)$ range. (\texttt{plots/spin\_peak\_regions.pdf}, two columns, $\approx$150--200 words; the full grids move to the SM.)}}
+    \label{fig: spin peaks}
+\end{figure*}
+
+\begin{figure*}
+    \centering
+    \includegraphics[height=\textheight]{draft/plots/spin_regions_gaussian_T.pdf}
+    \caption{\red{Move to the SM: full spin-region grid for the Gaussian model.}}
+    \label{fig:placeholder}
+\end{figure*}
 
 \begin{figure}
     \centering
@@ -250,8 +274,9 @@ For each potential peak in the mass spectrum, we fit a Gaussian plus powerlaw in
     \label{fig: chi_eff width q}
 \end{figure}
 
+\subsection{Together}
 
-
+\todo{the hierarchical-merger picture: each $q \sim 0.5$ feature is the second-generation partner of a near-equal-mass feature, in mass ratio, masses and spins}
 
 \section{Significance and outlook}
 
