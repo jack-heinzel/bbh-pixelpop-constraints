@@ -689,7 +689,8 @@ REGION_PANEL_RATIO = (2.6, 1.6)           # heatmap : slice-panel size within ea
 REGION_DENSITY_MIN = 1e-2               # floor of the colour scale and of the slice axes (user, 2026-10-23)
 
 
-def spin_region_figure(R, m_regions=REGION_M[:4], q_regions=REGION_Q[::-1], title=None, totals=True, transpose=False):
+def spin_region_figure(R, m_regions=REGION_M[:4], q_regions=REGION_Q[::-1], title=None, totals=True, transpose=False,
+                       marginals=False):
     """The joint p(chi_eff, chi_p | m1 in M, q in Q) of one run (load_regions), one block per region: columns over
     ``m_regions``, rows over ``q_regions`` (default: 0.8 < q < 1 above 0.3 < q < 0.65). With ``totals``, a first row
     over all q (p(chi | m1 in M)) and a first column over all m1 (p(chi | q in Q)), the top-left block being the
@@ -698,7 +699,9 @@ def spin_region_figure(R, m_regions=REGION_M[:4], q_regions=REGION_Q[::-1], titl
     and 90% band over draws, same units as the colour scale), marked on the heatmap by dashed lines in the slice
     colours. The corner gives P(q in Q | m1 in M) (median and 90%); P(m1 in M) in the totals row and P(q in Q) in
     the totals column. Columns and rows are titled by their ranges. ``transpose``: rows over m1, columns over q (a
-    portrait page)."""
+    portrait page). ``marginals``: the side panels show the 1D marginals p(chi_eff | region) (above) and
+    p(chi_p | region) (right) instead of the slices (median and 90% band over draws, linear axes shared by all
+    blocks), and the heatmap has no slice lines."""
     import matplotlib.pyplot as plt
     from matplotlib.colors import LogNorm
     from matplotlib.lines import Line2D
@@ -721,6 +724,13 @@ def spin_region_figure(R, m_regions=REGION_M[:4], q_regions=REGION_Q[::-1], titl
     g2 = lambda x: f'{x:.2g}'
     pm = lambda x: (lambda lo, md, hi: rf'${g2(md)}^{{+{g2(hi - md)}}}_{{-{g2(md - lo)}}}$')(*np.percentile(x, [5, 50, 95]))
     col_p = col_e = ('C0', 'C3')                     # blue, red for both slice sets (user, 2026-10-23)
+    if marginals:                                    # p(chi_eff | region), p(chi_p | region) per draw, densities
+        all_i = sorted(med)
+        marg_e = {i: np.nansum(dens[:, i], 2) * dp for i in all_i}
+        marg_p = {i: np.nansum(dens[:, i], 1) * de for i in all_i}
+        e_in = (e_c >= REGION_CHI_EFF_RANGE[0]) & (e_c <= REGION_CHI_EFF_RANGE[1])
+        top_e = 1.1 * max(np.nanpercentile(marg_e[i][:, e_in], 95, axis=0).max() for i in all_i)
+        top_p = 1.1 * max(np.nanpercentile(marg_p[i], 95, axis=0).max() for i in all_i)
     q5 = lambda x: np.nanpercentile(x, [5, 50, 95], axis=0)
     step = lambda y: np.repeat(y, 2)
     m_title = lambda mr: r'all $m_1$' if mr == M_ALL else rf'$m_1 \in [{mr[0]:g}, {mr[1]:g}]\,M_\odot$'
@@ -744,22 +754,31 @@ def spin_region_figure(R, m_regions=REGION_M[:4], q_regions=REGION_Q[::-1], titl
                                   shading='flat', rasterized=True)
             ax_m.set_xlim(*REGION_CHI_EFF_RANGE); ax_m.set_ylim(0, 1)
             ax_m.tick_params(which='both', direction='out')
-            for j, c in zip(ip, col_p):
-                ax_m.axhline(p_c[j], color=c, lw=1, ls='--')
-            for j, c in zip(ie, col_e):
-                ax_m.axvline(e_c[j], color=c, lw=1, ls='--')
-            ex = np.repeat(e_edges, 2)[1:-1]
-            for j, c in zip(ip, col_p):                                      # top: along chi_eff at fixed chi_p
-                lo, md, hi = q5(dens[:, i, :, j])
-                ax_t.fill_between(ex, np.maximum(step(lo), vmin * 1e-3), step(hi), color=c, alpha=0.3, lw=0)
-                ax_t.plot(ex, step(md), color=c, lw=1.5)
-            px = np.repeat(p_edges, 2)[1:-1]
-            for j, c in zip(ie, col_e):                                      # right: along chi_p at fixed chi_eff
-                lo, md, hi = q5(dens[:, i, j, :])
-                ax_r.fill_betweenx(px, np.maximum(step(lo), vmin * 1e-3), step(hi), color=c, alpha=0.3, lw=0)
-                ax_r.plot(step(md), px, color=c, lw=1.5)
-            ax_t.set_yscale('log'); ax_t.set_ylim(vmin, vmax * 3); ax_t.set_xlim(*REGION_CHI_EFF_RANGE)
-            ax_r.set_xscale('log'); ax_r.set_xlim(vmin, vmax * 3); ax_r.set_ylim(0, 1)
+            ex, px = np.repeat(e_edges, 2)[1:-1], np.repeat(p_edges, 2)[1:-1]
+            if marginals:
+                lo, md, hi = q5(marg_e[i])                                   # top: p(chi_eff | region)
+                ax_t.fill_between(ex, step(lo), step(hi), color='C0', alpha=0.3, lw=0)
+                ax_t.plot(ex, step(md), color='C0', lw=1.5)
+                lo, md, hi = q5(marg_p[i])                                   # right: p(chi_p | region)
+                ax_r.fill_betweenx(px, step(lo), step(hi), color='C0', alpha=0.3, lw=0)
+                ax_r.plot(step(md), px, color='C0', lw=1.5)
+                ax_t.set_ylim(0, top_e); ax_t.set_xlim(*REGION_CHI_EFF_RANGE)
+                ax_r.set_xlim(0, top_p); ax_r.set_ylim(0, 1)
+            else:
+                for j, c in zip(ip, col_p):
+                    ax_m.axhline(p_c[j], color=c, lw=1, ls='--')
+                for j, c in zip(ie, col_e):
+                    ax_m.axvline(e_c[j], color=c, lw=1, ls='--')
+                for j, c in zip(ip, col_p):                                  # top: along chi_eff at fixed chi_p
+                    lo, md, hi = q5(dens[:, i, :, j])
+                    ax_t.fill_between(ex, np.maximum(step(lo), vmin * 1e-3), step(hi), color=c, alpha=0.3, lw=0)
+                    ax_t.plot(ex, step(md), color=c, lw=1.5)
+                for j, c in zip(ie, col_e):                                  # right: along chi_p at fixed chi_eff
+                    lo, md, hi = q5(dens[:, i, j, :])
+                    ax_r.fill_betweenx(px, np.maximum(step(lo), vmin * 1e-3), step(hi), color=c, alpha=0.3, lw=0)
+                    ax_r.plot(step(md), px, color=c, lw=1.5)
+                ax_t.set_yscale('log'); ax_t.set_ylim(vmin, vmax * 3); ax_t.set_xlim(*REGION_CHI_EFF_RANGE)
+                ax_r.set_xscale('log'); ax_r.set_xlim(vmin, vmax * 3); ax_r.set_ylim(0, 1)
             ax_t.tick_params(labelbottom=False); ax_r.tick_params(labelleft=False, labelbottom=a == nr - 1)
             for ax in (ax_t, ax_r):
                 ax.grid(True, which='major', color='0.85', lw=0.6)
@@ -785,7 +804,10 @@ def spin_region_figure(R, m_regions=REGION_M[:4], q_regions=REGION_Q[::-1], titl
             ax_c.text(0.5, 0.45, txt, transform=ax_c.transAxes, ha='center', va='center', fontsize=10)
             if a == 0:
                 ax_t.set_title(title_of(ck), pad=8, fontsize=15)             # column titles (user, 2026-10-23)
-            if a == 0 and b == 0:
+            if a == 0 and b == 0 and marginals:
+                ax_t.legend([(Patch(color='C0', alpha=0.3, lw=0), Line2D([], [], color='C0', lw=1.5))],
+                            ['marginal, median and 90\\%'], loc='upper left', **dict(plot_style.LEG_KW, fontsize=11))
+            elif a == 0 and b == 0:
                 hp = [(Patch(color=c, alpha=0.3, lw=0), Line2D([], [], color=c, lw=1.5)) for c in col_p]
                 ax_t.legend(hp, [rf'$\chi_p = {v:g}$' for v in REGION_CHI_P_SLICES], loc='upper left',
                             **dict(plot_style.LEG_KW, fontsize=11))
