@@ -37,7 +37,7 @@ if [ "$what" = paper ] || [ "$what" = all ]; then
     $PY notebooks/paper_figs.py chi --core || exit 1                  # |chi_eff| < 0.8
     $PY notebooks/paper_figs.py chiq --core --prior || exit 1
     $PY notebooks/paper_figs.py chiq --core --lvk || exit 1           # with the GWTC-5 chi_eff | q models
-    for f in mass_ratio_m1 chi_eff_sd_m1 chi_eff_mean_m1 chi_eff_mean_sd_m1 spin_peak_regions peak_bookkeeping \
+    for f in mass_ratio_m1 chi_eff_sd_m1 chi_eff_mean_m1 chi_eff_mean_sd_m1 spin_peak_regions spin_peak_regions_marginals peak_bookkeeping \
              m2_q_ranges m2_m1_windows chi_eff_sd_m1_core chi_eff_sd_q_core_prior chi_eff_sd_q_core_lvk \
              chi_eff_mean_sd_q_core_lvk; do
         cp plots/$f.pdf draft/plots/$f.pdf

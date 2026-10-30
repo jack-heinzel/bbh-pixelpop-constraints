@@ -16,6 +16,7 @@ figure:
            plots/spin_peak_regions.pdf     Fig. 2: p(chi_eff, chi_p) in the four peak regions, the flexible model's
                                            median (heatmap) and the Gaussian model's (contours); two columns
            plots/spin_peak_regions_slices.pdf   Fig. 2 with slice panels (median and 90% over draws)
+           plots/spin_peak_regions_marginals.pdf   Fig. 2 with 1D marginal panels of both models (median and 90%)
            plots/mass_spin_zoom_talk.pdf   for talks: median p(m1, q), zooms on the peak regions, their spin blocks
            plots/peak_bookkeeping.pdf      Fig. 3: (a) peak location against mean q (joint fits, bounded KDE);
                                            (b) fit-free retained fraction for both pairs; one column
@@ -299,24 +300,75 @@ def spin_block(fig, spec, Df, med_g, mr, qr, norm, label=True, ylabel=True, xlab
     return ax_m, pcm
 
 
+MARG_COLOURS = ('0.2', 'c')                      # marginal panels: flexible, Gaussian (as its contours)
+
+
+def marginal_block(fig, spec, Df, Dg, mr, qr, norm, tops, ylabel=True, fontsize=6):
+    """The flexible model's median heatmap and the Gaussian model's contours (spin_heatmap), with the 1D marginals
+    p(chi_eff | region) above and p(chi_p | region) to the right: median and 90% band over draws of each model
+    (Df, Dg: draws, Be, Bp densities). ``tops``: the (chi_eff, chi_p) density axis limits, shared by all blocks."""
+    sub = spec.subgridspec(2, 2, width_ratios=(3, 1.1), height_ratios=(1.1, 3), hspace=0.05, wspace=0.05)
+    ax_m, ax_t, ax_r = fig.add_subplot(sub[1, 0]), fig.add_subplot(sub[0, 0]), fig.add_subplot(sub[1, 1])
+    pcm = spin_heatmap(ax_m, np.median(Df, 0), np.median(Dg, 0), norm)
+    ex, px = np.repeat(A.e_edges, 2)[1:-1], np.repeat(A.p_edges, 2)[1:-1]
+    step = lambda y: np.repeat(y, 2)
+    for D, c in zip((Df, Dg), MARG_COLOURS):
+        lo, md, hi = np.percentile(D.sum(2) * A.dp, [5, 50, 95], axis=0)            # p(chi_eff | region)
+        ax_t.fill_between(ex, step(lo), step(hi), color=c, alpha=0.25, lw=0)
+        ax_t.plot(ex, step(md), color=c, lw=0.8)
+        lo, md, hi = np.percentile(D.sum(1) * A.de, [5, 50, 95], axis=0)            # p(chi_p | region)
+        ax_r.fill_betweenx(px, step(lo), step(hi), color=c, alpha=0.25, lw=0)
+        ax_r.plot(step(md), px, color=c, lw=0.8)
+    ax_t.set_xlim(ax_m.get_xlim()); ax_t.set_ylim(0, tops[0])
+    ax_r.set_ylim(0, 1); ax_r.set_xlim(0, tops[1])
+    ax_t.tick_params(labelbottom=False, labelleft=False, which='both', direction='out')
+    ax_r.tick_params(labelleft=False, labelbottom=False, which='both', direction='out')
+    ax_m.set_xlabel(r'$\chi_\mathrm{eff}$')
+    if ylabel:
+        ax_m.set_ylabel(r'$\chi_p$')
+    else:
+        ax_m.tick_params(labelleft=False)
+    ax_m.text(0.04, 0.96, region_label(mr, qr), transform=ax_m.transAxes, va='top', ha='left', fontsize=fontsize,
+              bbox=LABEL_BOX)
+    return ax_m, pcm
+
+
 def slice_legend_handles():
     return ([Line2D([], [], color=c, lw=0.8, ls='--') for c in SLICE_COLOURS],
             [rf'$\chi_p = {a:g}$, $\chi_\mathrm{{eff}} = {b:g}$' for a, b in zip(A.REGION_CHI_P_SLICES,
                                                                                A.REGION_CHI_EFF_SLICES)])
 
 
-def spin_peaks_figure(slices=False):
+def spin_peaks_figure(slices=False, marginals=False):
     """Fig. 2: one panel per peak region: the flexible model's median p(chi_eff, chi_p | region) (log colour scale,
     shared) and the Gaussian model's 50% / 90% regions (contours). ``slices``: each panel with slice panels (median
-    and 90% over draws) above and to the right, as analysis.spin_region_figure."""
+    and 90% over draws) above and to the right, as analysis.spin_region_figure. ``marginals``: the side panels show
+    the 1D marginals p(chi_eff | region), p(chi_p | region) of both models instead (median and 90% band; user,
+    2026-10-30), the legend above the panels."""
     from matplotlib.colors import LogNorm
     Df = region_draws('ppc_gwtc5_k10', SPIN_PEAK_REGIONS)
-    Mg = region_medians('ppc_gwtc5_k100_gauss', SPIN_PEAK_REGIONS)
+    if marginals:
+        Dg = region_draws('ppc_gwtc5_k100_gauss', SPIN_PEAK_REGIONS)
+        Mg = np.median(Dg, 0)
+    else:
+        Mg = region_medians('ppc_gwtc5_k100_gauss', SPIN_PEAK_REGIONS)
     Mf = np.median(Df, 0)
     norm = LogNorm(vmin=A.REGION_DENSITY_MIN, vmax=np.nanmax(Mf))
     handles = [Line2D([], [], color='c', lw=1.0), Line2D([], [], color='c', lw=0.7, ls='--')]
     names = ['Gaussian, 50\\%', 'Gaussian, 90\\%']
-    if not slices:
+    if marginals:
+        e_in = (A.e_c >= A.REGION_CHI_EFF_RANGE[0]) & (A.e_c <= A.REGION_CHI_EFF_RANGE[1])
+        tops = [1.05 * max(np.percentile(D.sum(ax) * dx, 95, axis=0)[..., sel].max() for D in (Df, Dg))
+                for ax, dx, sel in ((3, A.dp, e_in), (2, A.de, slice(None)))]
+        fig = plt.figure(figsize=(TWO_COL, 2.45))
+        gs = fig.add_gridspec(1, len(SPIN_PEAK_REGIONS), left=0.065, right=0.915, bottom=0.17, top=0.88, wspace=0.12)
+        for k, ((mr, qr), f, g) in enumerate(zip(SPIN_PEAK_REGIONS, np.moveaxis(Df, 1, 0), np.moveaxis(Dg, 1, 0))):
+            ref, pcm = marginal_block(fig, gs[0, k], f, g, mr, qr, norm, tops, ylabel=k == 0)
+        from matplotlib.patches import Patch
+        hm = [(Patch(color=c, alpha=0.25, lw=0), Line2D([], [], color=c, lw=0.8)) for c in MARG_COLOURS]
+        fig.legend(hm + handles, ['Flexible marginal, median and 90\\%', 'Gaussian marginal, median and 90\\%'] + names,
+                   loc='upper center', ncol=4, bbox_to_anchor=(0.5, 1.0), **LEG)
+    elif not slices:
         fig, axes = plt.subplots(1, len(SPIN_PEAK_REGIONS), figsize=(TWO_COL, 2.05), sharey=True)
         for ax, (mr, qr), f, g in zip(axes, SPIN_PEAK_REGIONS, Mf, Mg):
             pcm = spin_heatmap(ax, f, g, norm)
@@ -802,6 +854,7 @@ def main():
     if args.what in ('spin', 'all'):
         plot_style.save(spin_peaks_figure(), 'spin_peak_regions')
         plot_style.save(spin_peaks_figure(slices=True), 'spin_peak_regions_slices')
+        plot_style.save(spin_peaks_figure(marginals=True), 'spin_peak_regions_marginals')
     if args.what in ('talk', 'all'):
         plot_style.save(talk_figure(R['ppc_gwtc5_k10']), 'mass_spin_zoom_talk')
         plt.rcParams.update(SMALL_RC)
