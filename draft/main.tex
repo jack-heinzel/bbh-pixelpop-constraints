@@ -54,6 +54,11 @@
 \newcommand{\BrokenPowerlawTwoPeaks}{\textsc{Broken Powerlaw Plus Two Peaks}\xspace}
 \newcommand{\flexiblespins}{\textsc{Flexible}\xspace}
 \newcommand{\gaussianspins}{\textsc{Gaussian}\xspace}
+% feature labels: approximate measured locations (m1 in Msun); macro names keep the old round numbers
+\newcommand{\featTen}{10\xspace}
+\newcommand{\featTwenty}{21\xspace}
+\newcommand{\featThirtyFive}{33\xspace}
+\newcommand{\featSixty}{59\xspace}
 
 
 
@@ -92,7 +97,7 @@ Here we fit the masses, mass ratio and spins jointly, letting each distribution 
 
 We also show that the separation into two families of peaks with different mass ratios and spin properties also explains the broadening $\chieff$ with mass ratio, a correlation identified in \citet{LIGOScientific:2026ctl}, and can explain the observed broadening with redshift \cite{Biscoveanu:2022qac} as a confounding variable effect \jh{double check, but I think this is be right. Think a bit more about this}. These mass peaks appear remarkably consistent with a dynamical first generation and a hierarchical, second generation of \ac{BBH} mergers, and we show the observed mass ranges are consistent with the expected remnant masses from \ac{GR}. 
 
-The $\sim10\Msun$ peak does show a statistically significant preference for $\chieff > 0$, however, and the $\sim 20\Msun$ peak is slightly more massive than the typical remnants from $\sim 10\Msun$ peak \ac{BBH}. This suggests that not \textit{all} $\sim 10\Msun$ \ac{BBH} are assembled dynamically, or that \jh{more complex dynamical theories are required, like that "not all dynamical bhs have isotropic spins paper from Davide's group", or dynamical environments evolve over cosmic time, perhaps 2G mergers today had higher z progenitors which had higher masses, e.g., $10M$ peak drifts a bit over cosmic time... something something metallicity and winds} the dynamical environments responsible for the $\sim 20\Msun$ peak are at a different evolutionary period from the $\sim 10\Msun$ dynamical mergers. 
+The $\sim10\Msun$ peak does show a statistically significant preference for $\chieff > 0$, however, and the $\sim \featTwenty\,\Msun$ peak is slightly more massive than the typical remnants from $\sim \featTen\,\Msun$ peak \ac{BBH}. This suggests that not \textit{all} $\sim \featTen\,\Msun$ \ac{BBH} are assembled dynamically, or that \jh{more complex dynamical theories are required, like that "not all dynamical bhs have isotropic spins paper from Davide's group", or dynamical environments evolve over cosmic time, perhaps 2G mergers today had higher z progenitors which had higher masses, e.g., $\featTen\,\Msun$ peak drifts a bit over cosmic time... something something metallicity and winds} the dynamical environments responsible for the $\sim \featTwenty\,\Msun$ peak are at a different evolutionary period from the $\sim \featTen\,\Msun$ dynamical mergers. 
 
 \jh{maybe compare peak significance in mass ratio mean differences with an inpainting prior}
 
@@ -136,36 +141,31 @@ Though a Gaussian model may be misspecified against the astrophysical shape of t
 
 \section{Mass peaks}
 
-\red{Results: mass structure, target $\sim$700 words.
-\begin{itemize}
-\item Fig.~\ref{fig: main result}: $p(m_1 \mid q)$ in $q$ ranges and $p(q \mid m_1)$. Two families: near-equal mass at $\sim$10 and $\sim$33\,\Msun; $q \approx 0.5$ at $\sim$21 and $\sim$59\,\Msun.
-\item Table~I: $\mu$, $\sigma$, mean $q$ and peak fraction for each of the four peaks (joint-fit macros, Flexible only; Gaussian values in an SM table), with the 1D-fit $\mu$ for comparison.
-\item The peaks are measured: the $\mu$ intervals are 3--9 times narrower than the prior's (SM figure).
-\end{itemize}}
+We show the inferred binary mass distribution in Fig.~\ref{fig: mass peaks}. In the top panel, we compare the marginal primary mass distribution with slices of primary mass with mass ratio close to 1, and with mass ratio close to $q\sim 1/2$. For mass ratios close to 1, $q\in [0.8,1]$, the primary mass spectrum has a peak at $\sim \featTen\,\Msun$, and a peak at $\sim \featThirtyFive\,\Msun$; for mass ratios $q\in [0.3,0.65]$, the mass spectrum instead appears to show a peak at $\sim \featTwenty\,\Msun$ and $\sim \featSixty\,\Msun$. 
 
-We show the inferred binary mass distribution in Fig.~\ref{fig: main result}. In the top panel, we compare the marginal primary mass distribution with slices of primary mass with mass ratio close to 1, and with mass ratio close to $q\sim 1/2$. For mass ratios close to 1, $q\in [0.8,1]$, the primary mass spectrum has a peak at $\sim 10\Msun$, and a peak at $\sim 30-35\Msun$; for mass ratios $q\in [0.3,0.65]$, the mass spectrum instead appears to show a peak at $\sim 20\Msun$ and $\sim 60\Msun$. 
-
-It is interesting to note that the mass spectrum for $q\in [0.8, 1]$ appears to unequivocally show a \textit{peak} at 
+It is interesting to note that the mass spectrum for $q\in [0.8, 1]$ appears to unequivocally show a \textit{peaked} \featThirtyFive $\Msun$ feature rather than a steepening of an already decreasing powerlaw \citep[c.f.,][]{LIGOScientific:2025pvj, LIGOScientific:2026ctl} \todo{compute integrated rate in 30-35 vs integrated rate in 25-30 and 35-40? (e.g., posterior to prior odds that R[30-35] > R[25-30] and R[35-40]), do for both marginal over q, to q is 0.8-1 to emphasize the point}
 
 
 \begin{figure}
     \centering
     \includegraphics[width=\linewidth]{draft/plots/mass_ratio_m1.pdf}
-    \caption{\red{Draft caption. Top: the primary-mass distribution $p(m_1)$ over all mass ratios (black lines: 90\% interval) and restricted to $0.3 < q < 0.65$ (blue) and $0.8 < q < 1$ (orange) (90\% bands and medians), for the flexible spin model. Bottom: the median $p(q \mid m_1)$, with the 90\% (solid) and 99\% (dashed) intervals of the mean mass ratio $\langle q \rangle$ at each $m_1$; cells with $m_2 < 3\,\Msun$ are blank. Near-equal-mass peaks at $\sim$10 and $\sim$33\,\Msun; $q \approx 0.5$ structure at $\sim$21 and $\sim$59\,\Msun. Gridlines at 10, 30, 100\,\Msun. (\texttt{plots/mass\_ratio\_m1.pdf}, one column, $\approx$270 words.)}}
-    \label{fig: main result}
+    \caption{\textit{Top}: the primary-mass distribution $p(m_1)$  integrated over all mass ratios (black lines for 90\% interval) and restricted to $0.3 < q < 0.65$ (blue) and $0.8 < q < 1$ (orange) (90\% bands and medians), for the flexible spin model. 
+    \textit{Bottom}: the median $p(q \mid m_1)$, with the 90\% (solid) and 99\% (dashed) intervals of the mean mass ratio $\langle q \rangle$ at each $m_1$. Peaks at $\sim \featTen\,\Msun$ and $\sim \featThirtyFive\,\Msun$ prefer near equal masses, while an additional pair of peaks at $\sim \featTwenty\,\Msun$ and $\sim \featSixty\,\Msun$ emerge at mass ratios $q\sim 0.5$.}
+    \label{fig: mass peaks}
 \end{figure}
 
 \begin{table}
-    \caption{\red{Draft caption. The four mass peaks, for the \flexiblespins model (medians and 90\% intervals; \gaussianspins values in the SM). Location $\mu$ and width $\sigma$ come from Gaussian + power-law fits to each posterior draw of $p(m_1 \mid q \in Q)$ in the mass ratio ranges of Fig.~\ref{fig: main result}: $Q = [0.8, 1]$ for the 10 and 35\,\Msun peaks and $[0.3, 0.65]$ for the 20 and 60\,\Msun peaks. The mean mass ratio $\langle q \rangle$ is computed directly from $p(m_1, q)$, with no fit, over the windows $m_1 \in [8, 12]$, $[28, 40]$, $[15, 25]$ and $[50, 70]\,\Msun$ around the 10, 35, 20 and 60\,\Msun peaks (the windows of the mass ratio contrast, SM), and over the allowed range $m_2 > 3\,\Msun$. At the 10\,\Msun peak this range excludes $q \lesssim 0.25$--$0.38$, so its $\langle q \rangle$ is bounded below by the domain as well as set by the data.} \todo{switch to the $q_0 = 0$ macros once \texttt{q\_contrast.py} writes them; the values below still use $q > 0.4$}}
+    \renewcommand{\arraystretch}{1.3}
+    \caption{Properties of the four mass peaks in the \flexiblespins model (medians and 90\% intervals; \gaussianspins values in the SM). The mean and width $\mu$ and $\sigma$ come from direct fits to $p(m_1 \mid q \in [0.8,1])$ or $p(m_1 \mid q \in [0.3,0.65])$, described in SM. The mean mass ratio $\langle q \rangle$ is computed directly from $p(m_1, q)$ for $m_1$ integrated over $[8, 12]$, $[15, 25]$, $[28, 40]$ and $[50, 70]\,\Msun$. \todo{two sig figs for $\langle q \rangle$ instead of three}}
     \label{tab: peaks}
     \begin{ruledtabular}
     \begin{tabular}{lccc}
         Peak & $\mu$ [\Msun] & $\sigma$ [\Msun] & $\langle q \rangle$ \\
         \hline
-        10 & $\peakTenMuFlex$ & $\peakTenSigmaFlex$ & $\qWindowTenFlex$ \\
-        35 & $\peakThirtyFiveMuFlex$ & $\peakThirtyFiveSigmaFlex$ & $\qWindowThirtyFiveFlex$ \\
-        20 & $\peakTwentyMuFlex$ & $\peakTwentySigmaFlex$ & $\qWindowTwentyFlex$ \\
-        60 & $\peakSixtyMuFlex$ & $\peakSixtySigmaFlex$ & $\qWindowSixtyFlex$ \\
+        \featTen & $\peakTenMuFlex$ & $\peakTenSigmaFlex$ & $\qWindowTenFlex$ \\
+        \featTwenty & $\peakTwentyMuFlex$ & $\peakTwentySigmaFlex$ & $\qWindowTwentyFlex$ \\
+        \featThirtyFive & $\peakThirtyFiveMuFlex$ & $\peakThirtyFiveSigmaFlex$ & $\qWindowThirtyFiveFlex$ \\
+        \featSixty & $\peakSixtyMuFlex$ & $\peakSixtySigmaFlex$ & $\qWindowSixtyFlex$ \\
     \end{tabular}
     \end{ruledtabular}
 \end{table}
@@ -190,16 +190,16 @@ It is interesting to note that the mass spectrum for $q\in [0.8, 1]$ appears to 
 \red{Mass bookkeeping, target $\sim$400 words.
 \begin{itemize}
 \item Fig.~3: retained fraction $\mu_{\rm hi}/M_{\rm lo}$. One column, two stacked panels: (a) the $(\mu, \text{mean } q)$ plane without the prior contours (prior comparison in the SM); (b) the retained-fraction histograms for both pairs in one panel, fit-free only, with the 0.95 line ($3.4 \times \sim 4.5$\,in, $\approx$130 words).
-\item $35 \to 60$: $\pairThirtyFiveSixtyRetainedModeFlex$, consistent with $\sim$5\% radiated.
-\item $10 \to 20$: $\pairTenTwentyRetainedModeFlex$, with 0.95 at the $\pairTenTwentyQuantileRetainedModeFlex$ quantile: a mild tension. Possible readings: the dynamical first-generation spectrum differs from the (field-dominated, $\chieff > 0$) 10\,\Msun peak, or pairing is selective. This model cannot separate the channels (SM: $\chieff$ slices).
+\item $\featThirtyFive \to \featSixty$: $\pairThirtyFiveSixtyRetainedModeFlex$, consistent with $\sim$5\% radiated.
+\item $\featTen \to \featTwenty$: $\pairTenTwentyRetainedModeFlex$, with 0.95 at the $\pairTenTwentyQuantileRetainedModeFlex$ quantile: a mild tension. Possible readings: the dynamical first-generation spectrum differs from the (field-dominated, $\chieff > 0$) \featTen\,\Msun peak, or pairing is selective. This model cannot separate the channels (SM: $\chieff$ slices).
 \end{itemize}}
 
-\jh{It looks tentatively that the 20M peak might be slightly too high mass?}
+\jh{It looks tentatively that the \featTwenty\,\Msun peak might be slightly too high mass?}
 
 \begin{figure}
     \centering
     \includegraphics[width=\linewidth]{draft/plots/peak_bookkeeping.pdf}
-    \caption{\red{Draft caption. (a) Each peak's location $\mu$ against the mean mass ratio of the peak, from Gaussian + power-law fits to $p(m_1, q)$ in a window around each peak with no $q$ range imposed, per posterior draw; 90\% (solid) and 50\% (dashed) regions (boundary-corrected KDE) for the flexible (blue) and Gaussian (red) spin models. Two families: near-equal mass at $\sim$10 and $\sim$32\,\Msun, $q \approx 0.5$ at $\sim$21 and $\sim$59\,\Msun. (b) The retained fraction $m_{1,\rm hi}/M_{\rm lo}$: the mode of $p(m_1 \mid 0.3 < q < 0.65)$ at the higher peak over the mode of the total mass $M = m_1(1+q)$ of the lower peak ($0.8 < q < 1$), per draw (fit-free). Dotted: 0.95 ($\sim$5\% radiated); shaded: $> 1$. $35 \to 60$: $\pairThirtyFiveSixtyRetainedModeFlex$; $10 \to 20$: $\pairTenTwentyRetainedModeFlex$. (\texttt{plots/peak\_bookkeeping.pdf}, one column, $\approx$130 words.)}}
+    \caption{\red{Draft caption. (a) Each peak's location $\mu$ against the mean mass ratio of the peak, from Gaussian + power-law fits to $p(m_1, q)$ in a window around each peak with no $q$ range imposed, per posterior draw; 90\% (solid) and 50\% (dashed) regions (boundary-corrected KDE) for the flexible (blue) and Gaussian (red) spin models. Two families: near-equal mass at $\sim$\featTen and $\sim$\featThirtyFive\,\Msun, $q \approx 0.5$ at $\sim$\featTwenty and $\sim$\featSixty\,\Msun. (b) The retained fraction $m_{1,\rm hi}/M_{\rm lo}$: the mode of $p(m_1 \mid 0.3 < q < 0.65)$ at the higher peak over the mode of the total mass $M = m_1(1+q)$ of the lower peak ($0.8 < q < 1$), per draw (fit-free). Dotted: 0.95 ($\sim$5\% radiated); shaded: $> 1$. $\featTen \to \featTwenty$: $\pairTenTwentyRetainedModeFlex$; $\featThirtyFive \to \featSixty$: $\pairThirtyFiveSixtyRetainedModeFlex$. (\texttt{plots/peak\_bookkeeping.pdf}, one column, $\approx$130 words.)}}
     \label{fig: bookkeeping}
 \end{figure}
 
@@ -222,7 +222,7 @@ For each potential peak in the mass spectrum, we fit a Gaussian plus powerlaw in
 \begin{figure}
     \centering
     \includegraphics[width=\linewidth]{draft/plots/chi_eff_sd_m1_core.pdf}
-    \caption{\red{Draft caption. The width of the effective-spin distribution at each primary mass, $\sigma_{\chieff}(m_1)$: the standard deviation of $p(\chieff \mid m_1, |\chieff| < 0.8)$, i.e.\ restricted to the core $|\chieff| < 0.8$ so that the poorly constrained tails do not set the width. Shown over all mass ratios (black lines: 90\% interval) and for $0.3 < q < 0.65$ (blue) and $0.8 < q < 1$ (orange) (90\% bands and medians), for the \flexiblespins (top) and \gaussianspins (bottom) spin models. The width is small at the near-equal-mass peaks ($\sim$10 and $\sim$33\,\Msun) and large at $\sim$18--20 and $\gtrsim 45\,\Msun$, driven by the low-$q$ systems. The mean, $\mu_{\chieff}(m_1)$, is in the SM (\texttt{chi\_eff\_mean\_m1\_core.pdf}). (\texttt{plots/chi\_eff\_sd\_m1\_core.pdf}, one column.)}}
+    \caption{\red{Draft caption. The width of the effective-spin distribution at each primary mass, $\sigma_{\chieff}(m_1)$: the standard deviation of $p(\chieff \mid m_1, |\chieff| < 0.8)$, i.e.\ restricted to the core $|\chieff| < 0.8$ so that the poorly constrained tails do not set the width. Shown over all mass ratios (black lines: 90\% interval) and for $0.3 < q < 0.65$ (blue) and $0.8 < q < 1$ (orange) (90\% bands and medians), for the \flexiblespins (top) and \gaussianspins (bottom) spin models. The width is small at the near-equal-mass peaks ($\sim$\featTen and $\sim$\featThirtyFive\,\Msun) and large at $\sim$18--20 and $\gtrsim 45\,\Msun$, driven by the low-$q$ systems. The mean, $\mu_{\chieff}(m_1)$, is in the SM (\texttt{chi\_eff\_mean\_m1\_core.pdf}). (\texttt{plots/chi\_eff\_sd\_m1\_core.pdf}, one column.)}}
     \label{fig: chi_eff width}
 \end{figure}
 
@@ -244,7 +244,7 @@ For each potential peak in the mass spectrum, we fit a Gaussian plus powerlaw in
 \item A calibrated $p$-value needs mock catalogues (planned).
 \item Forecast: $\sim$2--4$\times$ more events (the full O4 sample) for a decisive test.
 \item Next: correlate redshift; channel-mixture interpretation (companion paper).
-\item Excess over a local power law (Fig.~\ref{fig: peak excess}): each peak stands above the chord in $(\ln m_1, \ln p)$ across its window in its own $q$ range, $P_{\rm loc} = \peakTenExcessPLocFlex$, $\peakThirtyFiveExcessPLocFlex$, $\peakTwentyExcessPLocFlex$, $\peakSixtyExcessPLocFlex$ (10, 35, 20, 60\,\Msun), and not in the other $q$ range ($P_{\rm loc} \approx 0.3$--0.6, SM Fig.): the off-diagonal $q$ slices are a built-in control for noise-fitting. Posterior probabilities, not $p$-values; the windows were chosen after seeing the field.
+\item Excess over a local power law (Fig.~\ref{fig: peak excess}): each peak stands above the chord in $(\ln m_1, \ln p)$ across its window in its own $q$ range, $P_{\rm loc} = \peakTenExcessPLocFlex$, $\peakTwentyExcessPLocFlex$, $\peakThirtyFiveExcessPLocFlex$, $\peakSixtyExcessPLocFlex$ (\featTen, \featTwenty, \featThirtyFive, \featSixty\,\Msun), and not in the other $q$ range ($P_{\rm loc} \approx 0.3$--0.6, SM Fig.): the off-diagonal $q$ slices are a built-in control for noise-fitting. Posterior probabilities, not $p$-values; the windows were chosen after seeing the field.
 \end{itemize}}
 
 \begin{figure}
