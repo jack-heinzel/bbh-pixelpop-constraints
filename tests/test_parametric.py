@@ -28,3 +28,21 @@ def test_ranges_normalized():
         pq = np.asarray(jnp.exp(log_p_q(jnp.asarray(q[None]), jnp.asarray(m1), beta, q_lo, q_hi)).sum(1) * dq)
         open_ = np.maximum(q_lo, MIN_M / m1[:, 0]) < q_hi - 0.05
         np.testing.assert_allclose(pq[open_], 1., atol=0.02)
+
+
+def test_spin_split_reduces_to_shared_spins():
+    """spin_split with equal offsets in both ranges gives the shared-spin likelihood; different offsets change it."""
+    sys.path.insert(0, os.path.dirname(__file__))
+    from parametric import RANGES, setup_parametric
+    from test_model import synthetic, trace_at
+    pp, kw = synthetic()
+    a, init_a = setup_parametric(pp, n_spin_bins=(10, 8))
+    pp, kw = synthetic()
+    b, init_b = setup_parametric(pp, n_spin_bins=(10, 8), spin_split=True)
+    g = jnp.asarray([0.1, 0.3, np.log(0.2), np.log(0.15), 0.3])
+    lat_a = dict(init_a, gauss_offsets=g)
+    lat_b = dict(init_b, **{f'gauss_offsets_{r}': g for r in RANGES})
+    lnl = lambda m, lat: float(trace_at(m, lat, **kw)['log_likelihood']['value'])
+    np.testing.assert_allclose(lnl(b, lat_b), lnl(a, lat_a), rtol=1e-6, atol=1e-4)
+    lat_b['gauss_offsets_lo'] = jnp.asarray([-0.1, 0.5, np.log(0.4), np.log(0.3), -0.3])
+    assert abs(lnl(b, lat_b) - lnl(a, lat_a)) > 1e-3

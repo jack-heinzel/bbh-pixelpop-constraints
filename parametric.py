@@ -9,6 +9,9 @@ normalized at every m1. The low-q spectrum is zero below MIN_M / Q_SPLIT, where 
 mass-independent truncated Gaussian in (chi_eff, chi_p) on the physical window, binned exactly as model.py's
 spin_model='gauss' with constant fields; redshift, the m2 window and the likelihood (Neff floor, selection-bias
 correction) are model.py's. Run with ``run.py --parametric``.
+
+``spin_split`` (user, 2026-10-30): each range has its own mass-independent spin Gaussian (offsets 'gauss_offsets_hi',
+'gauss_offsets_lo', same priors), so p(chi | m1, q) jumps at the split; ``run.py --spin-split``.
 """
 import jax.numpy as jnp
 import numpy as np
@@ -50,7 +53,7 @@ def log_p_q(q, m1, beta, q_lo, q_hi):
 
 
 def setup_parametric(pixelpop_data, n_spin_bins=(100, 100), likelihood_correction=True, record_weights=False,
-                     gauss_sd_floor=GAUSS_SD_FLOOR, q_split=Q_SPLIT):
+                     gauss_sd_floor=GAUSS_SD_FLOOR, q_split=Q_SPLIT, spin_split=False):
     """NumPyro model and initial values of the q-split power law plus two peaks (module docstring), on
     ``pixelpop_data``'s posteriors and injections (data.build_pixelpop_data)."""
     pp = pixelpop_data
@@ -78,6 +81,7 @@ def setup_parametric(pixelpop_data, n_spin_bins=(100, 100), likelihood_correctio
     floors = {'hi': MIN_M, 'lo': MIN_M / q_split}
 
     def mass_log_p(data, theta):
+        """(2, n): each range's term of the density in (ln m1, q), weight included (RANGES order)."""
         m1 = jnp.exp(data['log_mass_1']); q = data['mass_ratio']
         terms = []
         for r in RANGES:
@@ -86,7 +90,13 @@ def setup_parametric(pixelpop_data, n_spin_bins=(100, 100), likelihood_correctio
             norm = LSE(log_p_m1(m_grid, *args, m_floor=floors[r])) + log_dm
             w = jnp.log(theta['zeta']) if r == 'hi' else jnp.log1p(-theta['zeta'])
             terms.append(w + log_p_m1(m1, *args, m_floor=floors[r]) - norm + log_p_q(q, m1, t['beta'], *bounds[r]))
-        return LSE(jnp.stack(terms), axis=0) + data['log_mass_1']                        # density in (ln m1, q)
+        return jnp.stack(terms) + data['log_mass_1']                                       # density in (ln m1, q)
+
+    def spin_log_p(offsets):
+        """log p(chi | q) at the binned samples, per q bin normalized on the physical window, for one Gaussian."""
+        kern = gauss_log_kernel(offsets[:, None, None], e_c[:, None], p_c[None, :], gauss_sd_floor)   # (Be, Bp)
+        log_z = LSE(kern[None] + log_support + log_window, axis=(1, 2))                 # (Bq,)
+        return lambda iq, ie, ip: kern[ie, ip] + log_support[iq, ie, ip] - log_z[iq]
 
     def probabilistic_model(posteriors, injections):
         theta = {'zeta': numpyro.sample('zeta', dist.Uniform(0., 1.))}
@@ -94,19 +104,20 @@ def setup_parametric(pixelpop_data, n_spin_bins=(100, 100), likelihood_correctio
             theta[r] = {k: numpyro.sample(f'{k}_{r}', dist.Uniform(*b)) for k, b in PRIORS.items()}
             theta[r]['lam'] = numpyro.sample(f'lam_{r}', dist.Dirichlet(jnp.ones(3)))
         lo, hi = (jnp.asarray(b, dtype=float) for b in GAUSS_OFFSET_BOUNDS)
-        g = numpyro.sample('gauss_offsets', dist.Uniform(lo, hi))
-        kern = gauss_log_kernel(g[:, None, None], e_c[:, None], p_c[None, :], gauss_sd_floor)   # (Be, Bp)
-        log_z = LSE(kern[None] + log_support + log_window, axis=(1, 2))                   # (Bq,)
-        spin_at = lambda iq, ie, ip: kern[ie, ip] + log_support[iq, ie, ip] - log_z[iq]
-        event_weights = (posteriors['ln_dVTc'] - posteriors['log_prior'] + mass_log_p(posteriors, theta)
-                         + spin_at(*ev_idx))
-        inj_weights = injections['ln_dVTc'] - injections['log_prior'] + mass_log_p(injections, theta) + spin_at(*in_idx)
+        if spin_split:
+            spins = [spin_log_p(numpyro.sample(f'gauss_offsets_{r}', dist.Uniform(lo, hi))) for r in RANGES]
+        else:
+            spins = [spin_log_p(numpyro.sample('gauss_offsets', dist.Uniform(lo, hi)))] * len(RANGES)
+        joint = lambda data, idx: LSE(mass_log_p(data, theta) + jnp.stack([f(*idx) for f in spins]), axis=0)
+        event_weights = posteriors['ln_dVTc'] - posteriors['log_prior'] + joint(posteriors, ev_idx)
+        inj_weights = injections['ln_dVTc'] - injections['log_prior'] + joint(injections, in_idx)
         population_likelihood(pp, posteriors, injections, event_weights, inj_weights, likelihood_correction,
                               record_weights)
 
     lo, hi = (np.asarray(b) for b in GAUSS_OFFSET_BOUNDS)
-    init = {'zeta': jnp.asarray(0.5),
-            'gauss_offsets': jnp.asarray(np.clip([0.05, 0.25, np.log(0.1), np.log(0.1), 0.], lo + 1e-3, hi - 1e-3))}
+    g0 = jnp.asarray(np.clip([0.05, 0.25, np.log(0.1), np.log(0.1), 0.], lo + 1e-3, hi - 1e-3))
+    init = {'zeta': jnp.asarray(0.5)}
+    init.update({f'gauss_offsets_{r}': g0 for r in RANGES} if spin_split else {'gauss_offsets': g0})
     start = {'alpha': 3., 'mmin': 5., 'delta_m': 3., 'mpp_1': 10., 'sigpp_1': 2., 'mpp_2': 35., 'sigpp_2': 5., 'beta': 1.}
     for r in RANGES:
         init.update({f'{k}_{r}': jnp.asarray(v) for k, v in start.items()})
