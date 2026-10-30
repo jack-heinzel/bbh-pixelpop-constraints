@@ -205,7 +205,7 @@ def diagnostic(run, dens, P, path, n_model=200):
                 lw=1, label='power law' if name == 'bkg' else rf'peak {name}')
     ax.set_xscale('log'); ax.set_yscale('log'); ax.set_xlim(FIT_RANGE)
     ax.set_ylim(np.percentile(lo, 2) / 3, hi.max() * 3)
-    ax.set_xlabel(r'$m_1\,[M_\odot]$'); ax.set_ylabel(r'$p(m_1)\,[M_\odot^{-1}]$')
+    ax.set_xlabel(r'$m_1\,[\textrm{M}_\odot]$'); ax.set_ylabel(r'$p(m_1)\,[\textrm{M}_\odot^{-1}]$')
     ax.legend(ncol=2, **dict(plot_style.LEG_KW, fontsize=11))
     ax = axes[1]
     med = np.where(support, np.median(dens, 0), np.nan); vmax = np.nanmax(med)
@@ -215,7 +215,7 @@ def diagnostic(run, dens, P, path, n_model=200):
     model = np.where(support, np.median([np.exp(log_model(model_params(P[j]), M, Q)) for j in good[:50]], 0), np.nan)
     ax.contour(M, Q, np.log10(model), levels=np.log10(vmax) - np.array([2., 1., 0.5]), colors='w', linewidths=1)
     ax.set_xscale('log'); ax.set_xlim(FIT_RANGE); ax.set_ylim(0, 1); ax.tick_params(which='both', direction='out')
-    ax.set_xlabel(r'$m_1\,[M_\odot]$'); ax.set_ylabel(r'$q$')
+    ax.set_xlabel(r'$m_1\,[\textrm{M}_\odot]$'); ax.set_ylabel(r'$q$')
     cb = fig.colorbar(pc, ax=ax); cb.set_label(r'median $p(m_1, q)$; white: global fit')
     fig.tight_layout()
     fig.savefig(path, bbox_inches='tight')

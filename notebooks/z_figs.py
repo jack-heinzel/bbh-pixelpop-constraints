@@ -33,7 +33,7 @@ def z_figure(C, ze, spin, by='m1'):
     cut = rf', $|\chi_\mathrm{{eff}}| < {F.A.CHI_CORE:g}$' if core else ''
     if by == 'm1':
         bands, cols = list(range(1, len(Z.M_BANDS))), F.M1_BAND_COLS
-        names = [rf'${a:g} < m_1 < {b:g}\,M_\odot$' for a, b in Z.M_BANDS[1:]]
+        names = [rf'${a:g} < m_1 < {b:g}\,\textrm{{M}}_\odot$' for a, b in Z.M_BANDS[1:]]
         sel = lambda c, i: c[:, i, 0]
     else:
         bands, cols = list(range(1, len(Z.Q_BANDS))), Q_BAND_COLS

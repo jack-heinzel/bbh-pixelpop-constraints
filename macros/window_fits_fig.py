@@ -32,8 +32,8 @@ from prior_fits import Q_WINDOWS, prior_path
 RUNS = {'ppc_gwtc5_k10': ('Flexible', 'C0'), 'ppc_gwtc5_k100_gauss': ('Gaussian', 'C3')}
 PRIOR_RUN = 'ppc_gwtc5_k10'
 NAME = 'compare_gwtc5_field_vs_gauss_k100_window_fits'
-PEAK_LABEL = {'10': r'$\sim 10\,M_\odot$, $q \sim 1$', '35': r'$\sim 35\,M_\odot$, $q \sim 1$',
-              '20': r'$\sim 20\,M_\odot$, $q \sim 0.5$', '60': r'$\sim 60\,M_\odot$, $q \sim 0.5$'}
+PEAK_LABEL = {'10': r'$\sim 10\,\textrm{M}_\odot$, $q \sim 1$', '35': r'$\sim 35\,\textrm{M}_\odot$, $q \sim 1$',
+              '20': r'$\sim 20\,\textrm{M}_\odot$, $q \sim 0.5$', '60': r'$\sim 60\,\textrm{M}_\odot$, $q \sim 0.5$'}
 
 
 def joint_stats(F):
@@ -54,7 +54,7 @@ def load():
     return post, prior
 
 
-ROWS = (('mu', r'$\mu\,[M_\odot]$'), ('sigma', r'$\sigma\,[M_\odot]$'),
+ROWS = (('mu', r'$\mu\,[\textrm{M}_\odot]$'), ('sigma', r'$\sigma\,[\textrm{M}_\odot]$'),
         ('qfree', r'mean $q$ (fit-free)'), ('qmean', r'mean $q$ of the peak'), ('qspread', r'spread in $q$ of the peak'),
         ('f_G', r'$f_G$'))
 
@@ -131,7 +131,7 @@ def plane_figure(post, prior, ykey='qmean'):
                        colors=col, linewidths=lws, linestyles=lss)        # levels ascending: 90% first
     ax.set_xscale('log'); ax.set_xlim(4, 110); ax.set_ylim(0, 1)
     ax.set_xticks([5, 10, 20, 50, 100]); ax.set_xticklabels(['5', '10', '20', '50', '100'])
-    ax.set_xlabel(r'peak location $\mu\,[M_\odot]$'); ax.set_ylabel(PLANE_Y[ykey])
+    ax.set_xlabel(r'peak location $\mu\,[\textrm{M}_\odot]$'); ax.set_ylabel(PLANE_Y[ykey])
     handles = ([Line2D([], [], color=c, lw=1.5) for _, c in RUNS.values()] +
                [Line2D([], [], color='0.55', lw=1, ls=':')])
     ax.legend(handles, [l for l, _ in RUNS.values()] + [r'prior (90\%)'], loc='lower left', **plot_style.LEG_KW)

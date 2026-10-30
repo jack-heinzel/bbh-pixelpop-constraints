@@ -150,7 +150,7 @@ def diagnostic(run, dens, fits, path, n_model=200):
         ax.contour(M, Qg, np.log10(model), levels=np.log10(vmax) - np.array([2., 1., 0.5]), colors='w',
                    linewidths=1)
         ax.set_xscale('log'); ax.set_xlim(win); ax.set_ylim(0, 1)
-        ax.set_xlabel(r'$m_1\,[M_\odot]$'); ax.tick_params(which='both', direction='out')
+        ax.set_xlabel(r'$m_1\,[\textrm{M}_\odot]$'); ax.tick_params(which='both', direction='out')
         ax.text(0.04, 0.05, rf'$\mu = {fmt(F[:, 1])}$' '\n' rf'$\sigma = {fmt(F[:, 2])}$' '\n'
                 rf'$\mu_q = {fmt(F[:, 3])}$' '\n' rf'$\sigma_q = {fmt(F[:, 4])}$' '\n' rf'$f_G = {fmt(F[:, 9])}$',
                 transform=ax.transAxes, va='bottom', fontsize=10, color='w')

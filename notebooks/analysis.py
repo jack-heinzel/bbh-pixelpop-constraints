@@ -589,7 +589,7 @@ def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M, sh
         for ax in axes[:, j]:                                     # grid at m1 = 10, 30, 100 (user, 2026-10-22)
             for m in SUMMARY_M_GRID:
                 ax.axvline(m, color='0.6', lw=0.6, alpha=0.7, zorder=3)
-        axes[-1, j].set_xscale('log'); axes[-1, j].set_xlim(m_min, MAX_M); axes[-1, j].set_xlabel(r'$m_1\,[M_\odot]$')
+        axes[-1, j].set_xscale('log'); axes[-1, j].set_xlim(m_min, MAX_M); axes[-1, j].set_xlabel(r'$m_1\,[\textrm{M}_\odot]$')
         axes[-1, j].set_xticks(SUMMARY_M_GRID, [f'${m:g}$' for m in SUMMARY_M_GRID])
     vis = m_c >= m_min
     band_hi = lambda ys: max(np.nanmax(np.nanpercentile(y, 95, 0)[vis]) for d in D for y in ys(d))
@@ -597,7 +597,7 @@ def summary_figure(runs, labels=None, q_ranges=SUMMARY_Q_RANGES, m_min=MIN_M, sh
     A_['pm'][0].set_ylim(lo_all / 3, band_hi(lambda d: [d['p_m']] + d['p_mq']) * 3)
     A_['pq'][0].set_ylim(0, 1)
     A_['sd'][0].set_ylim(0, 1.05 * band_hi(lambda d: [d['sd']] + d['sd_q']))
-    A_['pm'][0].set_ylabel(r'$p(m_1)\,[M_\odot^{-1}]$'); A_['pq'][0].set_ylabel(r'$q$')
+    A_['pm'][0].set_ylabel(r'$p(m_1)\,[\textrm{M}_\odot^{-1}]$'); A_['pq'][0].set_ylabel(r'$q$')
     A_['sd'][0].set_ylabel(r'$\sigma_{\chi_\mathrm{eff}}(m_1)$' + cut)
     if 'mean' in A_ and mean_asinh:                                # shared asinh scale (user, 2026-10-23)
         ys = [y for d in D for y in [d['mean']] + d['mean_q']]
@@ -733,7 +733,7 @@ def spin_region_figure(R, m_regions=REGION_M[:4], q_regions=REGION_Q[::-1], titl
         top_p = 1.1 * max(np.nanpercentile(marg_p[i], 95, axis=0).max() for i in all_i)
     q5 = lambda x: np.nanpercentile(x, [5, 50, 95], axis=0)
     step = lambda y: np.repeat(y, 2)
-    m_title = lambda mr: r'all $m_1$' if mr == M_ALL else rf'$m_1 \in [{mr[0]:g}, {mr[1]:g}]\,M_\odot$'
+    m_title = lambda mr: r'all $m_1$' if mr == M_ALL else rf'$m_1 \in [{mr[0]:g}, {mr[1]:g}]\,\textrm{{M}}_\odot$'
     q_title = lambda qr: r'all $q$' if qr == Q_ALL else rf'$q \in [{qr[0]:.2g}, {qr[1]:.2g}]$'.replace('[1,', '[1.0,').replace(', 1]', ', 1.0]')
     nr, nc = len(row_keys), len(col_keys)
     title_of = lambda k: m_title(k[1]) if k[0] == 'm' else q_title(k[1])

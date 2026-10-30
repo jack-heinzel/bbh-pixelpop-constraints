@@ -150,7 +150,7 @@ def figure(S):
         ax.axvspan(1., bins[-1], color='0.92', zorder=0, lw=0)          # > 1: more mass than the progenitor binary
         ax.set_xlim(bins[0], bins[-1]); ax.set_yticks([])
         ax.set_xlabel(rf'$\mu_{{{hi}}} / [\mu_{{{lo}}}(1 + q_{{{lo}}})]$')
-        ax.text(0.03, 0.95, rf'$\sim {lo} \to \sim {hi}\,M_\odot$', transform=ax.transAxes, va='top')
+        ax.text(0.03, 0.95, rf'$\sim {lo} \to \sim {hi}\,\textrm{{M}}_\odot$', transform=ax.transAxes, va='top')
     axes[0].set_ylabel('density')
     handles = ([Line2D([], [], color=c, lw=1.5) for _, c in RUN_LABELS.values()] +
                [Line2D([], [], color='0.3', lw=1.5), Line2D([], [], color='0.3', lw=1, ls='--'),

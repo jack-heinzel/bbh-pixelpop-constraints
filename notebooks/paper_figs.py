@@ -78,7 +78,7 @@ def m1_axis(ax, label=True):
     ax.set_xscale('log'); ax.set_xlim(M_MIN, A.MAX_M)
     ax.set_xticks(A.SUMMARY_M_GRID, [f'${m:g}$' for m in A.SUMMARY_M_GRID])
     if label:
-        ax.set_xlabel(r'$m_1\,[M_\odot]$')
+        ax.set_xlabel(r'$m_1\,[\textrm{M}_\odot]$')
 
 
 def band_legend():
@@ -101,7 +101,7 @@ def mass_figure(r):
     lo = np.nanpercentile(np.nanpercentile(p_m, 5, 0)[vis], 2)
     hi = max(np.nanmax(np.nanpercentile(y, 95, 0)[vis]) for y in [p_m] + p_mq)
     a1.set_ylim(lo / 3, hi * 3)
-    a1.set_ylabel(r'$p(m_1)\,[M_\odot^{-1}]$')
+    a1.set_ylabel(r'$p(m_1)\,[\textrm{M}_\odot^{-1}]$')
     fig.legend(*band_legend(), loc='upper center', ncol=3, bbox_to_anchor=(0.5, 1.0), **LEG)
     pc = a2.pcolormesh(m_edges, A.q_edges, img.T, cmap='viridis', shading='flat', rasterized=True, vmin=0,
                        vmax=np.nanpercentile(img[vis], 99.5))
@@ -162,10 +162,10 @@ def m2_figure(R):
             print(f'{RUNS[run]}: mode of p(m2 | {qr[0]} < q < {qr[1]}) in 5-20 Msun: {np.median(modes):.1f} '
                   f'({np.percentile(modes, 5):.1f}-{np.percentile(modes, 95):.1f}) Msun')
         m1_axis(ax, ax is axes[-1])
-        ax.set_ylabel(r'$p(m_2)\,[M_\odot^{-1}]$')
+        ax.set_ylabel(r'$p(m_2)\,[\textrm{M}_\odot^{-1}]$')
         ax.text(0.03, 0.07, RUNS[run], transform=ax.transAxes, va='bottom', ha='left',
                 bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.5))
-    axes[-1].set_xlabel(r'$m_2\,[M_\odot]$')
+    axes[-1].set_xlabel(r'$m_2\,[\textrm{M}_\odot]$')
     axes[0].set_yscale('log'); axes[0].set_ylim(hi * 1e-5, hi * 3)
     handles = [(Patch(color=c, alpha=0.3, lw=0), Line2D([], [], color=c, lw=1.0)) for c in COLS]
     fig.legend(handles, Q_NAMES, loc='upper center', ncol=len(COLS), bbox_to_anchor=(0.5, 1.0), **LEG)
@@ -195,10 +195,10 @@ def m2_given_m1_figure(R):
             print(f'{RUNS[run]}: mode of p(m2 | {win[0]:g} < m1 < {win[1]:g}): {np.median(modes):.1f} '
                   f'({np.percentile(modes, 5):.1f}-{np.percentile(modes, 95):.1f}) Msun')
         m1_axis(ax, ax is axes[-1])
-        ax.set_ylabel(r'$p(m_2 \mid m_1)\,[M_\odot^{-1}]$')
+        ax.set_ylabel(r'$p(m_2 \mid m_1)\,[\textrm{M}_\odot^{-1}]$')
         ax.text(0.97, 0.93, RUNS[run], transform=ax.transAxes, va='top', ha='right',
                 bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.5))
-    axes[-1].set_xlabel(r'$m_2\,[M_\odot]$')
+    axes[-1].set_xlabel(r'$m_2\,[\textrm{M}_\odot]$')
     axes[0].set_yscale('log'); axes[0].set_ylim(hi * 1e-4, hi * 3)
     handles = [(Patch(color=c, alpha=0.3, lw=0), Line2D([], [], color=c, lw=1.0)) for c in M1_WINDOW_COLOURS.values()]
     labels = [rf'${a:g} < m_1 < {b:g}$' for a, b in M1_WINDOWS.values()]
@@ -243,7 +243,7 @@ SLICE_COLOURS = ('C0', 'C3')                     # as analysis.spin_region_figur
 
 
 def region_label(mr, qr):
-    return rf'$m_1 \in [{mr[0]:g}, {mr[1]:g}]\,M_\odot$' '\n' rf'$q \in [{qr[0]:g}, {qr[1]:g}]$'
+    return rf'$m_1 \in [{mr[0]:g}, {mr[1]:g}]\,\textrm{{M}}_\odot$' '\n' rf'$q \in [{qr[0]:g}, {qr[1]:g}]$'
 
 
 def spin_heatmap(ax, med_f, med_g, norm, slices=False, contour=None):
@@ -433,7 +433,7 @@ def talk_figure(r):
                         shading='flat', rasterized=True)
     ax0.set_xscale('log'); ax0.set_xlim(M_MIN, A.MAX_M); ax0.set_ylim(0, 1)
     ax0.set_xticks((5, 10, 20, 50, 100, 200), ['$5$', '$10$', '$20$', '$50$', '$100$', '$200$'])
-    ax0.set_xlabel(r'$m_1\,[M_\odot]$'); ax0.set_ylabel(r'$q$')
+    ax0.set_xlabel(r'$m_1\,[\textrm{M}_\odot]$'); ax0.set_ylabel(r'$q$')
     ax0.tick_params(which='both', direction='out')
     to_axes = lambda m, q: ax0.transAxes.inverted().transform(ax0.transData.transform((m, q)))
     for (mr, qr), D, g, (x0, y0, w, h) in zip(TALK_REGIONS, np.moveaxis(Df, 1, 0), Mg, TALK_INSETS):
@@ -495,7 +495,7 @@ def bookkeeping_figure():
             a1.contour(np.exp(X), Y, dens(grid).reshape(X.shape), levels=sorted(W.hpd_levels(dens, xy)),
                        colors=colours[label], linewidths=(1.0, 0.7), linestyles=('-', '--'))
     m1_axis(a1, True); a1.set_xlim(4, 110)
-    a1.set_xlabel(r'peak location $\mu\,[M_\odot]$'); a1.set_ylabel(r'mean $q$ of the peak'); a1.set_ylim(0, 1)
+    a1.set_xlabel(r'peak location $\mu\,[\textrm{M}_\odot]$'); a1.set_ylabel(r'mean $q$ of the peak'); a1.set_ylim(0, 1)
     a1.legend([Line2D([], [], color=c, lw=1.0) for c in colours.values()], list(colours), loc='lower left', **LEG)
     bins = np.linspace(0.6, 1.5, 46)
     pair_col = {('10', '20'): 'C2', ('35', '60'): 'C1'}
@@ -510,7 +510,7 @@ def bookkeeping_figure():
     a2.set_xlabel(r'retained fraction $m_{1,\mathrm{hi}} / M_\mathrm{lo}$'); a2.set_ylabel('density')
     handles = ([Line2D([], [], color=c, lw=1.0) for c in pair_col.values()] +
                [Line2D([], [], color='0.3', lw=1.0), Line2D([], [], color='0.3', lw=1.0, ls='--')])
-    labels = [r'$\sim 10 \to \sim 20\,M_\odot$', r'$\sim 35 \to \sim 60\,M_\odot$', 'Flexible', 'Gaussian']
+    labels = [r'$\sim 10 \to \sim 20\,\textrm{M}_\odot$', r'$\sim 35 \to \sim 60\,\textrm{M}_\odot$', 'Flexible', 'Gaussian']
     a2.legend(handles, labels, loc='upper right', **LEG)
     for ax, t in ((a1, '(a)'), (a2, '(b)')):
         ax.text(0.97 if ax is a1 else 0.03, 0.96, t, transform=ax.transAxes, va='top',
@@ -759,7 +759,7 @@ def chi_q_bands_figure(R, core, spin='chi_eff', bands=M1_BANDS):
                     bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.5))
     handles = [Line2D([], [], color='k', lw=0.7)] + [(Patch(color=c, alpha=0.25, lw=0), Line2D([], [], color=c, lw=1.0))
                                                     for c in M1_BAND_COLS]
-    names = [r'all $m_1$ (90\%)'] + [rf'${a:g} < m_1 < {b:g}\,M_\odot$' for a, b in bands]
+    names = [r'all $m_1$ (90\%)'] + [rf'${a:g} < m_1 < {b:g}\,\textrm{{M}}_\odot$' for a, b in bands]
     fig.legend(handles, names, loc='upper center', ncol=len(names), bbox_to_anchor=(0.5, 1.0), **LEG)
     fig.tight_layout(rect=(0, 0, 1, 1 - 0.17 / fig.get_figheight())); fig.subplots_adjust(hspace=0.06)
     return fig

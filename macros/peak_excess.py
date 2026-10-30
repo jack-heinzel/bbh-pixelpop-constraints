@@ -57,7 +57,7 @@ from peak_fits import PEAKS, RUN_NAMES, fmt
 # q slices of the figure: all q, then the two fit q ranges (PEAKS)
 Q_SLICES = {'all': (0., 1.), 'low': (0.3, 0.65), 'high': (0.8, 1.0)}
 Q_LABELS = {'all': r'all $q$', 'low': r'$0.3 < q < 0.65$', 'high': r'$0.8 < q < 1$'}
-PEAK_LABELS = {'10': r'$10\,M_\odot$', '35': r'$35\,M_\odot$', '20': r'$20\,M_\odot$', '60': r'$60\,M_\odot$'}
+PEAK_LABELS = {'10': r'$10\,\textrm{M}_\odot$', '35': r'$35\,\textrm{M}_\odot$', '20': r'$20\,\textrm{M}_\odot$', '60': r'$60\,\textrm{M}_\odot$'}
 RUN_STYLE = ('C0', 'C3')                     # first run: filled bands; second: lines (as the notebook's var 1 / var 4)
 CSV = os.path.join(REPO, 'results', 'post_processing', 'peak_excess.csv')
 
@@ -237,7 +237,7 @@ def draw_panel(ax, entries, labels, colours=RUN_STYLE, fit=None, window=None):
         ax.xaxis.set_minor_locator(NullLocator())
         ax.xaxis.set_major_formatter(FuncFormatter(lambda v, _: f'${v:g}$'))
     else:
-        ax.text(0.5, 0.5, r'excluded by $m_2 > 3\,M_\odot$', transform=ax.transAxes, ha='center', va='center',
+        ax.text(0.5, 0.5, r'excluded by $m_2 > 3\,\textrm{M}_\odot$', transform=ax.transAxes, ha='center', va='center',
                 fontsize=6.5, color='0.4')
         ax.set_xticks([])
 
@@ -277,7 +277,7 @@ def figures(res):
             if j == 0:
                 ax.set_ylabel(f'{PEAK_LABELS[name]}, ${win[0]:g}$--${win[1]:g}$\n{ylab}')
             if i == len(PEAKS) - 1:
-                ax.set_xlabel(r'$m_1\,[M_\odot]$')
+                ax.set_xlabel(r'$m_1\,[\textrm{M}_\odot]$')
     fig.tight_layout(rect=(0, 0, 1, 1 - 0.35 / fig.get_figheight())); fig.subplots_adjust(hspace=0.35, wspace=0.08)
     legend(fig, labels, 1.0)
     plot_style.save(fig, 'peak_excess')
@@ -290,7 +290,7 @@ def figures(res):
         ax.text(0.97, 0.93, f'{PEAK_LABELS[name]}, {Q_LABELS[own_slice(name)]}', transform=ax.transAxes, va='top',
                 ha='right', bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.5))
         ax.set_ylabel(ylab)
-    axes[-1].set_xlabel(r'$m_1\,[M_\odot]$')
+    axes[-1].set_xlabel(r'$m_1\,[\textrm{M}_\odot]$')
     fig.tight_layout(rect=(0, 0, 1, 1 - 0.35 / fig.get_figheight())); fig.subplots_adjust(hspace=0.4)
     legend(fig, labels, 1.0)
     plot_style.save(fig, 'peak_excess_own_q')
@@ -335,13 +335,13 @@ def fit_figures(res):
                     if j == 0:
                         ax.set_ylabel(f'{PEAK_LABELS[name]}, ${win[0]:g}$--${win[1]:g}$\n{ylab}')
                     if i == len(PEAKS) - 1:
-                        ax.set_xlabel(r'$m_1\,[M_\odot]$')
+                        ax.set_xlabel(r'$m_1\,[\textrm{M}_\odot]$')
                 else:
                     ax.text(0.97, 0.93, f'{PEAK_LABELS[name]}, {Q_LABELS[qs]}', transform=ax.transAxes, va='top',
                             ha='right', bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.5))
                     ax.set_ylabel(ylab)
             if not grid:
-                axes[-1].set_xlabel(r'$m_1\,[M_\odot]$')
+                axes[-1].set_xlabel(r'$m_1\,[\textrm{M}_\odot]$')
             top = 1 - (0.35 if grid else 0.5) / fig.get_figheight()
             fig.tight_layout(rect=(0, 0, 1, top)); fig.subplots_adjust(hspace=0.35 if grid else 0.4, wspace=0.08)
             fig.legend(handles, names, loc='upper center', bbox_to_anchor=(0.5, 1.0), ncol=4 if grid else 2, **P.LEG)

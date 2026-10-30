@@ -129,11 +129,11 @@ def diagnostic(run, p_m1_by_q, fits, path):
         ax.axvspan(*win, color='0.92', zorder=0)
         ax.set_xscale('log'); ax.set_yscale('log')
         ax.set_ylim(np.nanmin(lo[lo > 0]) / 2, hi.max() * 2)
-        ax.set_xlabel(r'$m_1\,[M_\odot]$')
+        ax.set_xlabel(r'$m_1\,[\textrm{M}_\odot]$')
         ax.text(0.04, 0.05, rf'$\mu = {fmt(fits[name][:, 1])}$' '\n' rf'$\sigma = {fmt(fits[name][:, 2])}$' '\n'
                 rf'$\alpha = {fmt(fits[name][:, 4])}$' '\n' rf'$f_G = {fmt(fits[name][:, 5])}$',
                 transform=ax.transAxes, va='bottom', fontsize=11)
-    axes[0].set_ylabel(r'$p(m_1 \mid q)\,[M_\odot^{-1}]$')
+    axes[0].set_ylabel(r'$p(m_1 \mid q)\,[\textrm{M}_\odot^{-1}]$')
     axes[-1].legend(loc='upper right', **dict(plot_style.LEG_KW, fontsize=11))
     fig.tight_layout()
     fig.savefig(path, bbox_inches='tight')
