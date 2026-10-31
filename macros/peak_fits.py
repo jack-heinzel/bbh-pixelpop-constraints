@@ -113,6 +113,23 @@ def error_decimals(err):
 MASS_DEC, Q_DEC = 1, 2   # masses (Msun) to one decimal, mass ratios to two (user, 2026-10-30)
 
 
+def pct(p, n=None):
+    """A probability or fraction in percent, the number only (user, 2026-10-30: 0.998 -> 99.8; the text writes the \\%):
+    whole percent in [10, 90], one decimal outside (more if needed to stay off 0 and 100; 100 and 0 exactly as such);
+    with ``n`` draws, p = 1 is '> 100 (1 - 1 / n)' and p = 0 '< 100 / n' (not resolvable)."""
+    if n is not None and p >= 1:
+        return f'> {100 * (1 - 1 / n):g}'
+    if n is not None and p <= 0:
+        return f'< {100 / n:g}'
+    x = 100 * p
+    if x in (0., 100.):
+        return f'{x:.0f}'
+    d = 0 if 10 <= x <= 90 else 1
+    while d < 4 and float(f'{x:.{d}f}') in (0., 100.):
+        d += 1
+    return f'{x:.{d}f}'
+
+
 def fmt(x, decimals=None):
     """median^{+hi}_{-lo} (90%), all to the decimals of the smaller error (error_decimals), or to ``decimals`` (MASS_DEC,
     Q_DEC: a quantity kept uniform across macros), with at least two significant figures in the larger of |median| and
@@ -180,7 +197,7 @@ def main(runs):
                 dec = MASS_DEC if par in ('Mu', 'Sigma') else None
                 lines.append(rf'\newcommand{{\peak{tex}{par}{suffix}}}{{{fmt(F[:, col], dec)}}}')
             # the fraction of draws with a peak inside the window (the summaries above are conditional on it)
-            lines.append(rf'\newcommand{{\peak{tex}PeakFrac{suffix}}}{{{1 - bad / len(F):.3f}}}')
+            lines.append(rf'\newcommand{{\peak{tex}PeakFrac{suffix}}}{{{pct(1 - bad / len(F))}}}')
         diagnostic(run, p_m1_by_q, fits, os.path.join(REPO, 'plots', f'{run}_peak_fits.pdf'))
     path = os.path.join(HERE, 'peak_fits.tex')
     with open(path, 'w') as f:

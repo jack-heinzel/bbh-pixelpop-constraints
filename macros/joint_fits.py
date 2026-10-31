@@ -42,7 +42,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO); sys.path.insert(0, os.path.join(REPO, 'notebooks')); sys.path.insert(0, HERE)
 import analysis as A
-from peak_fits import MASS_DEC, PEAKS, Q_DEC, RUN_NAMES, deviance, fmt
+from peak_fits import MASS_DEC, PEAKS, Q_DEC, RUN_NAMES, deviance, fmt, pct
 
 NAMES = ('lnA', 'mu', 'sigma', 'mu_q', 'sigma_q', 'lnB', 'alpha', 'mu_qb', 'sigma_qb')
 LOG_SQRT_2PI = 0.5 * np.log(2 * np.pi)
@@ -193,7 +193,7 @@ def write_tex():
                 lines.append(rf'\newcommand{{\joint{tex}{par}{suffix}}}{{{fmt(F[:, col], dec)}}}')
             for par, x in zip(('QMean', 'QSpread'), q_moments(F)):
                 lines.append(rf'\newcommand{{\joint{tex}{par}{suffix}}}{{{fmt(x, Q_DEC)}}}')
-            lines.append(rf'\newcommand{{\joint{tex}PeakFrac{suffix}}}{{{1 - bad / len(F):.3f}}}')
+            lines.append(rf'\newcommand{{\joint{tex}PeakFrac{suffix}}}{{{pct(1 - bad / len(F))}}}')
     path = os.path.join(HERE, 'joint_fits.tex')
     with open(path, 'w') as f:
         f.write('\n'.join(lines) + '\n')

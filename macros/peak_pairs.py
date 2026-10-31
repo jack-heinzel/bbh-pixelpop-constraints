@@ -26,7 +26,7 @@ os.environ.setdefault('JAX_PLATFORMS', 'cpu')
 HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO); sys.path.insert(0, HERE)
-from peak_fits import PEAKS, RUN_NAMES, fmt
+from peak_fits import MASS_DEC, PEAKS, RUN_NAMES, fmt, pct
 from joint_fits import npz_path, q_moments
 
 PAIRS = (('10', '20'), ('35', '60'))
@@ -117,13 +117,14 @@ def write_tex(S):
             for par, key in (('Retained', 'retained'), ('RetainedMuQ', 'retained_muq'), ('Ratio', 'R'),
                              ('LocRatio', 'loc')):
                 lines.append(rf'\newcommand{{\pair{tex}{par}{suffix}}}{{{fmt(s[key])}}}')
-            lines.append(rf'\newcommand{{\pair{tex}QuantileRetained{suffix}}}{{{np.mean(s["retained"] < RETAINED):.2f}}}')
+            lines.append(rf'\newcommand{{\pair{tex}QuantileRetained{suffix}}}{{{pct(np.mean(s["retained"] < RETAINED))}}}')
             if 'retained_mode' in s:
                 lines.append(f'% fit-free: modes of p(M | q band) and p(m1 | q band); {len(s["retained_mode"])} draws')
                 for par, key in (('MTotMode', 'Mtot_mode'), ('HiMode', 'hi_mode'), ('RetainedMode', 'retained_mode')):
-                    lines.append(rf'\newcommand{{\pair{tex}{par}{suffix}}}{{{fmt(s[key])}}}')
+                    dec = MASS_DEC if par in ('MTotMode', 'HiMode') else None     # masses to 0.1 Msun
+                    lines.append(rf'\newcommand{{\pair{tex}{par}{suffix}}}{{{fmt(s[key], dec)}}}')
                 lines.append(rf'\newcommand{{\pair{tex}QuantileRetainedMode{suffix}}}'
-                             rf'{{{np.mean(s["retained_mode"] < RETAINED):.2f}}}')
+                             rf'{{{pct(np.mean(s["retained_mode"] < RETAINED))}}}')
     path = os.path.join(HERE, 'peak_pairs.tex')
     with open(path, 'w') as f:
         f.write('\n'.join(lines) + '\n')

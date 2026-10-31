@@ -31,7 +31,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO); sys.path.insert(0, os.path.join(REPO, 'notebooks')); sys.path.insert(0, HERE)
 import analysis as A
-from peak_fits import Q_DEC, RUN_NAMES, fmt
+from peak_fits import Q_DEC, RUN_NAMES, fmt, pct
 from prior_fits import load_hyper, prior_p_mass
 
 Q0 = 0.   # every q the m2 > 3 Msun window allows (user, 2026-10-30; was 0.4)
@@ -40,8 +40,8 @@ CONTRASTS = (('Ten', 'Twenty'), ('ThirtyFive', 'Twenty'), ('ThirtyFive', 'Sixty'
 
 
 def pfmt(p, n):
-    """P to 3 decimals near 1; '> 1 - 1/n' when no draw of n is below (P = 1 is not resolvable)."""
-    return f'> {1 - 1 / n:.4f}'.rstrip('0') if p == 1 else f'{p:.3f}' if 0.99 < p < 1 else f'{p:.2f}'
+    """P as a percentage (peak_fits.pct); '> 1 - 1/n' when no draw of n is below (P = 1 is not resolvable)."""
+    return pct(p, n) if p == 1 else pct(p)
 
 
 def window_q(p_mass, window, q0=Q0):

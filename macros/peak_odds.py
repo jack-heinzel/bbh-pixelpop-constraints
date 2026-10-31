@@ -27,7 +27,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO); sys.path.insert(0, os.path.join(REPO, 'notebooks')); sys.path.insert(0, HERE)
 import analysis as A
-from peak_fits import RUN_NAMES, fmt
+from peak_fits import RUN_NAMES, fmt, pct
 from prior_fits import load_hyper, prior_p_mass
 
 WINDOWS = {'lo': (25., 30.), 'mid': (30., 35.), 'hi': (35., 40.)}
@@ -56,7 +56,7 @@ def bf(post, prior):
 
 
 def pstr(p):
-    return f'{p:.3f}' if 0.99 < p < 1 else f'{p:.2f}'
+    return pct(p)
 
 
 def main():

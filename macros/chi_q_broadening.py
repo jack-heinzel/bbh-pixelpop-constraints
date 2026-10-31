@@ -19,10 +19,10 @@ REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO); sys.path.insert(0, os.path.join(REPO, 'notebooks')); sys.path.insert(0, HERE)
 import analysis as A
 from paper_figs import m1_averaged_moments, m1_averaged_prior
-from peak_fits import RUN_NAMES, fmt
+from peak_fits import RUN_NAMES, fmt, pct
 
 Q_LO, Q_HI = 0.35, 0.85
-pfmt = lambda p: f'{p:.3f}' if 0.99 < p < 1 else f'{p:.2f}'      # 0.996 is not 1.00 (2000 draws)
+pfmt = pct
 
 
 def q_bin(q):

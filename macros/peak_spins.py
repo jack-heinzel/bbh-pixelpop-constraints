@@ -28,10 +28,10 @@ REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO); sys.path.insert(0, os.path.join(REPO, 'notebooks')); sys.path.insert(0, HERE)
 import analysis as A
 from paper_figs import SPIN_PEAK_REGIONS
-from peak_fits import RUN_NAMES, fmt
+from peak_fits import RUN_NAMES, fmt, pct
 
 PEAK_NAMES = ('Ten', 'ThirtyFive', 'Twenty', 'Sixty')         # SPIN_PEAK_REGIONS order
-pfmt = lambda p: f'{p:.3f}' if 0.99 < p < 1 else f'{p:.2f}'
+pfmt = pct
 
 
 def region_moments(p_mass, MOM, MOM_CORE, region):

@@ -58,7 +58,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO); sys.path.insert(0, os.path.join(REPO, 'notebooks')); sys.path.insert(0, HERE)
 import analysis as A
-from peak_fits import MASS_DEC, PEAKS, RUN_NAMES, fmt
+from peak_fits import MASS_DEC, PEAKS, RUN_NAMES, fmt, pct
 from prior_fits import load_hyper, prior_p_mass
 
 # q slices of the figure: all q, then the two fit q ranges (PEAKS)
@@ -207,16 +207,16 @@ def macros(res):
                 continue
             lines.append(f'% peak {name}: q in {qr}, m1 window {win} Msun, bins used {e["window_used"]}'
                          + (' (shortened by m2 > 3 Msun)' if e['shortened'] else ''))
-            lines += [rf'\newcommand{{\peak{tex}ExcessPLoc{suffix}}}{{{e["P_loc"]:.3f}}}',
+            lines += [rf'\newcommand{{\peak{tex}ExcessPLoc{suffix}}}{{{pct(e["P_loc"])}}}',
                       rf'\newcommand{{\peak{tex}ExcessHeight{suffix}}}{{{fmt(e["height"])}}}',
                       rf'\newcommand{{\peak{tex}ExcessLoc{suffix}}}{{{fmt(e["m_hat"], MASS_DEC)}}}',
                       rf'\newcommand{{\peak{tex}ExcessFInt{suffix}}}{{{fmt(e["F"])}}}',
-                      rf'\newcommand{{\peak{tex}ExcessPFInt{suffix}}}{{{e["P_F"]:.3f}}}']
+                      rf'\newcommand{{\peak{tex}ExcessPFInt{suffix}}}{{{pct(e["P_F"])}}}']
             if 'P_loc_prior' in e:
-                lines.append(rf'\newcommand{{\peak{tex}ExcessPLocPrior{suffix}}}{{{e["P_loc_prior"]:.2f}}}')
+                lines.append(rf'\newcommand{{\peak{tex}ExcessPLocPrior{suffix}}}{{{pct(e["P_loc_prior"])}}}')
             a = R[(name, 'all')]
             if a is not None:
-                lines.append(rf'\newcommand{{\peak{tex}ExcessPLocAllQ{suffix}}}{{{a["P_loc"]:.3f}}}')
+                lines.append(rf'\newcommand{{\peak{tex}ExcessPLocAllQ{suffix}}}{{{pct(a["P_loc"])}}}')
     lines.append(f'% events in m1 windows {EVENT_WINDOWS} Msun, q in each peak\'s own range: NEvents by PE medians, '
                  'NEventsPE the summed PE fractions')
     for name, (n_med, n_pe) in event_counts().items():
