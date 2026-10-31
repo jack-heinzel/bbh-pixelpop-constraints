@@ -104,10 +104,10 @@ def hpd_membership(pq, frac):
 
 def mass_figure(r, mode=False, hpd=None):
     """Fig. 1: p(m1) for all q and each q range (top) and p(q | m1) (bottom), one column. ``mode`` (user,
-    2026-10-30): the intervals over draws of the mode of p(q | m1) (dashed: 90%, dotted: 99%) instead of <q>; the mode
+    2026-10-30): the intervals over draws of the mode of p(q | m1) instead of <q>; the mode
     ignores the tails that broaden where the data run out, which pull <q> towards the middle of the window.
     ``hpd`` = f: instead, the per-draw highest-density set of p(q | m1) holding f of it at each m1, shown by the
-    fraction of draws containing each (m1, q) cell: contours at 0.5 (solid) and 0.05 (dashed). Unlike <q> it
+    fraction of draws containing each (m1, q) cell: contours at 0.5 (solid) and 0.05 (dotted). Unlike <q> it
     reaches the q = 1 edge, and splits where p(q | m1) has two peaks.
     The excluded zone m2 < MIN_M is grey below the smooth curve q = MIN_M / m1 (as Fig. 2's chi_p_max): every cell
     with any part above it is coloured (zero density if its centre is below, as the model's window), so no cell left
@@ -132,11 +132,11 @@ def mass_figure(r, mode=False, hpd=None):
                        vmax=np.nanpercentile(img[vis], 99.5))
     m = np.geomspace(m_edges[0], m_edges[-1], 2000)
     a2.fill_between(m, 0., np.minimum(A.MIN_M / m, 1.), color=EXCLUDED_GREY, lw=0, zorder=1.5)
-    styles = (('--', ':') if mode else ('-', '--'))
+    styles = ('-', ':')                                  # 90% solid, 99% dotted (user, 2026-10-30)
     if hpd:
         qq = np.concatenate([[0.], A.q_c, [1.]])                     # to the q = 0, 1 edges: the set can reach them
         P = np.concatenate([P_in[:, :1], P_in, P_in[:, -1:]], 1)
-        a2.contour(A.m_c, qq, P.T, levels=[0.05, 0.5], colors='w', linewidths=(0.6, 0.9), linestyles=('--', '-'))
+        a2.contour(A.m_c, qq, P.T, levels=[0.05, 0.5], colors='w', linewidths=(0.7, 0.9), linestyles=(':', '-'))
     else:
         for (a, b), ls in zip(((5, 95), (0.5, 99.5)), styles):
             for f in (a, b):
@@ -146,7 +146,7 @@ def mass_figure(r, mode=False, hpd=None):
     dark = lambda ls: Line2D([], [], color='k', lw=0.7, ls=ls)
     if hpd:
         h = rf'{100 * hpd:g}\% HPD of $p(q \mid m_1)$'
-        a2.legend([dark('-'), dark('--')], [h + r', in $\geq 50\%$ of draws', h + r', in $\geq 5\%$'], loc='lower left',
+        a2.legend([dark('-'), dark(':')], [h + r', in $\geq 50\%$ of draws', h + r', in $\geq 5\%$'], loc='lower left',
                   **dict(LEG, frameon=True, framealpha=0.85, edgecolor='none'))
     else:
         stat = r'mode of $q$' if mode else r'$\langle q \rangle$'
