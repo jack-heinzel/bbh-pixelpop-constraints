@@ -17,7 +17,9 @@ is offset from 0 under the prior too): MedPrior, the prior's median and 90%; PSh
 median Delta_prior) / s_post (s: half the central 68% interval), the posterior tested against the prior's offset in
 place of 0. BF: the Bayes factor for Delta > 0 against Delta < 0, posterior odds over prior odds (counts of draws;
 '> x' when no posterior draw has Delta < 0, from 1 - P < 1/n). (Not Delta_post against the whole prior distribution of Delta: that asks how often a random Matern-field
-universe has such an offset, not how significantly the data measure one; user, 2026-10-30.) Also the window means <q>_W: \\qWindow<Peak><Run>.
+universe has such an offset, not how significantly the data measure one; user, 2026-10-30.) Also the window means <q>_W: \\qWindow<Peak><Run>, and the window modes (user, 2026-10-30): the q bin (centre)
+with the largest p(q | m1 in W) = int_W dln m1 p(ln m1, q), per draw, \\qModeWindow<Peak><Run> (median and 90%; it can
+reach the last bin centre, 0.995, where <q> cannot reach 1).
 """
 import os
 import sys
@@ -49,6 +51,12 @@ def window_q(p_mass, window, q0=Q0):
     t = A.q_c >= q0
     pq = p_mass[:, s][:, :, t].astype(float).sum(1)
     return (pq @ A.q_c[t]) / pq.sum(1)
+
+
+def window_mode(p_mass, window):
+    """The mode of p(q | m1 in ``window``) (m1 bins by centre, windowed field), per draw: a q bin centre."""
+    s = (A.m_c >= window[0]) & (A.m_c <= window[1])
+    return A.q_c[np.argmax(p_mass[:, s].astype(float).sum(1), 1)]
 
 
 def z_score(d):
@@ -85,10 +93,14 @@ def main():
         prior = prior_p_mass(load_hyper(run))
         Qp = {k: window_q(post, w) for k, w in WINDOWS.items()}
         Qr = {k: window_q(prior, w) for k, w in WINDOWS.items()}
+        Mp = {k: window_mode(post, w) for k, w in WINDOWS.items()}
         del post, prior
         lines.append(f'% {run}: {len(Qp["Ten"])} posterior and prior draws')
         for k, x in Qp.items():
             lines.append(rf'\newcommand{{\qWindow{k}{suffix}}}{{{fmt(x)}}}')
+        for k, x in Mp.items():
+            lines.append(rf'\newcommand{{\qModeWindow{k}{suffix}}}{{{fmt(x)}}}')
+            print(f'{run} mode of p(q | m1 in {WINDOWS[k]}): {fmt(x)}; P(mode > 0.9) {np.mean(x > 0.9):.2f}', flush=True)
         for a, b in CONTRASTS:
             d, dr = Qp[a] - Qp[b], Qr[a] - Qr[b]
             name = a + b
