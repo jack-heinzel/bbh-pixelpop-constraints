@@ -4,6 +4,7 @@ figure:
     python notebooks/paper_figs.py [mass|chi|m2|spin|book|talk|all] [--core] [--mean-asinh W]
         -> plots/mass_ratio_m1.pdf         Fig. 1: p(m1 | q range) above p(q | m1), the flexible run, one column
            plots/mass_ratio_m1_mode.pdf    Fig. 1 with intervals of the mode of p(q | m1) instead of <q>
+           plots/mass_ratio_m1_mode_gaussian.pdf   the same for the Gaussian spin model's run
            plots/mass_ratio_m1_hpd50.pdf   Fig. 1 with the 50% highest-density set of p(q | m1) instead of <q>
            plots/chi_eff_mean_m1.pdf       mu_chi_eff(m1), one row per spin model, one column
            plots/chi_eff_sd_m1.pdf         sigma_chi_eff(m1), one row per spin model, one column
@@ -904,7 +905,7 @@ def main():
     ap.add_argument('--lvk', action='store_true', help='chiq: overlay the GWTC-5 chi_eff | q models (lvk_chi_q)')
     ap.add_argument('--mean-asinh', type=float, default=0.03)
     args = ap.parse_args()
-    need = {'mass': list(RUNS)[:1], 'chi': list(RUNS), 'chip': list(RUNS), 'chiq': list(RUNS), 'chiqm': list(RUNS), 'corr': list(RUNS), 'm2': list(RUNS), 'talk': list(RUNS)[:1],
+    need = {'mass': list(RUNS), 'chi': list(RUNS), 'chip': list(RUNS), 'chiq': list(RUNS), 'chiqm': list(RUNS), 'corr': list(RUNS), 'm2': list(RUNS), 'talk': list(RUNS)[:1],
             'all': list(RUNS)}.get(args.what, [])
     R = {run: A.load_light(run) for run in need}
     import pixelpop  # noqa: F401  (its import resets matplotlib's rcParams; import it before the style)
@@ -914,6 +915,7 @@ def main():
         plot_style.save(mass_figure(R['ppc_gwtc5_k10']), 'mass_ratio_m1')
         plot_style.save(mass_figure(R['ppc_gwtc5_k10'], mode=True), 'mass_ratio_m1_mode')
         plot_style.save(mass_figure(R['ppc_gwtc5_k10'], hpd=0.5), 'mass_ratio_m1_hpd50')
+        plot_style.save(mass_figure(R['ppc_gwtc5_k100_gauss'], mode=True), 'mass_ratio_m1_mode_gaussian')
     if args.what in ('spin', 'all'):
         plot_style.save(spin_peaks_figure(), 'spin_peak_regions')
         plot_style.save(spin_peaks_figure(slices=True), 'spin_peak_regions_slices')
