@@ -4,6 +4,7 @@ figure:
     python notebooks/paper_figs.py [mass|chi|m2|spin|book|talk|all] [--core] [--mean-asinh W]
         -> plots/mass_ratio_m1.pdf         Fig. 1: p(m1 | q range) above p(q | m1), the flexible run, one column
            plots/mass_ratio_m1_mode.pdf    Fig. 1 with intervals of the mode of p(q | m1) instead of <q>
+           plots/mass_ratio_m1_hpd50.pdf   Fig. 1 with the 50% highest-density set of p(q | m1) instead of <q>
            plots/chi_eff_mean_m1.pdf       mu_chi_eff(m1), one row per spin model, one column
            plots/chi_eff_sd_m1.pdf         sigma_chi_eff(m1), one row per spin model, one column
            plots/chi_eff_mean_sd_m1.pdf    both: rows = spin models, columns = mean, sd; two columns
@@ -89,14 +90,30 @@ def band_legend():
     return handles, [r'all $q$ (90\%)'] + Q_NAMES
 
 
-def mass_figure(r, mode=False):
+def hpd_membership(pq, frac):
+    """(draws, Bm, Bq) bool: the q bins in each draw's and m1 column's highest-density set holding ``frac`` of
+    p(q | m1) (``pq``: per-bin probabilities summing to 1 over q; the bin that crosses ``frac`` is included)."""
+    order = np.argsort(-pq, axis=2)
+    c = np.cumsum(np.take_along_axis(pq, order, 2), 2)
+    keep = (c - np.take_along_axis(pq, order, 2)) < frac            # cumulative mass before the bin is below frac
+    out = np.zeros(pq.shape, bool)
+    np.put_along_axis(out, order, keep, 2)
+    return out
+
+
+def mass_figure(r, mode=False, hpd=None):
     """Fig. 1: p(m1) for all q and each q range (top) and p(q | m1) (bottom), one column. ``mode`` (user,
     2026-10-30): the intervals over draws of the mode of p(q | m1) (dashed: 90%, dotted: 99%) instead of <q>; the mode
-    ignores the tails that broaden where the data run out, which pull <q> towards the middle of the window."""
+    ignores the tails that broaden where the data run out, which pull <q> towards the middle of the window.
+    ``hpd`` = f: instead, the per-draw highest-density set of p(q | m1) holding f of it at each m1, shown by the
+    fraction of draws containing each (m1, q) cell: contours at 0.5 (solid) and 0.05 (dashed). Unlike <q> it
+    reaches the q = 1 edge, and splits where p(q | m1) has two peaks."""
     ok = A.q_c[None, :] * A.m_c[:, None] >= A.MIN_M
     pq = r.p_mass / r.p_mass.sum(2, keepdims=True)
     mq = A.q_c[np.argmax(pq, 2)] if mode else (pq * A.q_c).sum(2)
     img = np.where(ok, np.median(pq, 0) / A.dq, np.nan)
+    if hpd:
+        P_in = hpd_membership(pq, hpd).mean(0)
     del pq
     p_m, p_mq = r.p_lnm / A.m_c[None], [A.p_m1_given_q_range(r, qr) for qr in A.SUMMARY_Q_RANGES]
     fig, (a1, a2) = plt.subplots(2, 1, figsize=(ONE_COL, 3.9), sharex=True)
@@ -110,15 +127,25 @@ def mass_figure(r, mode=False):
     pc = a2.pcolormesh(m_edges, A.q_edges, img.T, cmap='viridis', shading='flat', rasterized=True, vmin=0,
                        vmax=np.nanpercentile(img[vis], 99.5))
     styles = (('--', ':') if mode else ('-', '--'))
-    for (a, b), ls in zip(((5, 95), (0.5, 99.5)), styles):
-        for f in (a, b):
-            a2.plot(mx, ext(np.percentile(mq, f, 0)), color='w', lw=0.7, ls=ls)
+    if hpd:
+        qq = np.concatenate([[0.], A.q_c, [1.]])                     # to the q = 0, 1 edges: the set can reach them
+        P = np.concatenate([P_in[:, :1], P_in, P_in[:, -1:]], 1)
+        a2.contour(A.m_c, qq, P.T, levels=[0.05, 0.5], colors='w', linewidths=(0.6, 0.9), linestyles=('--', '-'))
+    else:
+        for (a, b), ls in zip(((5, 95), (0.5, 99.5)), styles):
+            for f in (a, b):
+                a2.plot(mx, ext(np.percentile(mq, f, 0)), color='w', lw=0.7, ls=ls)
     a2.set_ylim(0, 1); a2.set_ylabel(r'$q$')
     a2.tick_params(which='both', direction='out')
     dark = lambda ls: Line2D([], [], color='k', lw=0.7, ls=ls)
-    stat = r'mode of $q$' if mode else r'$\langle q \rangle$'
-    a2.legend([dark(ls) for ls in styles], [stat + r', 90\%', stat + r', 99\%'], loc='lower left',
-              **dict(LEG, frameon=True, framealpha=0.85, edgecolor='none'))
+    if hpd:
+        h = rf'{100 * hpd:g}\% HPD of $p(q \mid m_1)$'
+        a2.legend([dark('-'), dark('--')], [h + r', in $\geq 50\%$ of draws', h + r', in $\geq 5\%$'], loc='lower left',
+                  **dict(LEG, frameon=True, framealpha=0.85, edgecolor='none'))
+    else:
+        stat = r'mode of $q$' if mode else r'$\langle q \rangle$'
+        a2.legend([dark(ls) for ls in styles], [stat + r', 90\%', stat + r', 99\%'], loc='lower left',
+                  **dict(LEG, frameon=True, framealpha=0.85, edgecolor='none'))
     for ax in (a1, a2):
         m1_axis(ax, ax is a2)
     cb = fig.colorbar(pc, cax=a2.inset_axes([1.02, 0, 0.03, 1])); cb.set_label(r'$p(q \mid m_1)$')
@@ -881,6 +908,7 @@ def main():
     if args.what in ('mass', 'all'):
         plot_style.save(mass_figure(R['ppc_gwtc5_k10']), 'mass_ratio_m1')
         plot_style.save(mass_figure(R['ppc_gwtc5_k10'], mode=True), 'mass_ratio_m1_mode')
+        plot_style.save(mass_figure(R['ppc_gwtc5_k10'], hpd=0.5), 'mass_ratio_m1_hpd50')
     if args.what in ('spin', 'all'):
         plot_style.save(spin_peaks_figure(), 'spin_peak_regions')
         plot_style.save(spin_peaks_figure(slices=True), 'spin_peak_regions_slices')
