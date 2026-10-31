@@ -12,7 +12,7 @@ draw's posterior mass field and kernels, fresh white noise). 'Core' restricts ch
     python macros/peak_spins.py   -> macros/peak_spins.tex
 
 Macros \\peakSpin<Peak><Stat><Run>, Peak in (Ten, ThirtyFive, Twenty, Sixty), Run in (Flex, Gauss), Stat: EffMean,
-EffSd, EffMeanCore, EffSdCore, PMean, PSd (median and 90%), PEffPos (P(mean chi_eff > 0)), and each with suffix Prior.
+EffSd, EffMeanCore, EffSdCore, PMean, PSd (median and 90%), PEffPos (P(core mean chi_eff > 0)), and each with suffix Prior.
 Runs on a login node, pinned (< 3 GB per run).
 """
 import glob
@@ -57,7 +57,7 @@ def region_moments(p_mass, MOM, MOM_CORE, region):
 def main():
     lines = ['% Spin moments in the peak regions (macros/peak_spins.py): mean and sd of chi_eff, chi_p given m1, q in '
              'the region (median and 90%), posterior and empirical-Bayes spin prior; Core: |chi_eff| < '
-             f'{A.CHI_CORE:g}; PEffPos: P(mean chi_eff > 0)']
+             f'{A.CHI_CORE:g}; PEffPos: P(core mean chi_eff > 0)']
     for run, suffix in RUN_NAMES.items():
         r = A.load_light(run)
         files = sorted(glob.glob(os.path.join(REPO, 'results', run, 'chain_*_samples.h5')))
@@ -72,9 +72,9 @@ def main():
             for tag, res in (('', post), ('Prior', prior)):
                 for k, x in res.items():
                     lines.append(rf'\newcommand{{\peakSpin{name}{k}{tag}{suffix}}}{{{fmt(x)}}}')
-                lines.append(rf'\newcommand{{\peakSpin{name}PEffPos{tag}{suffix}}}{{{pfmt(np.mean(res["EffMean"] > 0))}}}')
+                lines.append(rf'\newcommand{{\peakSpin{name}PEffPos{tag}{suffix}}}{{{pfmt(np.mean(res["EffMeanCore"] > 0))}}}')
             print(f'{run} {name} {region}: ' + ', '.join(f'{k} {fmt(x)} (prior {fmt(prior[k])})' for k, x in post.items())
-                  + f'; P(mean chi_eff > 0) {pfmt(np.mean(post["EffMean"] > 0))}', flush=True)
+                  + f"; P(core mean chi_eff > 0) {pfmt(np.mean(post['EffMeanCore'] > 0))}", flush=True)
         del r, MOM, MOM_CORE, d
     path = os.path.join(HERE, 'peak_spins.tex')
     with open(path, 'w') as f:
