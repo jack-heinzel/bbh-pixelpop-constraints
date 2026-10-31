@@ -38,6 +38,12 @@ results/post_processing/<run>_joint_fits.npz) through the same chord subtraction
 integrated over the panel's q slice (truncated Gaussians in q, analytic), evaluated on the same m1 bins, and its own
 chord subtracted; draws without a fitted peak are left out.
 
+Also (user, 2026-10-30, draft TODOs): PLocPrior, P_loc under the mass field's empirical-Bayes prior
+(prior_fits.prior_p_mass: each posterior draw's kernel parameters, fresh white noise) at the posterior's m_star bin;
+PLocAllQ, P_loc over all q (each peak's window in the 'all' slice, its own m_star); and the events in each peak's
+count window (EVENT_WINDOWS, with q in its own range): NEvents, those whose PE medians of m1 and q lie in it, and
+NEventsPE, the sum over events of the fraction of their PE samples in it (the PE prior, not population-reweighted).
+
 Needs only the chains' log_p_mass (no spin cache). Runs on a Rusty login node, pinned (taskset; < 1 GB per run).
 """
 import glob
@@ -52,7 +58,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO); sys.path.insert(0, os.path.join(REPO, 'notebooks')); sys.path.insert(0, HERE)
 import analysis as A
-from peak_fits import PEAKS, RUN_NAMES, fmt
+from peak_fits import MASS_DEC, PEAKS, RUN_NAMES, fmt
+from prior_fits import load_hyper, prior_p_mass
 
 # q slices of the figure: all q, then the two fit q ranges (PEAKS)
 Q_SLICES = {'all': (0., 1.), 'low': (0.3, 0.65), 'high': (0.8, 1.0)}
@@ -118,6 +125,46 @@ def compute(runs):
             for name, (_, win, _) in PEAKS.items():
                 out[run][(name, qs)] = excess(p, full, win)
         del p_mass
+        prior = prior_p_mass(load_hyper(run))
+        for name, (qr, win, _) in PEAKS.items():
+            e = out[run][(name, own_slice(name))]
+            if e is not None:
+                p, _ = slice_density(prior, qr)
+                d = excess_at(p, e['idx'])
+                e['P_loc_prior'] = float(np.mean(d[:, list(e['idx']).index(int(np.flatnonzero(A.m_c == e['m_star'])[0]))] > 0))
+        del prior
+    return out
+
+
+def excess_at(p, idx):
+    """The chord excess d (draws, len(idx)) on the bins idx (as excess())."""
+    x = A.lnm_c[idx]
+    with np.errstate(divide='ignore'):
+        lp = np.log(p[:, idx])
+    t = (x - x[0]) / (x[-1] - x[0])
+    return lp - (lp[:, :1] * (1 - t) + lp[:, -1:] * t)
+
+
+# events counted in each peak's m1 window (the text's windows, user 2026-10-30), q in the peak's own range
+EVENT_WINDOWS = {'10': (8., 12.), '35': (30., 40.), '20': (15., 25.), '60': (50., 70.)}
+
+
+def event_counts():
+    """{peak: (n by PE medians, sum of PE fractions)} in EVENT_WINDOWS x the peak's q range."""
+    import pickle
+    with open(os.path.join(A.DATA_DIRS['gwtc5'], 'posteriors.pkl'), 'rb') as f:
+        d = pickle.load(f)
+    m1, q, n = np.asarray(d['posteriors']['mass_1']), np.asarray(d['posteriors']['mass_ratio']), np.asarray(d['event_counts'])
+    out = {}
+    for name, (qr, _, _) in PEAKS.items():
+        lo, hi = EVENT_WINDOWS[name]
+        med, frac = 0, 0.
+        for i in range(len(n)):
+            a, b = m1[i, :n[i]], q[i, :n[i]]
+            inside = lambda a, b: (a >= lo) & (a <= hi) & (b >= qr[0]) & (b <= qr[1])
+            med += bool(inside(np.median(a), np.median(b)))
+            frac += float(np.mean(inside(a, b)))
+        out[name] = (med, frac)
     return out
 
 
@@ -162,9 +209,20 @@ def macros(res):
                          + (' (shortened by m2 > 3 Msun)' if e['shortened'] else ''))
             lines += [rf'\newcommand{{\peak{tex}ExcessPLoc{suffix}}}{{{e["P_loc"]:.3f}}}',
                       rf'\newcommand{{\peak{tex}ExcessHeight{suffix}}}{{{fmt(e["height"])}}}',
-                      rf'\newcommand{{\peak{tex}ExcessLoc{suffix}}}{{{fmt(e["m_hat"])}}}',
+                      rf'\newcommand{{\peak{tex}ExcessLoc{suffix}}}{{{fmt(e["m_hat"], MASS_DEC)}}}',
                       rf'\newcommand{{\peak{tex}ExcessFInt{suffix}}}{{{fmt(e["F"])}}}',
                       rf'\newcommand{{\peak{tex}ExcessPFInt{suffix}}}{{{e["P_F"]:.3f}}}']
+            if 'P_loc_prior' in e:
+                lines.append(rf'\newcommand{{\peak{tex}ExcessPLocPrior{suffix}}}{{{e["P_loc_prior"]:.2f}}}')
+            a = R[(name, 'all')]
+            if a is not None:
+                lines.append(rf'\newcommand{{\peak{tex}ExcessPLocAllQ{suffix}}}{{{a["P_loc"]:.3f}}}')
+    lines.append(f'% events in m1 windows {EVENT_WINDOWS} Msun, q in each peak\'s own range: NEvents by PE medians, '
+                 'NEventsPE the summed PE fractions')
+    for name, (n_med, n_pe) in event_counts().items():
+        tex = PEAKS[name][2]
+        print(f'peak {name}: {n_med} events by PE medians, {n_pe:.1f} by PE fractions', flush=True)
+        lines += [rf'\newcommand{{\peak{tex}NEvents}}{{{n_med}}}', rf'\newcommand{{\peak{tex}NEventsPE}}{{{n_pe:.0f}}}']
     path = os.path.join(HERE, 'peak_excess.tex')
     with open(path, 'w') as f:
         f.write('\n'.join(lines) + '\n')
