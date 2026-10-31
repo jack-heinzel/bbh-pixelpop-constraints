@@ -31,7 +31,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO); sys.path.insert(0, os.path.join(REPO, 'notebooks')); sys.path.insert(0, HERE)
 import analysis as A
-from peak_fits import RUN_NAMES, fmt
+from peak_fits import Q_DEC, RUN_NAMES, fmt
 from prior_fits import load_hyper, prior_p_mass
 
 Q0 = 0.   # every q the m2 > 3 Msun window allows (user, 2026-10-30; was 0.4)
@@ -97,16 +97,16 @@ def main():
         del post, prior
         lines.append(f'% {run}: {len(Qp["Ten"])} posterior and prior draws')
         for k, x in Qp.items():
-            lines.append(rf'\newcommand{{\qWindow{k}{suffix}}}{{{fmt(x)}}}')
+            lines.append(rf'\newcommand{{\qWindow{k}{suffix}}}{{{fmt(x, Q_DEC)}}}')
         for k, x in Mp.items():
-            lines.append(rf'\newcommand{{\qModeWindow{k}{suffix}}}{{{fmt(x)}}}')
-            print(f'{run} mode of p(q | m1 in {WINDOWS[k]}): {fmt(x)}; P(mode > 0.9) {np.mean(x > 0.9):.2f}', flush=True)
+            lines.append(rf'\newcommand{{\qModeWindow{k}{suffix}}}{{{fmt(x, Q_DEC)}}}')
+            print(f'{run} mode of p(q | m1 in {WINDOWS[k]}): {fmt(x, Q_DEC)}; P(mode > 0.9) {np.mean(x > 0.9):.2f}', flush=True)
         for a, b in CONTRASTS:
             d, dr = Qp[a] - Qp[b], Qr[a] - Qr[b]
             name = a + b
-            vals = {'Med': fmt(d), 'P': pfmt(np.mean(d > 0), len(d)), 'Z': f'{z_score(d):.1f}',
+            vals = {'Med': fmt(d, Q_DEC), 'P': pfmt(np.mean(d > 0), len(d)), 'Z': f'{z_score(d):.1f}',
                     'ESS': f'{ess(d, n_chains):.0f}', 'PPrior': pfmt(np.mean(dr > 0), len(dr)),
-                    'ZPrior': f'{z_score(dr) + 0.:.1f}'.replace('-0.0', '0.0'), 'MedPrior': fmt(dr),
+                    'ZPrior': f'{z_score(dr) + 0.:.1f}'.replace('-0.0', '0.0'), 'MedPrior': fmt(dr, Q_DEC),
                     'PShift': pfmt(np.mean(d > np.median(dr)), len(d)),
                     'ZShift': f'{(np.median(d) - np.median(dr)) / half68(d):.1f}', 'BF': sign_bf(d, dr)}
             print(f'{run} Delta_{a},{b}: ' + ', '.join(f'{k} {v}' for k, v in vals.items()), flush=True)

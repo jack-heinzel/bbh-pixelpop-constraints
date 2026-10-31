@@ -42,7 +42,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 REPO = os.path.dirname(HERE)
 sys.path.insert(0, REPO); sys.path.insert(0, os.path.join(REPO, 'notebooks')); sys.path.insert(0, HERE)
 import analysis as A
-from peak_fits import PEAKS, RUN_NAMES, deviance, fmt
+from peak_fits import MASS_DEC, PEAKS, Q_DEC, RUN_NAMES, deviance, fmt
 
 NAMES = ('lnA', 'mu', 'sigma', 'mu_q', 'sigma_q', 'lnB', 'alpha', 'mu_qb', 'sigma_qb')
 LOG_SQRT_2PI = 0.5 * np.log(2 * np.pi)
@@ -189,9 +189,10 @@ def write_tex():
             lines.append(f'% peak {name}: m1 window {win} Msun, all q; {bad} of {len(F)} draws without a peak')
             for par, col in (('Mu', 1), ('Sigma', 2), ('QMu', 3), ('QSigma', 4), ('FracGauss', 9), ('Alpha', 6),
                              ('BkgQMu', 7), ('BkgQSigma', 8)):
-                lines.append(rf'\newcommand{{\joint{tex}{par}{suffix}}}{{{fmt(F[:, col])}}}')
+                dec = MASS_DEC if par in ('Mu', 'Sigma') else Q_DEC if 'Q' in par else None
+                lines.append(rf'\newcommand{{\joint{tex}{par}{suffix}}}{{{fmt(F[:, col], dec)}}}')
             for par, x in zip(('QMean', 'QSpread'), q_moments(F)):
-                lines.append(rf'\newcommand{{\joint{tex}{par}{suffix}}}{{{fmt(x)}}}')
+                lines.append(rf'\newcommand{{\joint{tex}{par}{suffix}}}{{{fmt(x, Q_DEC)}}}')
             lines.append(rf'\newcommand{{\joint{tex}PeakFrac{suffix}}}{{{1 - bad / len(F):.3f}}}')
     path = os.path.join(HERE, 'joint_fits.tex')
     with open(path, 'w') as f:

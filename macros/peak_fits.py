@@ -98,11 +98,31 @@ def fit_peak(p_m1, window):
     return out
 
 
-def fmt(x):
-    """median^{+hi}_{-lo} (90%) with decimals set by the smaller error (two significant figures)."""
+def error_decimals(err):
+    """Decimals that show ``err`` to one significant figure, or two when that figure is 1 (+0.14, not +0.1, which could
+    be a rounded +0.08; user, 2026-10-30); at most 3, at least 0."""
+    if not err > 0:
+        return 1
+    e = int(np.floor(np.log10(err)))
+    if round(err, -e) >= 10 ** (e + 1):                       # rounds up to the next decade (0.096 -> 0.1)
+        e += 1
+    lead = int(round(round(err, -e) / 10 ** e))
+    return min(3, max(0, -e + (1 if lead == 1 else 0)))
+
+
+MASS_DEC, Q_DEC = 1, 2   # masses (Msun) to one decimal, mass ratios to two (user, 2026-10-30)
+
+
+def fmt(x, decimals=None):
+    """median^{+hi}_{-lo} (90%), all to the decimals of the smaller error (error_decimals), or to ``decimals`` (MASS_DEC,
+    Q_DEC: a quantity kept uniform across macros), with at least two significant figures in the larger of |median| and
+    the smaller error (user, 2026-10-30; a median near 0, e.g. a contrast, then follows its error)."""
     lo, md, hi = np.nanpercentile(x, [5, 50, 95])
     err = min(hi - md, md - lo)
-    d = min(3, max(0, 1 - int(np.floor(np.log10(err))))) if err > 0 else 1    # at most 3 decimals (errors at a bound)
+    d = error_decimals(err) if decimals is None else decimals
+    scale = max(abs(md), err)
+    if scale > 0 and np.isfinite(scale):
+        d = max(d, 1 - int(np.floor(np.log10(scale))))
     return f'{md:.{d}f}^{{+{hi - md:.{d}f}}}_{{-{md - lo:.{d}f}}}'
 
 
@@ -157,7 +177,8 @@ def main(runs):
                   f'alpha {fmt(F[:, 4])}, f_G {fmt(F[:, 5])}  [{bad} of {len(F)} draws failed or on a bound]')
             lines.append(f'% peak {name}: q in {qr}, m1 window {win} Msun; {bad} of {len(F)} draws dropped')
             for par, col in (('Mu', 1), ('Sigma', 2), ('Alpha', 4), ('FracGauss', 5)):
-                lines.append(rf'\newcommand{{\peak{tex}{par}{suffix}}}{{{fmt(F[:, col])}}}')
+                dec = MASS_DEC if par in ('Mu', 'Sigma') else None
+                lines.append(rf'\newcommand{{\peak{tex}{par}{suffix}}}{{{fmt(F[:, col], dec)}}}')
             # the fraction of draws with a peak inside the window (the summaries above are conditional on it)
             lines.append(rf'\newcommand{{\peak{tex}PeakFrac{suffix}}}{{{1 - bad / len(F):.3f}}}')
         diagnostic(run, p_m1_by_q, fits, os.path.join(REPO, 'plots', f'{run}_peak_fits.pdf'))
