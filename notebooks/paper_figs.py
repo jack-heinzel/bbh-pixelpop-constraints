@@ -303,30 +303,52 @@ def spin_block(fig, spec, Df, med_g, mr, qr, norm, label=True, ylabel=True, xlab
     return ax_m, pcm
 
 
+EXCLUDED_GREY = '0.65'                            # outside the physical (chi_eff, chi_p) window
 FLEX_COLOUR, GAUSS_COLOUR = 'C1', 'k'             # marginal figure: flexible as Fig. 1's q ~ 1 colour; Gaussian 90% only
 
 
-def marginal_block(fig, spec, Df, Dg, mr, qr, norm, tops, ylabel=True, fontsize=6):
+def marginal_block(fig, spec, Df, Dg, mr, qr, norm, ylabel=True, fontsize=6):
     """The flexible model's median heatmap and the Gaussian model's contours (spin_heatmap), with the 1D marginals
     p(chi_eff | region) above and p(chi_p | region) to the right (Df, Dg: draws, Be, Bp densities): the flexible
-    model's median and 90% band, the Gaussian model's 90% interval only (lines; its 90% region on the heatmap). ``tops``: the (chi_eff, chi_p) density axis limits, shared by all blocks."""
+    model's median and 90% band, the Gaussian model's 90% interval only (lines; its 90% region on the heatmap). Each
+    marginal axis fits its own block's 90% bands (user, 2026-10-30); the region outside the physical (chi_eff, chi_p)
+    window (where the median density is zero: chi_p above its maximum given chi_eff and q) is grey; gridlines every 0.1
+    (chi_eff) and 0.2 (chi_p), stronger at chi_eff = 0."""
     sub = spec.subgridspec(2, 2, width_ratios=(3, 1.1), height_ratios=(1.1, 3), hspace=0.05, wspace=0.05)
     ax_m, ax_t, ax_r = fig.add_subplot(sub[1, 0]), fig.add_subplot(sub[0, 0]), fig.add_subplot(sub[1, 1])
+    from matplotlib.ticker import MultipleLocator
+    ax_m.set_facecolor(EXCLUDED_GREY)                       # pcolormesh leaves NaN (outside the window) transparent
     pcm = spin_heatmap(ax_m, np.median(Df, 0), np.median(Dg, 0), norm, contour=GAUSS_COLOUR)
     ex, px = np.repeat(A.e_edges, 2)[1:-1], np.repeat(A.p_edges, 2)[1:-1]
     step = lambda y: np.repeat(y, 2)
     lo, md, hi = np.percentile(Df.sum(2) * A.dp, [5, 50, 95], axis=0)              # p(chi_eff | region)
+    e_in = (A.e_c >= A.REGION_CHI_EFF_RANGE[0]) & (A.e_c <= A.REGION_CHI_EFF_RANGE[1])
+    g_e, g_p = (np.percentile(Dg.sum(a) * d, [5, 95], axis=0) for a, d in ((2, A.dp), (1, A.de)))
+    top_e = 1.08 * max(hi[e_in].max(), g_e[1][e_in].max())
     ax_t.fill_between(ex, step(lo), step(hi), color=FLEX_COLOUR, alpha=0.3, lw=0)
     ax_t.plot(ex, step(md), color=FLEX_COLOUR, lw=0.8)
     lo, md, hi = np.percentile(Df.sum(1) * A.de, [5, 50, 95], axis=0)              # p(chi_p | region)
     ax_r.fill_betweenx(px, step(lo), step(hi), color=FLEX_COLOUR, alpha=0.3, lw=0)
     ax_r.plot(step(md), px, color=FLEX_COLOUR, lw=0.8)
-    for y in np.percentile(Dg.sum(2) * A.dp, [5, 95], axis=0):
+    top_p = 1.08 * max(hi.max(), g_p[1].max())
+    for y in g_e:
         ax_t.plot(ex, step(y), color=GAUSS_COLOUR, lw=0.6)
-    for y in np.percentile(Dg.sum(1) * A.de, [5, 95], axis=0):
+    for y in g_p:
         ax_r.plot(step(y), px, color=GAUSS_COLOUR, lw=0.6)
-    ax_t.set_xlim(ax_m.get_xlim()); ax_t.set_ylim(0, tops[0])
-    ax_r.set_ylim(0, 1); ax_r.set_xlim(0, tops[1])
+    ax_t.set_xlim(ax_m.get_xlim()); ax_t.set_ylim(0, top_e)
+    ax_r.set_ylim(0, 1); ax_r.set_xlim(0, top_p)
+    for ax in (ax_m, ax_t):                                 # gridlines: chi_eff every 0.1, chi_eff = 0 stronger
+        ax.xaxis.set_minor_locator(MultipleLocator(0.1))
+    for ax in (ax_m, ax_r):                                 # chi_p every 0.2 (the major ticks)
+        ax.yaxis.set_major_locator(MultipleLocator(0.2))
+    grid = dict(lw=0.4, alpha=0.35)
+    ax_m.grid(True, which='both', axis='both', color='w', **grid)
+    ax_t.grid(True, which='both', axis='x', color='0.6', **grid)
+    ax_r.grid(True, which='major', axis='y', color='0.6', **grid)
+    for ax, c in ((ax_m, 'w'), (ax_t, '0.3')):
+        ax.axvline(0., color=c, lw=0.6, alpha=0.7, zorder=0.5 if ax is ax_t else 3)
+    for ax in (ax_t, ax_r):
+        ax.set_axisbelow(True)
     ax_t.tick_params(labelbottom=False, labelleft=False, which='both', direction='out')
     ax_r.tick_params(labelleft=False, labelbottom=False, which='both', direction='out')
     ax_m.set_xlabel(r'$\chi_\mathrm{eff}$')
@@ -363,13 +385,10 @@ def spin_peaks_figure(slices=False, marginals=False):
     handles = [Line2D([], [], color='c', lw=1.0), Line2D([], [], color='c', lw=0.7, ls='--')]
     names = ['Gaussian, 50\\%', 'Gaussian, 90\\%']
     if marginals:
-        e_in = (A.e_c >= A.REGION_CHI_EFF_RANGE[0]) & (A.e_c <= A.REGION_CHI_EFF_RANGE[1])
-        tops = [1.05 * max(np.percentile(D.sum(ax) * dx, 95, axis=0)[..., sel].max() for D in (Df, Dg))
-                for ax, dx, sel in ((3, A.dp, e_in), (2, A.de, slice(None)))]
         fig = plt.figure(figsize=(TWO_COL, 2.45))
         gs = fig.add_gridspec(1, len(SPIN_PEAK_REGIONS), left=0.065, right=0.915, bottom=0.17, top=0.88, wspace=0.12)
         for k, ((mr, qr), f, g) in enumerate(zip(SPIN_PEAK_REGIONS, np.moveaxis(Df, 1, 0), np.moveaxis(Dg, 1, 0))):
-            ref, pcm = marginal_block(fig, gs[0, k], f, g, mr, qr, norm, tops, ylabel=k == 0)
+            ref, pcm = marginal_block(fig, gs[0, k], f, g, mr, qr, norm, ylabel=k == 0)
         from matplotlib.patches import Patch
         fig.legend([(Patch(color=FLEX_COLOUR, alpha=0.3, lw=0), Line2D([], [], color=FLEX_COLOUR, lw=0.8)),
                     Line2D([], [], color=GAUSS_COLOUR, lw=0.8)],
