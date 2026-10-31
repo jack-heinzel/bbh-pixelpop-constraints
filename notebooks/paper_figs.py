@@ -337,10 +337,10 @@ def marginal_block(fig, spec, Df, Dg, mr, qr, norm, ylabel=True, fontsize=6):
     ax_r.fill_betweenx(px, step(lo), step(hi), color=FLEX_COLOUR, alpha=0.3, lw=0)
     ax_r.plot(step(md), px, color=FLEX_COLOUR, lw=0.8)
     top_p = 1.08 * max(hi.max(), g_p[1].max())
-    for y in g_e:
-        ax_t.plot(ex, step(y), color=GAUSS_COLOUR, lw=0.6)
+    for y in g_e:                                           # the Gaussian is continuous: through the bin centres
+        ax_t.plot(A.e_c, y, color=GAUSS_COLOUR, lw=0.6)
     for y in g_p:
-        ax_r.plot(step(y), px, color=GAUSS_COLOUR, lw=0.6)
+        ax_r.plot(y, A.p_c, color=GAUSS_COLOUR, lw=0.6)
     ax_t.set_xlim(ax_m.get_xlim()); ax_t.set_ylim(0, top_e)
     ax_r.set_ylim(0, 1); ax_r.set_xlim(0, top_p)
     for ax in (ax_m, ax_r):                                 # chi_p ticks every 0.2
