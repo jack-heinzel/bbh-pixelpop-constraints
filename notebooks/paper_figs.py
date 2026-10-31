@@ -303,7 +303,8 @@ def spin_block(fig, spec, Df, med_g, mr, qr, norm, label=True, ylabel=True, xlab
     return ax_m, pcm
 
 
-EXCLUDED_GREY = '0.65'                            # outside the physical (chi_eff, chi_p) window
+EXCLUDED_GREY = '0.65'                           # outside the physical (chi_eff, chi_p) window
+GRID = dict(color='0.6', lw=0.5, alpha=0.7, zorder=3)   # Fig. 1's reference lines (mass_figure)
 FLEX_COLOUR, GAUSS_COLOUR = 'C1', 'k'             # marginal figure: flexible as Fig. 1's q ~ 1 colour; Gaussian 90% only
 
 
@@ -312,13 +313,17 @@ def marginal_block(fig, spec, Df, Dg, mr, qr, norm, ylabel=True, fontsize=6):
     p(chi_eff | region) above and p(chi_p | region) to the right (Df, Dg: draws, Be, Bp densities): the flexible
     model's median and 90% band, the Gaussian model's 90% interval only (lines; its 90% region on the heatmap). Each
     marginal axis fits its own block's 90% bands (user, 2026-10-30); the region outside the physical (chi_eff, chi_p)
-    window (where the median density is zero: chi_p above its maximum given chi_eff and q) is grey; gridlines every 0.1
-    (chi_eff) and 0.2 (chi_p), stronger at chi_eff = 0."""
+    window is grey, bounded by the smooth curve model.chi_p_max(chi_eff, q) at the region's largest q (the upper edge of
+    its last q bin; chi_p_max grows with q), which covers every empty heatmap bin; gridlines on the major ticks in
+    Fig. 1's grey."""
     sub = spec.subgridspec(2, 2, width_ratios=(3, 1.1), height_ratios=(1.1, 3), hspace=0.05, wspace=0.05)
     ax_m, ax_t, ax_r = fig.add_subplot(sub[1, 0]), fig.add_subplot(sub[0, 0]), fig.add_subplot(sub[1, 1])
     from matplotlib.ticker import MultipleLocator
-    ax_m.set_facecolor(EXCLUDED_GREY)                       # pcolormesh leaves NaN (outside the window) transparent
+    from model import chi_p_max
     pcm = spin_heatmap(ax_m, np.median(Df, 0), np.median(Dg, 0), norm, contour=GAUSS_COLOUR)
+    q_top = A.q_edges[1:][(A.q_c >= qr[0]) & (A.q_c <= qr[1])].max()   # bins belong to a region by their centres
+    e = np.linspace(-1., 1., 2001)
+    ax_m.fill_between(e, chi_p_max(e, q_top), 1.01, color=EXCLUDED_GREY, lw=0, zorder=1.5)
     ex, px = np.repeat(A.e_edges, 2)[1:-1], np.repeat(A.p_edges, 2)[1:-1]
     step = lambda y: np.repeat(y, 2)
     lo, md, hi = np.percentile(Df.sum(2) * A.dp, [5, 50, 95], axis=0)              # p(chi_eff | region)
@@ -337,18 +342,10 @@ def marginal_block(fig, spec, Df, Dg, mr, qr, norm, ylabel=True, fontsize=6):
         ax_r.plot(step(y), px, color=GAUSS_COLOUR, lw=0.6)
     ax_t.set_xlim(ax_m.get_xlim()); ax_t.set_ylim(0, top_e)
     ax_r.set_ylim(0, 1); ax_r.set_xlim(0, top_p)
-    for ax in (ax_m, ax_t):                                 # gridlines: chi_eff every 0.1, chi_eff = 0 stronger
-        ax.xaxis.set_minor_locator(MultipleLocator(0.1))
-    for ax in (ax_m, ax_r):                                 # chi_p every 0.2 (the major ticks)
+    for ax in (ax_m, ax_r):                                 # chi_p ticks every 0.2
         ax.yaxis.set_major_locator(MultipleLocator(0.2))
-    grid = dict(lw=0.4, alpha=0.35)
-    ax_m.grid(True, which='both', axis='both', color='w', **grid)
-    ax_t.grid(True, which='both', axis='x', color='0.6', **grid)
-    ax_r.grid(True, which='major', axis='y', color='0.6', **grid)
-    for ax, c in ((ax_m, 'w'), (ax_t, '0.3')):
-        ax.axvline(0., color=c, lw=0.6, alpha=0.7, zorder=0.5 if ax is ax_t else 3)
-    for ax in (ax_t, ax_r):
-        ax.set_axisbelow(True)
+    for ax, axis in ((ax_m, 'both'), (ax_t, 'x'), (ax_r, 'y')):    # gridlines on the major ticks, as Fig. 1's
+        ax.grid(True, which='major', axis=axis, **GRID)
     ax_t.tick_params(labelbottom=False, labelleft=False, which='both', direction='out')
     ax_r.tick_params(labelleft=False, labelbottom=False, which='both', direction='out')
     ax_m.set_xlabel(r'$\chi_\mathrm{eff}$')
