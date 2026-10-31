@@ -107,8 +107,11 @@ def mass_figure(r, mode=False, hpd=None):
     ignores the tails that broaden where the data run out, which pull <q> towards the middle of the window.
     ``hpd`` = f: instead, the per-draw highest-density set of p(q | m1) holding f of it at each m1, shown by the
     fraction of draws containing each (m1, q) cell: contours at 0.5 (solid) and 0.05 (dashed). Unlike <q> it
-    reaches the q = 1 edge, and splits where p(q | m1) has two peaks."""
-    ok = A.q_c[None, :] * A.m_c[:, None] >= A.MIN_M
+    reaches the q = 1 edge, and splits where p(q | m1) has two peaks.
+    The excluded zone m2 < MIN_M is grey below the smooth curve q = MIN_M / m1 (as Fig. 2's chi_p_max): every cell
+    with any part above it is coloured (zero density if its centre is below, as the model's window), so no cell left
+    blank (NaN) reaches above the curve."""
+    ok = A.q_edges[None, 1:] * m_edges[1:, None] >= A.MIN_M                 # any part of the cell has m2 >= MIN_M
     pq = r.p_mass / r.p_mass.sum(2, keepdims=True)
     mq = A.q_c[np.argmax(pq, 2)] if mode else (pq * A.q_c).sum(2)
     img = np.where(ok, np.median(pq, 0) / A.dq, np.nan)
@@ -126,6 +129,8 @@ def mass_figure(r, mode=False, hpd=None):
     fig.legend(*band_legend(), loc='upper center', ncol=3, bbox_to_anchor=(0.5, 1.0), **LEG)
     pc = a2.pcolormesh(m_edges, A.q_edges, img.T, cmap='viridis', shading='flat', rasterized=True, vmin=0,
                        vmax=np.nanpercentile(img[vis], 99.5))
+    m = np.geomspace(m_edges[0], m_edges[-1], 2000)
+    a2.fill_between(m, 0., np.minimum(A.MIN_M / m, 1.), color=EXCLUDED_GREY, lw=0, zorder=1.5)
     styles = (('--', ':') if mode else ('-', '--'))
     if hpd:
         qq = np.concatenate([[0.], A.q_c, [1.]])                     # to the q = 0, 1 edges: the set can reach them
