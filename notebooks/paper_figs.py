@@ -91,29 +91,6 @@ def band_legend():
     return handles, [r'all $q$ (90\%)'] + Q_NAMES
 
 
-SMOOTH_BINS = 1.          # Fig. 1 interval lines: Gaussian smoothing in bins (0.042 in ln m1; the field's ln m1
-                          # correlation length is ~20 bins), against bin-to-bin percentile noise (user, 2026-10-30)
-
-
-def smooth_line(y, n=1500):
-    """(m1, y): ``y`` on the ln m1 bin centres smoothed over SMOOTH_BINS bins and drawn as a monotone cubic (PCHIP)
-    through them on ``n`` points, extended flat to the outer edges as before."""
-    from scipy.interpolate import PchipInterpolator
-    from scipy.ndimage import gaussian_filter1d
-    x = np.log(mx)
-    lnm = np.linspace(x[0], x[-1], n)
-    return np.exp(lnm), PchipInterpolator(x, ext(gaussian_filter1d(y, SMOOTH_BINS, mode='nearest')))(lnm)
-
-
-def smooth_grid(P, up=4):
-    """``P`` on the (ln m1, q) bin centres, smoothed over SMOOTH_BINS bins and upsampled ``up`` times (cubic), for
-    contouring: (m1, q, P) on the finer grid."""
-    from scipy.ndimage import gaussian_filter, zoom
-    Ps = zoom(gaussian_filter(P, SMOOTH_BINS, mode='nearest'), up, order=3, mode='nearest')
-    lnm = np.linspace(A.lnm_c[0], A.lnm_c[-1], Ps.shape[0])
-    return np.exp(lnm), np.linspace(A.q_c[0], A.q_c[-1], Ps.shape[1]), Ps
-
-
 def hpd_membership(pq, frac):
     """(draws, Bm, Bq) bool: the q bins in each draw's and m1 column's highest-density set holding ``frac`` of
     p(q | m1) (``pq``: per-bin probabilities summing to 1 over q; the bin that crosses ``frac`` is included)."""
@@ -157,14 +134,13 @@ def mass_figure(r, mode=False, hpd=None):
     a2.fill_between(m, 0., np.minimum(A.MIN_M / m, 1.), color=EXCLUDED_GREY, lw=0, zorder=1.5)
     styles = ('-', ':')                                  # 90% solid, 99% dotted (user, 2026-10-30)
     if hpd:
-        m_f, q_f, P_f = smooth_grid(P_in)
-        qq = np.concatenate([[0.], q_f, [1.]])                       # to the q = 0, 1 edges: the set can reach them
-        P = np.concatenate([P_f[:, :1], P_f, P_f[:, -1:]], 1)
-        a2.contour(m_f, qq, P.T, levels=[0.05, 0.5], colors='w', linewidths=(0.7, 0.9), linestyles=(':', '-'))
+        qq = np.concatenate([[0.], A.q_c, [1.]])                     # to the q = 0, 1 edges: the set can reach them
+        P = np.concatenate([P_in[:, :1], P_in, P_in[:, -1:]], 1)
+        a2.contour(A.m_c, qq, P.T, levels=[0.05, 0.5], colors='w', linewidths=(0.7, 0.9), linestyles=(':', '-'))
     else:
         for (a, b), ls in zip(((5, 95), (0.5, 99.5)), styles):
             for f in (a, b):
-                a2.plot(*smooth_line(np.percentile(mq, f, 0)), color='w', lw=0.7, ls=ls)
+                a2.plot(mx, ext(np.percentile(mq, f, 0)), color='w', lw=0.7, ls=ls)
     a2.set_ylim(0, 1); a2.set_ylabel(r'$q$')
     a2.tick_params(which='both', direction='out')
     dark = lambda ls: Line2D([], [], color='k', lw=0.7, ls=ls)
