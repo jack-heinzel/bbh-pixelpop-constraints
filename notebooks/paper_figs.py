@@ -55,7 +55,8 @@ SMALL_RC = {'font.size': 8, 'axes.labelsize': 8, 'xtick.labelsize': 7, 'ytick.la
           'lines.linewidth': 1.0, 'axes.linewidth': 0.6, 'xtick.major.width': 0.6, 'ytick.major.width': 0.6,
           'xtick.minor.width': 0.4, 'ytick.minor.width': 0.4, 'xtick.major.size': 3, 'ytick.major.size': 3,
           'xtick.minor.size': 1.5, 'ytick.minor.size': 1.5,
-          'savefig.dpi': 600}          # rasterized heatmaps: at 100 dpi their bins resample unevenly (aliasing; user, 2026-10-30)
+          'savefig.dpi': 600,
+          'path.simplify': False}       # keep every vertex of the per-bin interval lines (user, 2026-10-30)          # rasterized heatmaps: at 100 dpi their bins resample unevenly (aliasing; user, 2026-10-30)
 LEG = dict(handlelength=1.2, handletextpad=0.4, borderaxespad=0.4, labelspacing=0.3, frameon=False)
 COLS = [f'C{i}' for i in range(len(A.SUMMARY_Q_RANGES))]
 Q_NAMES = [rf'${a:g} < q < {b:g}$' for a, b in A.SUMMARY_Q_RANGES]
