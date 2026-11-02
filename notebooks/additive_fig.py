@@ -10,7 +10,7 @@ identified: only the shape); the bottom row the population marginals p(chi_eff |
 Top row, sd: exp(F - <F>) of ln sd_eff, the factor on the Gaussian's width before truncation to the physical range
 (the truncated width grows less where the Gaussian is broad); mean: F - <F> of mu_eff, the shift of the Gaussian's
 centre. <F> weights by the population: p(m1), p(q) (the draw's windowed mass field) and p(z) (its redshift power law).
-The bottom row uses |chi_eff| < analysis.CHI_CORE, as the paper's width figures.
+The bottom row is over the full chi_eff range (user, 2026-11-02; the core |chi_eff| < 0.8 gives nearly the same).
 """
 import os
 import sys
@@ -84,7 +84,7 @@ def figure(D, marg, curves, ze, stat):
     j, ip = Z.STATS.index(stat), (2 if stat == 'sd' else 0)            # ln sd_eff or mu_eff
     zc = 0.5 * (ze[1:] + ze[:-1])
     zx = np.concatenate([[ze[0]], zc, [ze[-1]]])
-    s_core = Z.SPINS.index('chi_eff_core')
+    s = Z.SPINS.index('chi_eff')
     fig, axes = plt.subplots(2, 3, figsize=(F.TWO_COL, 3.5), sharex='col')
     cols = ((A.m_c, D['F1'], D['W1'], M_RANGE), (A.q_c, D['F2'], D['W2'], Q_RANGE), (zc, D['G'], D['WZ'], (ze[0], ze[-1])))
     top = []
@@ -117,10 +117,10 @@ def figure(D, marg, curves, ze, stat):
                         bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.2))
     axes[0, 0].set_ylabel('width, relative' if stat == 'sd' else 'mean, relative')
     # bottom: marginals (core)
-    bottom = [(A.m_c, marg[:, s_core, j, 0]), (A.q_c, marg[:, s_core, j, 1]), (zx, None)]
+    bottom = [(A.m_c, marg[:, s, j, 0]), (A.q_c, marg[:, s, j, 1]), (zx, None)]
     ys = []
     for c, (x, y) in enumerate(bottom):
-        l, m, h = F.ext(F.q5(curves[:, 0, 0, s_core, j])) if c == 2 else F.q5(y)
+        l, m, h = F.ext(F.q5(curves[:, 0, 0, s, j])) if c == 2 else F.q5(y)
         ax = axes[1, c]
         ax.fill_between(x, l, h, color=COL, alpha=0.2, lw=0); ax.plot(x, m, color=COL, lw=1.1)
         vis = (x >= cols[c][3][0]) & (x <= cols[c][3][1]) if c < 2 else slice(None)
@@ -136,7 +136,7 @@ def figure(D, marg, curves, ze, stat):
         if c:
             ax.tick_params(labelleft=False)
     sym = r'\sigma' if stat == 'sd' else r'\mu'
-    axes[1, 0].set_ylabel(rf'${sym}_{{\chi_\mathrm{{eff}}}}$, $|\chi_\mathrm{{eff}}| < {A.CHI_CORE:g}$')
+    axes[1, 0].set_ylabel(rf'${sym}_{{\chi_\mathrm{{eff}}}}$')
     for c, t in enumerate((r'given $m_1$', r'given $q$', r'given $z$')):
         axes[1, c].text(0.03, 0.93, t, transform=axes[1, c].transAxes, va='top', ha='left', fontsize=7,
                         bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.2))
