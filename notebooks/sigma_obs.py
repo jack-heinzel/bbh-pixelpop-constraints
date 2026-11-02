@@ -8,6 +8,7 @@ detected events). So sigma_obs(z) is what such an analysis would recover from ou
     python notebooks/sigma_obs.py [--n N] [<run> ...]      (GPU; sigma_obs.sbatch)  -> results/post_processing/
                                                             <run>_sigma_obs.npz
     python notebooks/sigma_obs.py --figure                 (CPU)  -> plots/chi_eff_sd_z_observed.pdf
+    python notebooks/sigma_obs.py --figure --traces 500    (CPU)  -> plots/chi_eff_sd_z_observed_traces.pdf
 
 Per posterior draw (N evenly spaced over load_light's draw order; every draw by default), the model's own injection
 weights (model.setup_model(record_weights=True), the draw's latent sites substituted; w = p_pop / p_draw for every found
@@ -99,9 +100,10 @@ def compute(run, n):
     print('wrote', out_path(run), flush=True)
 
 
-def figure(run=FIG_RUN):
+def figure(run=FIG_RUN, traces=0):
     """sigma_chi_eff(z): the population (analysis_z CURVES) against the detectable population (this module), and
-    below, the detectable binaries' mean m1 and fraction with q < Q_LO."""
+    below, the detectable binaries' mean m1 and fraction with q < Q_LO. 90% bands, or with ``traces`` = n the curves
+    of n random draws (the same draws in every panel) and the medians."""
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
@@ -112,25 +114,35 @@ def figure(run=FIG_RUN):
     curves, zp = Z.load_curves(run)
     zpx = np.concatenate([[zp[0]], 0.5 * (zp[1:] + zp[:-1]), [zp[-1]]])
     s = Z.SPINS.index('chi_eff')
+    pick = np.random.default_rng(0).choice(len(d['draws']), traces, replace=False) if traces else None
+
+    def show(ax, x, y, col, alpha):
+        """90% band and median, or traces of the picked draws and the median; y (draws, len(x))."""
+        l, m, h = F.q5(y)
+        if traces:
+            ax.plot(x, y[pick].T, color=col, lw=0.4 if traces <= 50 else 0.15, alpha=0.35 if traces <= 50 else 0.05)
+            ax.plot(x, m, color=col, lw=1.4)
+        else:
+            ax.fill_between(x, l, h, color=col, alpha=alpha, lw=0); ax.plot(x, m, color=col, lw=1.1)
     fig, axes = plt.subplots(2, 1, figsize=(F.ONE_COL, 3.3), sharex=True, gridspec_kw=dict(height_ratios=(2, 1.2)))
     ax = axes[0]
-    l, m, h = F.ext(F.q5(curves[:, 0, 0, s, 1]))
-    ax.fill_between(zpx, l, h, color='C3', alpha=0.2, lw=0); ax.plot(zpx, m, color='C3', lw=1.1)
-    l, m, h = F.q5(d['spins'][:, 0, 1])
-    ax.fill_between(zc, l, h, color='k', alpha=0.15, lw=0); ax.plot(zc, m, color='k', lw=1.1)
-    ax.plot(zc, l, color='k', lw=0.5); ax.plot(zc, h, color='k', lw=0.5)
+    pop = F.ext(curves[d['draws'] if traces else slice(None), 0, 0, s, 1])        # traces: the same draws as det
+    show(ax, zpx, pop, 'C3', 0.2)
+    show(ax, zc, d['spins'][:, 0, 1], 'k', 0.15)
+    if not traces:
+        l, _, h = F.q5(d['spins'][:, 0, 1])
+        ax.plot(zc, l, color='k', lw=0.5); ax.plot(zc, h, color='k', lw=0.5)
     ax.set_ylabel(r'$\sigma_{\chi_\mathrm{eff}}(z)$')
     ax.set_ylim(0, None)
-    handles = [(Patch(color='C3', alpha=0.2, lw=0), Line2D([], [], color='C3', lw=1.1)),
-               (Patch(color='k', alpha=0.15, lw=0), Line2D([], [], color='k', lw=1.1))]
+    handles = ([Line2D([], [], color='C3', lw=1.4), Line2D([], [], color='k', lw=1.4)] if traces else
+               [(Patch(color='C3', alpha=0.2, lw=0), Line2D([], [], color='C3', lw=1.1)),
+                (Patch(color='k', alpha=0.15, lw=0), Line2D([], [], color='k', lw=1.1))])
     ax.legend(handles, ['population', 'detectable binaries'], loc='upper left', **F.LEG)
     ax = axes[1]
-    l, m, h = F.q5(np.exp(d['mix'][:, 0]))
-    ax.fill_between(zc, l, h, color='C0', alpha=0.2, lw=0); ax.plot(zc, m, color='C0', lw=1.1)
+    show(ax, zc, np.exp(d['mix'][:, 0]), 'C0', 0.2)
     ax.set_ylabel(r'$\langle m_1 \rangle_\mathrm{det}\,[\textrm{M}_\odot]$', color='C0')
     ax2 = ax.twinx()
-    l, m, h = F.q5(d['mix'][:, 1])
-    ax2.fill_between(zc, l, h, color='C1', alpha=0.2, lw=0); ax2.plot(zc, m, color='C1', lw=1.1)
+    show(ax2, zc, d['mix'][:, 1], 'C1', 0.2)
     ax2.set_ylabel(rf'det. fraction $q < {Q_LO:g}$', color='C1')
     ax2.set_ylim(0, None)
     ax.set_xlim(ze[0], ze[-1]); ax.set_xlabel('$z$')
@@ -143,6 +155,7 @@ def main():
     ap.add_argument('runs', nargs='*', default=list(RUN_ARGS))
     ap.add_argument('--n', type=int, default=0, help='posterior draws, evenly spaced (0: all)')
     ap.add_argument('--figure', action='store_true')
+    ap.add_argument('--traces', type=int, default=0, help='--figure: curves of this many random draws, not bands')
     args = ap.parse_args()
     if args.figure:
         import matplotlib
@@ -152,7 +165,7 @@ def main():
         import plot_style
         import paper_figs as F
         plot_style.apply(); plt.rcParams.update(F.SMALL_RC)
-        plot_style.save(figure(), 'chi_eff_sd_z_observed')
+        plot_style.save(figure(traces=args.traces), 'chi_eff_sd_z_observed' + ('_traces' if args.traces else ''))
         return
     for run in args.runs:
         compute(run, args.n)
