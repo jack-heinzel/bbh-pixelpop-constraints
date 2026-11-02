@@ -16,6 +16,11 @@ correction) are model.py's. Run with ``run.py --parametric``.
 ``shared_continuum`` (user, 2026-10-30): both ranges share the continuum, the power-law slope and the low-mass taper
 (sites 'alpha', 'mmin', 'delta_m', CONTINUUM); the peaks, their fractions lam and the pairing beta stay separate. With
 separate slopes alpha_lo was unidentified (the q < Q_SPLIT range is mostly its two peaks); ``run.py --shared-continuum``.
+
+``broken`` (user, 2026-11-02): the power law breaks at 'mbreak' (Msun, continuous there) from slope alpha below to
+'alpha_2' above. With one global power law the q < Q_SPLIT range's second Gaussian spread into a broad hump (sigma ~15,
+mu ~46) holding the excess of unequal-mass binaries above ~40 Msun, which the slope set by q > Q_SPLIT could not; with
+shared_continuum the break is shared too (BROKEN_SHARED) and each range has its own alpha_2. ``run.py --broken``.
 """
 import jax.numpy as jnp
 import numpy as np
@@ -36,12 +41,27 @@ PRIORS = {'alpha': (-4., 12.), 'mmin': (MIN_M, 10.), 'delta_m': (0., 10.), 'mpp_
           'mpp_2': (25., 100.), 'sigpp_2': (1., 20.), 'beta': (-10., 10.)}
 MASS_SITES = tuple(f'{k}_{r}' for r in RANGES for k in PRIORS) + tuple(f'lam_{r}' for r in RANGES) + ('zeta',)
 CONTINUUM = ('alpha', 'mmin', 'delta_m')     # shared by both ranges with shared_continuum
+BROKEN_PRIORS = {'alpha_2': (-4., 12.), 'mbreak': (20., 80.)}    # broken: slope above the break, break mass
+BROKEN_SHARED = ('mbreak',)                  # also shared with shared_continuum (alpha_2 stays per range)
 
 
-def log_p_m1(m1, alpha, mmin, delta_m, lam, mpp_1, sigpp_1, mpp_2, sigpp_2, m_floor=MIN_M):
-    """Unnormalized log density of a power law (slope -alpha) plus two Gaussian peaks (truncated to [MIN_M, MAX_M]),
-    mixed with fractions lam = (lam_pl, lam_1, lam_2), tapered at mmin over delta_m, zero below m_floor."""
-    pl = -alpha * jnp.log(m1) - log_powerlaw_norm(-alpha, MIN_M, MAX_M)
+def log_broken_pl(m1, alpha, alpha_2, mbreak):
+    """log of the power law m1^-alpha below mbreak and m1^-alpha_2 above, continuous at mbreak, normalized on
+    [MIN_M, MAX_M]."""
+    below = log_powerlaw_norm(-alpha, MIN_M, mbreak)
+    above = log_powerlaw_norm(-alpha_2, mbreak, MAX_M) + (alpha_2 - alpha) * jnp.log(mbreak)
+    lp = jnp.where(m1 < mbreak, -alpha * jnp.log(m1), -alpha_2 * jnp.log(m1) + (alpha_2 - alpha) * jnp.log(mbreak))
+    return lp - jnp.logaddexp(below, above)
+
+
+def log_p_m1(m1, alpha, mmin, delta_m, lam, mpp_1, sigpp_1, mpp_2, sigpp_2, m_floor=MIN_M, alpha_2=None, mbreak=None):
+    """Unnormalized log density of a power law (slope -alpha; broken at mbreak to -alpha_2 if given) plus two Gaussian
+    peaks (truncated to [MIN_M, MAX_M]), mixed with fractions lam = (lam_pl, lam_1, lam_2), tapered at mmin over
+    delta_m, zero below m_floor."""
+    if mbreak is None:
+        pl = -alpha * jnp.log(m1) - log_powerlaw_norm(-alpha, MIN_M, MAX_M)
+    else:
+        pl = log_broken_pl(m1, alpha, alpha_2, mbreak)
     g1 = trunc_gaussian(m1, mpp_1, sigpp_1, MIN_M, MAX_M)
     g2 = trunc_gaussian(m1, mpp_2, sigpp_2, MIN_M, MAX_M)
     p = LSE(jnp.stack([jnp.log(lam[0]) + pl, jnp.log(lam[1]) + g1, jnp.log(lam[2]) + g2]), axis=0)
@@ -58,7 +78,8 @@ def log_p_q(q, m1, beta, q_lo, q_hi):
 
 
 def setup_parametric(pixelpop_data, n_spin_bins=(100, 100), likelihood_correction=True, record_weights=False,
-                     gauss_sd_floor=GAUSS_SD_FLOOR, q_split=Q_SPLIT, spin_split=False, shared_continuum=False):
+                     gauss_sd_floor=GAUSS_SD_FLOOR, q_split=Q_SPLIT, spin_split=False, shared_continuum=False,
+                     broken=False):
     """NumPyro model and initial values of the q-split power law plus two peaks (module docstring), on
     ``pixelpop_data``'s posteriors and injections (data.build_pixelpop_data)."""
     pp = pixelpop_data
@@ -84,6 +105,8 @@ def setup_parametric(pixelpop_data, n_spin_bins=(100, 100), likelihood_correctio
     m_grid = jnp.asarray(M_GRID); log_dm = float(np.log(M_GRID[1] - M_GRID[0]))
     bounds = {'hi': (q_split, 1.), 'lo': (0., q_split)}
     floors = {'hi': MIN_M, 'lo': MIN_M / q_split}
+    priors = dict(PRIORS, **(BROKEN_PRIORS if broken else {}))
+    shared_keys = (CONTINUUM + (BROKEN_SHARED if broken else ())) if shared_continuum else ()
 
     def mass_log_p(data, theta):
         """(2, n): each range's term of the density in (ln m1, q), weight included (RANGES order)."""
@@ -92,9 +115,10 @@ def setup_parametric(pixelpop_data, n_spin_bins=(100, 100), likelihood_correctio
         for r in RANGES:
             t = theta[r]
             args = (t['alpha'], t['mmin'], t['delta_m'], t['lam'], t['mpp_1'], t['sigpp_1'], t['mpp_2'], t['sigpp_2'])
-            norm = LSE(log_p_m1(m_grid, *args, m_floor=floors[r])) + log_dm
+            kw = dict(m_floor=floors[r], alpha_2=t.get('alpha_2'), mbreak=t.get('mbreak'))
+            norm = LSE(log_p_m1(m_grid, *args, **kw)) + log_dm
             w = jnp.log(theta['zeta']) if r == 'hi' else jnp.log1p(-theta['zeta'])
-            terms.append(w + log_p_m1(m1, *args, m_floor=floors[r]) - norm + log_p_q(q, m1, t['beta'], *bounds[r]))
+            terms.append(w + log_p_m1(m1, *args, **kw) - norm + log_p_q(q, m1, t['beta'], *bounds[r]))
         return jnp.stack(terms) + data['log_mass_1']                                       # density in (ln m1, q)
 
     def spin_log_p(offsets):
@@ -105,10 +129,10 @@ def setup_parametric(pixelpop_data, n_spin_bins=(100, 100), likelihood_correctio
 
     def probabilistic_model(posteriors, injections):
         theta = {'zeta': numpyro.sample('zeta', dist.Uniform(0., 1.))}
-        shared = {k: numpyro.sample(k, dist.Uniform(*PRIORS[k])) for k in CONTINUUM} if shared_continuum else {}
+        shared = {k: numpyro.sample(k, dist.Uniform(*priors[k])) for k in shared_keys}
         for r in RANGES:
             theta[r] = {k: shared[k] if k in shared else numpyro.sample(f'{k}_{r}', dist.Uniform(*b))
-                        for k, b in PRIORS.items()}
+                        for k, b in priors.items()}
             theta[r]['lam'] = numpyro.sample(f'lam_{r}', dist.Dirichlet(jnp.ones(3)))
         lo, hi = (jnp.asarray(b, dtype=float) for b in GAUSS_OFFSET_BOUNDS)
         if spin_split:
@@ -126,10 +150,11 @@ def setup_parametric(pixelpop_data, n_spin_bins=(100, 100), likelihood_correctio
     init = {'zeta': jnp.asarray(0.5)}
     init.update({f'gauss_offsets_{r}': g0 for r in RANGES} if spin_split else {'gauss_offsets': g0})
     start = {'alpha': 3., 'mmin': 5., 'delta_m': 3., 'mpp_1': 10., 'sigpp_1': 2., 'mpp_2': 35., 'sigpp_2': 5., 'beta': 1.}
-    if shared_continuum:
-        init.update({k: jnp.asarray(start[k]) for k in CONTINUUM})
+    if broken:
+        start.update({'alpha_2': 3., 'mbreak': 40.})          # alpha_2 = alpha: the unbroken start
+    init.update({k: jnp.asarray(start[k]) for k in shared_keys})
     for r in RANGES:
-        init.update({f'{k}_{r}': jnp.asarray(v) for k, v in start.items() if not (shared_continuum and k in CONTINUUM)})
+        init.update({f'{k}_{r}': jnp.asarray(v) for k, v in start.items() if k not in shared_keys})
         init[f'lam_{r}'] = jnp.asarray([0.6, 0.3, 0.1])
     for key, (args, distribution) in pp.priors.items():      # redshift hyperparameters at their prior means
         if distribution.__name__ != 'Delta':

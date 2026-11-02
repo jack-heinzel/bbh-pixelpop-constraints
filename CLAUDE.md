@@ -111,3 +111,10 @@ belong in mass-gap-investigation. See README.md for the model.
   ~0.07) and as sign Bayes factors (~1e2-1e3); not against the prior's whole Delta distribution (user). Conditional-prior
   inpainting of <q> (`macros/q_inpaint.py`) falls to ~0.5-1 sigma once the buffer approaches the field's ln m1 range
   (~20 bins), longer than the spacing of the peaks: dropped as too finicky to interpret.
+- 2026-11-02 (Rusty): additive redshift post-processing (`PER_RUN=1 post_z.sbatch`, job 7392319): in both additive models
+  (F(m1, q) + G(z), F1(m1) + F2(q) + G(z)) sd chi_eff at q in [0.8, 1] is flat in z (~0.065-0.075 out to z ~ 1.9) and the
+  q-band contrast (~0.2 vs ~0.07) holds at every z, so the joint models' rise with z was the stitching artefact. Parametric
+  shared continuum (q split 0.65, split spins; job 7375865): alpha mixes (ESS ~1200, was 11 for alpha_lo), ln L -7305 vs
+  -7302.5 separate; the low-q second Gaussian is bimodal, narrow at ~59 Msun (sigma < 8, ~8% of draws) or a broad hump
+  (sigma > 15, mu ~46) holding the high-mass low-q excess a single power law cannot. Hence `--broken` (alpha below /
+  alpha_2 per range above a shared mbreak; job 7392362, `..._sharedcont_bpl`).

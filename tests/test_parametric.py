@@ -66,3 +66,39 @@ def test_shared_continuum_reduces_to_separate():
     np.testing.assert_allclose(lnl(b, lat_b), lnl(a, lat_a), rtol=1e-6, atol=1e-4)
     lat_a['alpha_lo'] = jnp.asarray(5.)
     assert abs(lnl(b, lat_b) - lnl(a, lat_a)) > 1e-3
+
+
+def test_broken_pl_normalized_and_continuous():
+    """log_broken_pl integrates to 1 on [MIN_M, MAX_M], is continuous at mbreak and equals the plain power law when
+    alpha_2 = alpha."""
+    from parametric import log_broken_pl
+    from pixelpop.models.base_models import log_powerlaw_norm
+    m = np.exp(np.linspace(np.log(MIN_M), np.log(MAX_M), 200001))
+    for a1, a2, mb in ((2.5, 1.0, 40.), (3.5, 5., 25.), (-1., 2., 60.)):
+        p = np.exp(np.asarray(log_broken_pl(jnp.asarray(m), a1, a2, mb)))
+        np.testing.assert_allclose(np.trapezoid(p, m), 1., rtol=1e-4)
+        e = 1e-6 * mb
+        lo, hi = (float(log_broken_pl(jnp.asarray(x), a1, a2, mb)) for x in (mb - e, mb + e))
+        np.testing.assert_allclose(lo, hi, atol=1e-4)
+    plain = -2.5 * np.log(m[::1000]) - float(log_powerlaw_norm(-2.5, MIN_M, MAX_M))
+    np.testing.assert_allclose(np.asarray(log_broken_pl(jnp.asarray(m[::1000]), 2.5, 2.5, 40.)), plain, atol=1e-5)
+
+
+def test_broken_reduces_to_unbroken():
+    """broken (with shared_continuum) and alpha_2 = alpha in both ranges gives the shared-continuum likelihood; a
+    different alpha_2_lo changes it."""
+    sys.path.insert(0, os.path.dirname(__file__))
+    from parametric import RANGES, setup_parametric
+    from test_model import synthetic, trace_at
+    pp, kw = synthetic()
+    a, init_a = setup_parametric(pp, n_spin_bins=(10, 8), shared_continuum=True)
+    pp, kw = synthetic()
+    b, init_b = setup_parametric(pp, n_spin_bins=(10, 8), shared_continuum=True, broken=True)
+    assert 'mbreak' in init_b and all(f'alpha_2_{r}' in init_b for r in RANGES)
+    lat_a = dict(init_a, alpha=jnp.asarray(2.2))
+    lat_b = dict(init_b, alpha=jnp.asarray(2.2), mbreak=jnp.asarray(33.),
+                 **{f'alpha_2_{r}': jnp.asarray(2.2) for r in RANGES})
+    lnl = lambda m, lat: float(trace_at(m, lat, **kw)['log_likelihood']['value'])
+    np.testing.assert_allclose(lnl(b, lat_b), lnl(a, lat_a), rtol=1e-6, atol=1e-4)
+    lat_b['alpha_2_lo'] = jnp.asarray(0.5)
+    assert abs(lnl(b, lat_b) - lnl(a, lat_a)) > 1e-3

@@ -51,6 +51,9 @@ def make_parser():
     ap.add_argument('--shared-continuum', action='store_true',
                     help="--parametric: one power-law slope and low-mass taper (alpha, mmin, delta_m) for both q ranges "
                          "(parametric.py shared_continuum); adds '_sharedcont'")
+    ap.add_argument('--broken', action='store_true',
+                    help="--parametric: a broken power law (alpha below mbreak, alpha_2 above; parametric.py broken; the "
+                         "break shared with --shared-continuum); adds '_bpl'")
     ap.add_argument('--gauss-sd-floor', type=float, default=0.02,
                     help="spin_model gauss: soft floor on its sds (model.GAUSS_SD_FLOOR); not 0.02 adds '_sdfloor<x>'")
     ap.add_argument('--spin-bins', type=int, nargs=2, default=[100, 100], metavar=('B_CHIEFF', 'B_CHIP'))
@@ -85,7 +88,7 @@ def make_parser():
 def run_name(args):
     if args.parametric:
         return (f'ppc_{args.catalog}_plpp_qsplit{args.q_split:g}' + ('_spinsplit' if args.spin_split else '')
-                + ('_sharedcont' if args.shared_continuum else '')
+                + ('_sharedcont' if args.shared_continuum else '') + ('_bpl' if args.broken else '')
                 + (f'_neff{args.event_neff_cut:g}' if args.event_neff_cut != 100. else '')
                 + ('_short' if args.short else '') + (f'_{args.tag}' if args.tag else '')
                 + (f'_seed{args.seed}' if args.seed != 1 else ''))
@@ -153,7 +156,7 @@ def build(args, name, record_weights=False):
                                                        likelihood_correction=not args.no_likelihood_correction,
                                                        record_weights=record_weights, gauss_sd_floor=args.gauss_sd_floor,
                                                        q_split=args.q_split, spin_split=args.spin_split,
-                                                       shared_continuum=args.shared_continuum)
+                                                       shared_continuum=args.shared_continuum, broken=args.broken)
         return prob_model, init, posteriors, injections, pp
     prob_model, init = model.setup_model(pp, spin_mass_modes=args.spin_mass_modes, n_spin_bins=tuple(args.spin_bins),
                                          likelihood_correction=not args.no_likelihood_correction,
