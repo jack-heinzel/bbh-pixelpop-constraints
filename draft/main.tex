@@ -310,13 +310,40 @@ The dependence of $\chip$ on mass ratio is less robust than that of $\chieff$. I
     \label{fig: chi_eff width q}
 \end{figure}
 
-\subsection{Together}
+\subsection{Together}\label{sec: together}
 
 \todo{the hierarchical-merger picture: each $q \sim 0.5$ feature is the second-generation partner of a near-equal-mass feature, in mass ratio, masses and spins. Summarize as a 2$\times$2: $\featTen \to \featTwenty$ (retained fraction $\pairTenTwentyRetainedModeFlex$, mild tension) and $\featThirtyFive \to \featSixty$ ($\pairThirtyFiveSixtyRetainedModeFlex$, consistent with $\sim$5\% radiated); in both pairs $\langle q \rangle$ drops from $\sim 0.85$ to $\sim 0.55$ and the $\chieff$ width grows. Why would the second generation pair with first-generation black holes of the same peak? Cite cluster predictions~\cite{Rodriguez:2019huv, Doctor:2019ruh, Kimball:2020opk, Gerosa:2021mno}. Implied 2G fraction at each mass?}
 
-\section{Spin correlations}
+\section{Spin correlations}\label{sec: q-chi correlation}
 
+The effective spin distribution has been found to depend on several binary parameters: it broadens toward unequal masses~\cite{Callister:2021fpo, Adamcewicz:2022hce, Heinzel:2023hlb, LIGOScientific:2026ctl}, it broadens with redshift~\cite{Biscoveanu:2022qac, Heinzel:2023hlb}, and its width alternates narrow--broad--narrow--broad across the primary mass spectrum~\cite{Plunkett:2026pxt, Antonini:2025ilj, Tong:2025xir, Alvarez-Lopez:2026ymo}. Each of these correlations is usually measured with the spins conditioned on one binary parameter, with the rest of the population held fixed. But the binary parameters are themselves correlated: here, we find the mass ratio distribution \textit{varies} with primary mass (Fig.~\ref{fig: mass peaks}), and the detected primary masses grow with redshift. A spin distribution that depends on only one parameter will then appear correlated with the others as well.
 
+To separate these effects, we fit a version of the \gaussianspins model in which each parameter of the spin distribution is additive in $\ln m_1$, $q$ and $z$,
+\begin{equation}
+    \theta(m_1, q, z) = \theta_0 + F_{\ln m_1}(\ln m_1) + F_q(q) + F_z(z),
+    \label{eq: additive}
+\end{equation}
+for $\theta \in \{\mu_{\chieff}, \mu_{\chip}, \ln\sigma_{\chieff}, \ln\sigma_{\chip}, \tanh^{-1}\rho\}$, where $F_{\ln m_1}$, $F_q$ and $F_z$ are independent one-dimensional Mat\'ern fields. The model has no interactions: the dependence of the spins on each parameter, at fixed values of the other two, is the same everywhere. For example, the width $\sigma_{\chieff}(m_1, q, z)$ changes with $q$ by the factor $\exp[F_q(q)]$, whatever $m_1$ and $z$ are. The marginal distributions measured in earlier work are not as simple. The width given primary mass alone, for instance, averages over the mass ratios at that mass,
+\begin{equation}
+    \sigma^2_{\chieff}(m_1) = \big\langle \sigma^2_{\chieff}(m_1, q, z) \big\rangle_{q, z \mid m_1} + \mathrm{Var}_{q, z \mid m_1}\big[\mu_{\chieff}(m_1, q, z)\big],
+    \label{eq: total variance}
+\end{equation}
+so it changes with $m_1$ both through $F_{\ln m_1}$ and through the mass ratio distribution $p(q \mid m_1)$.
+
+Figure~\ref{fig: additive} compares the conditional dependence (top) with the marginal (bottom). The width depends on mass ratio: at fixed $m_1$ and $z$ it is larger by a factor $\sim 3$ at $q \lesssim 0.6$ than at $q \approx 1$, and the marginal $\sigma_{\chieff}(q)$ has the same shape, falling from $\sim 0.25$ to $\sim 0.08$. At fixed $q$ and $z$, by contrast, the width is consistent with no dependence on primary mass: the median factor stays between $\sim 0.9$ and $1.4$ from 5 to $150\,\Msun$, with no narrow--broad--narrow--broad structure. Yet the marginal $\sigma_{\chieff}(m_1)$ of the same model recovers that structure in full: it is $\sim 0.08$ at $\sim \featTen\,\Msun$, $\sim 0.25$ at $\sim 18$--$20\,\Msun$, $\sim 0.12$ at $\sim \featThirtyFive\,\Msun$ and $\sim 0.25$ above $\sim 50\,\Msun$. Since the mean $\chieff$ barely depends on $q$, the variance term in Eq.~\eqref{eq: total variance} is small, and the marginal width follows the mass ratio distribution: it is narrow where the binaries are near equal mass (the \featTen and \featThirtyFive\,\Msun features) and broad where they are not (the \featTwenty and \featSixty\,\Msun features). The non-additive models agree. In both the \flexiblespins and \gaussianspins models, the width within a fixed band of mass ratio changes slowly with primary mass, and the oscillation appears only when the bands are combined (Fig.~\ref{fig: chi_eff width}).
+
+In this model, then, the spins depend causally on the mass ratio, and their correlation with primary mass is a confounding effect of the mass ratio distribution. The structure in $\sigma_{\chieff}(m_1)$ is the same structure as the alternating mass ratios of the four features, seen through the spins. This is what the hierarchical-merger picture of Sec.~\ref{sec: together} predicts. Second-generation mergers are unequal mass and have broad, symmetric $\chieff$~\cite{Vijaykumar:2026zjy}, so wherever they dominate, at $q \sim 0.5$, the spin distribution broadens. The mean $\chieff$ shows one exception: a small conditional excess of $\sim +0.02$ at $\sim 11\,\Msun$, which corresponds to the preference for $\chieff > 0$ at the \featTen\,\Msun feature.
+
+The same argument applies to redshift. At fixed $m_1$ and $q$, the width is constant in redshift (Fig.~\ref{fig: additive}, top right), and within each band of mass ratio it stays at $\sim 0.07$ for $q \in [0.8, 1]$ and $\sim 0.2$ for $q \in [0.3, 0.65]$ out to $z \approx 1.9$. The broadening with redshift found in earlier work~\cite{Biscoveanu:2022qac} can arise from selection effects. Heavier binaries are detectable farther away, so the mean detected primary mass grows from $\sim 13\,\Msun$ at $z \approx 0.05$ to $\sim 40\,\Msun$ by $z \approx 1$. As a result, the $\chieff$ width of the detectable binaries in our population increases by a factor $\sim 1.6$ over that range, even though the population width does not (\jh{add the $\sigma_{\rm obs}(z)$ figure, \texttt{chi\_eff\_sd\_z\_observed\_traces.pdf}}). A spin model that depends on redshift alone, fit with a selection correction that does not depend on spin, would recover approximately this detected width.
+
+The additive model is a restriction, so it does not show that the spins cannot depend on primary mass or redshift. It shows that a model where they do not explains the measured correlations. \jh{quote $\ln \mathcal{L}$ / evidence of the additive vs.\ full \gaussianspins model.} The conditional factor in $m_1$ is also poorly constrained ($\times 0.5$--$4$ at 90\% near $20\,\Msun$), and the width at $q \approx 1$ rises above $\sim 50\,\Msun$ in all of our models (Fig.~\ref{fig: chi_eff width}). This may be a genuine dependence on primary mass, or a contribution from near-equal-mass mergers of two second-generation black holes. The precessing spin carries little information here: the conditional and marginal moments of $\chip$ are consistent with constant in $m_1$ and $q$ in all three redshift models. The exception is a rise of the mean $\chip$ from $\sim 0.2$ to $\sim 0.35$ below $z \approx 0.4$, which we do not interpret further.
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/chi_eff_sd_conditional_marginal_additive.pdf}
+    \caption{\red{Draft caption. The width of the $\chieff$ distribution in the additive \gaussianspins model, Eq.~\eqref{eq: additive}. Top: the conditional dependence on each of $m_1$, $q$ and $z$ at fixed values of the other two, $\exp[F - \langle F \rangle]$ for $\ln \sigma_{\chieff}$, relative to the population average (the overall scale is not identified). Bottom: the population marginals $\sigma_{\chieff}$ given $m_1$, $q$ and $z$ alone. Median and 90\%. The mass ratio dependence alone reproduces the narrow--broad--narrow--broad marginal $\sigma_{\chieff}(m_1)$; the conditional dependence on $m_1$ and $z$ is consistent with none.}}
+    \label{fig: additive}
+\end{figure*}
 
 \section{Significance and outlook}
 
