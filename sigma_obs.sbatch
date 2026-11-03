@@ -9,7 +9,7 @@
 #SBATCH --exclude=workergpu168
 #SBATCH --cpus-per-task=8
 #SBATCH --mem=96G
-#SBATCH --time=6:00:00
+#SBATCH --time=1:00:00
 #SBATCH --output=results/logs/slurm-sigma-obs-%j.out
 
 cd "$SLURM_SUBMIT_DIR"
@@ -19,6 +19,7 @@ unset JAX_PLATFORMS
 export XLA_PYTHON_CLIENT_MEM_FRACTION=.9 OMP_NUM_THREADS=1
 PY=~/venvs/gwjax313/bin/python
 echo "$(date '+%F %H:%M') on $(hostname) ($(nvidia-smi --query-gpu=name --format=csv,noheader)): ${*:-default runs}"
-JAX_PLATFORMS=cuda $PY notebooks/sigma_obs.py --n ${N:-500} "$@" || exit 1
+JAX_PLATFORMS=cuda $PY notebooks/sigma_obs.py --n ${N:-0} "$@" || exit 1    # N = 0: every draw (user, 2026-11-03: paper plots use all draws)
 JAX_PLATFORMS=cpu $PY notebooks/sigma_obs.py --figure || exit 1
+JAX_PLATFORMS=cpu $PY notebooks/sigma_obs.py --figure --traces 500 || exit 1
 echo "$(date '+%F %H:%M') done"

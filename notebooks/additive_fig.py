@@ -18,7 +18,11 @@ Top row, sd: exp(F - <F>) of ln sd_eff, the factor on the Gaussian's width befor
 centre. <F> weights by the population: p(m1), p(q) (the draw's windowed mass field) and p(z) (its redshift power law).
 The bottom row is over the full chi_eff range (user, 2026-11-02; the core |chi_eff| < 0.8 gives nearly the same).
 Runs whose chains are missing are left out; a component a model does not have is not drawn. For runs without z, MARG
-uses N_MARG evenly spaced draws (the conditional is rebuilt per cell, ~1.3 s per draw on one core).
+uses every draw: the chain's spin_moments (per-cell chi_eff mean and sd of the truncated conditional; matches the
+rebuild of marginal_fn to 1e-7) mixed over the windowed p(m1, q), seconds per run. The joint Gaussian
+(ppc_gwtc5_k100_gauss, one non-separable field F(ln m1, q)) has no F1, F2; its top row is the partial dependence, ln sd
+averaged over the population p(q) at each m1 (and over p(m1) at each q), which for an additive model is F1 (F2) plus a
+constant, so the four models' top rows compare directly.
 """
 import os
 import sys
@@ -36,10 +40,11 @@ import analysis_z as Z
 # run: (label, colour); the first is drawn on top
 RUNS = {'ppc_gwtc5_k100_gauss_kz100_zb100_mqadd_zadd': (r'with redshift dependence, $F_{\ln m_1} + F_q + F_z$', 'C3'),
         'ppc_gwtc5_k100_gauss_mqadd': (r'no redshift dependence, $F_{\ln m_1} + F_q$', 'C0')}
-SINGLE_RUNS = {'ppc_gwtc5_k100_gauss_mqadd': (r'$F_{\ln m_1} + F_q$', 'k'),
+SINGLE_RUNS = {'ppc_gwtc5_k100_gauss': (r'joint $F(\ln m_1, q)$', 'C3'),               # not separable (user, 2026-11-03)
+               'ppc_gwtc5_k100_gauss_mqadd': (r'$F_{\ln m_1} + F_q$', 'k'),
                'ppc_gwtc5_k100_gauss_mqadd_qonly': (r'$F_q$ only', 'C0'),
                'ppc_gwtc5_k100_gauss_mqadd_m1only': (r'$F_{\ln m_1}$ only', 'C2')}
-N_MARG = 500
+N_MARG = 2000                       # all draws of two 1000-draw chains (500 gave noisy 90% bands; user, 2026-11-03)
 MASS_KEYS = ('_gauss_sites', 'lnsigma_gauss', 'log_nu_gauss', 'log_ranges_gauss', '_gauss_q_sites', 'lnsigma_gauss_q',
              'log_nu_gauss_q', 'log_ranges_gauss_q')
 Z_KEYS = ('_gauss_z_sites', 'lnsigma_gauss_z', 'log_nu_gauss_z', 'log_ranges_gauss_z')
@@ -56,6 +61,18 @@ def chain_files(run):
 
 def has_z(run):
     return '_zadd' in run
+
+
+def moment_marginals(mom, p):
+    """(2 stats, 2 axes (m1, q), B) float32: the chi_eff mean and sd given m1 and given q, from a draw's spin_moments
+    (Bm, Bq, 4: chi_eff mean, sd, chi_p mean, sd per cell) mixed over p (Bm, Bq), the windowed p(m1, q)."""
+    mu, var = mom[..., 0], mom[..., 1] ** 2
+    out = []
+    for ax in (1, 0):                                                                    # given m1, given q
+        w = p / np.maximum(p.sum(ax, keepdims=True), 1e-300)
+        mean = (w * mu).sum(ax)
+        out.append(np.stack([mean, np.sqrt(np.maximum((w * (var + mu ** 2)).sum(ax) - mean ** 2, 0.))]))
+    return np.stack(out, 1).astype(np.float32)
 
 
 def marginal_fn(run):
@@ -116,7 +133,10 @@ def build(run):
 
     with h5py.File(chain_files(run)[0], 'r') as h:
         has_m, has_q = '_gauss_sites' in h, '_gauss_q_sites' in h                       # q-only / m1-only runs
-    keys = (MASS_KEYS[:4] if has_m else ()) + (MASS_KEYS[4:] if has_q else ()) + (Z_KEYS if z else ())
+        joint = not z and has_m and h['_gauss_sites'].ndim == 4                                   # one field F(ln m1, q)
+    if joint:
+        has_q = True
+    keys = () if joint else (MASS_KEYS[:4] if has_m else ()) + (MASS_KEYS[4:] if has_q else ()) + (Z_KEYS if z else ())
     zero = jnp.zeros((5, B))
 
     @jax.jit
@@ -132,31 +152,32 @@ def build(run):
             out.append(comp(wz[:kz], Vz, Bz))
         return out
 
-    marginals = marginal_fn(run)
-
     names = ('offsets', 'F1', 'F2', 'W1', 'W2') + (('G', 'WZ') if z else ())
     out = {k: [] for k in names + ('MARG',)}
     files = chain_files(run)
     n = min(len(h5py.File(f, 'r')['log_likelihood']) for f in files)                    # load_light's draw order
-    marg_draws = np.unique(np.linspace(0, len(files) * n - 1, N_MARG).round().astype(int))
     for c, f in enumerate(files):
         with h5py.File(f, 'r') as h:
             for i in range(n):
-                F = [np.asarray(x) for x in fields(*(jnp.asarray(h[k][i], dtype=float) for k in keys))]
                 off = h['gauss_offsets'][i].astype(float)
                 lp = h['log_p_mass'][i].astype(float) + A.mass_window()
                 p = np.exp(lp - lp.max()); p /= p.sum()                                     # windowed p(m1, q)
-                row = {'offsets': off, 'F1': F[0], 'F2': F[1], 'W1': p.sum(1), 'W2': p.sum(0)}
+                W1, W2 = p.sum(1), p.sum(0)
+                if joint:                                                                    # partial dependence
+                    th = h['gauss_params'][i].astype(float) - off[:, None, None]             # (5, Bm, Bq)
+                    F = [th @ W2, np.einsum('m,kmq->kq', W1, th)]
+                else:
+                    F = [np.asarray(x) for x in fields(*(jnp.asarray(h[k][i], dtype=float) for k in keys))]
+                row = {'offsets': off, 'F1': F[0], 'F2': F[1], 'W1': W1, 'W2': W2}
                 if z:
                     row.update(G=F[2], WZ=np.asarray(pz_of(float(h['lamb'][i]))))
-                elif c * n + i in marg_draws:
-                    theta = off[:, None, None] + F[0][:, :, None] + F[1][:, None, :]
-                    out['MARG'].append(np.asarray(marginals(jnp.asarray(theta), jnp.asarray(p)), np.float32))
+                else:
+                    out['MARG'].append(moment_marginals(h['spin_moments'][i].astype(float), p))
                 for k in names:
                     out[k].append(np.asarray(row[k], np.float32))
     out = {k: np.array(v) for k, v in out.items() if len(v)}
     if not z:
-        out['marg_draws'] = marg_draws
+        out['marg_draws'] = np.arange(len(out['MARG']))
     out['has'] = np.array([has_m, has_q])
     np.savez(cache_path(run), **out)
     return out
@@ -190,12 +211,17 @@ def marg_z0(run, D, n=500):
     return pick, np.array(out)
 
 
+def enough_marg(d):
+    """Whether a cache of a run without z has its MARG for min(N_MARG, all) draws."""
+    return 'MARG' in d and len(d['marg_draws']) >= min(N_MARG, len(d['offsets']))
+
+
 def load(run):
     """build(run)'s arrays (cached), plus for a run with z its marginals from analysis_z: MARG (chi_eff, as built for
     a run without z), ZCURVES (draws, 2 stats, Bz) and z_edges."""
     c = cache_path(run)
     fresh = os.path.exists(c) and all(os.path.getmtime(c) > os.path.getmtime(f) for f in chain_files(run))
-    D = dict(np.load(c)) if fresh and ('MARG' in np.load(c) or has_z(run)) else build(run)
+    D = dict(np.load(c)) if fresh and (has_z(run) or enough_marg(np.load(c))) else build(run)
     if has_z(run):
         D['MARG'] = Z.load_marg(run)[:, Z.SPINS.index('chi_eff')]
         curves, D['z_edges'] = Z.load_curves(run)
@@ -299,6 +325,10 @@ def main():
     import matplotlib.pyplot as plt
     import plot_style
     import paper_figs as F
+    if '--build' in sys.argv[1:]:                                    # --build <run>: only the cache
+        run = sys.argv[sys.argv.index('--build') + 1]
+        load(run); print('built', run, flush=True)
+        return
     z0, single = '--z0' in sys.argv[1:], '--single' in sys.argv[1:]
     runs = SINGLE_RUNS if single else RUNS
     R = {run: load(run) for run in runs if chain_files(run)}
