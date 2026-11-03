@@ -136,3 +136,45 @@ def test_fully_additive_gauss():
     with np.testing.assert_raises(ValueError):
         setup_model(pp, spin_mass_modes=KM, n_spin_bins=SPIN_BINS, spin_model='gauss', spin_z_modes=KZ, z_bins=BZ,
                     spin_mass_additive=True)
+
+
+def test_q_only_gauss():
+    """spin_q_only: theta = offset + F2(q), no F1 sites; equals spin_mass_additive with F1's white sites at zero."""
+    pp, kw = synthetic()
+    a, init_a = setup_model(pp, spin_mass_modes=KM, n_spin_bins=SPIN_BINS, spin_model='gauss', spin_q_modes=KQ,
+                            spin_mass_additive=True)
+    b, init_b = setup_model(pp, spin_mass_modes=KM, n_spin_bins=SPIN_BINS, spin_model='gauss', spin_q_modes=KQ,
+                            spin_mass_additive=True, spin_q_only=True)
+    assert not any(k in init_b for k in ('_gauss_sites', 'lnsigma_gauss', 'log_nu_gauss', 'log_ranges_gauss'))
+    rng = np.random.default_rng(19)
+    wq = jnp.asarray(rng.normal(size=np.shape(init_b['_gauss_q_sites'])))
+    lat_b = dict(common_latents(init_b), _gauss_q_sites=wq)
+    lat_a = dict(common_latents(init_a), _gauss_q_sites=wq, _gauss_sites=jnp.zeros_like(init_a['_gauss_sites']))
+    np.testing.assert_allclose(lnl(b, lat_b, kw), lnl(a, lat_a, kw), rtol=1e-6, atol=1e-4)
+    t = trace_at(b, lat_b, **kw)
+    assert not any(k in t for k in ('_gauss_sites', 'lnsigma_gauss'))
+    theta = np.asarray(t['gauss_params']['value'])
+    np.testing.assert_allclose(np.ptp(theta, axis=1), 0., atol=1e-12)                  # constant in ln m1
+    with np.testing.assert_raises(ValueError):
+        setup_model(pp, spin_mass_modes=KM, n_spin_bins=SPIN_BINS, spin_model='gauss', spin_q_only=True)
+
+
+def test_m1_only_gauss():
+    """spin_m1_only: theta = offset + F1(ln m1), no F2 sites; equals spin_mass_additive with F2's white sites at zero."""
+    pp, kw = synthetic()
+    a, init_a = setup_model(pp, spin_mass_modes=KM, n_spin_bins=SPIN_BINS, spin_model='gauss', spin_q_modes=KQ,
+                            spin_mass_additive=True)
+    b, init_b = setup_model(pp, spin_mass_modes=KM, n_spin_bins=SPIN_BINS, spin_model='gauss', spin_q_modes=KQ,
+                            spin_mass_additive=True, spin_m1_only=True)
+    assert not any(k in init_b for k in ('_gauss_q_sites',) + M.GAUSS_Q_SITES)
+    rng = np.random.default_rng(23)
+    wm = jnp.asarray(rng.normal(size=np.shape(init_b['_gauss_sites'])))
+    lat_b = dict(common_latents(init_b), _gauss_sites=wm)
+    lat_a = dict(common_latents(init_a), _gauss_sites=wm, _gauss_q_sites=jnp.zeros_like(init_a['_gauss_q_sites']))
+    np.testing.assert_allclose(lnl(b, lat_b, kw), lnl(a, lat_a, kw), rtol=1e-6, atol=1e-4)
+    t = trace_at(b, lat_b, **kw)
+    assert '_gauss_q_sites' not in t
+    np.testing.assert_allclose(np.ptp(np.asarray(t['gauss_params']['value']), axis=2), 0., atol=1e-12)   # constant in q
+    for bad in (dict(spin_m1_only=True), dict(spin_mass_additive=True, spin_q_only=True, spin_m1_only=True)):
+        with np.testing.assert_raises(ValueError):
+            setup_model(pp, spin_mass_modes=KM, n_spin_bins=SPIN_BINS, spin_model='gauss', **bad)

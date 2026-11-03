@@ -10,12 +10,15 @@ difference from the joint Gaussian's sigma(q) (paper_figs.chiq) is the average o
         -> plots/chi_eff_sd_conditional_marginal_additive.pdf, plots/chi_eff_mean_conditional_marginal_additive.pdf
     python notebooks/additive_fig.py --z0  (the m1 and q marginals of the runs with z at z = 0, not over p(z))
         -> plots/chi_eff_{sd,mean}_conditional_marginal_additive_z0.pdf
+    python notebooks/additive_fig.py --single   (user, 2026-11-03: F_q alone and F_ln m1 alone against F_ln m1 + F_q,
+        no z; which variable the spins follow) -> plots/chi_eff_{sd,mean}_conditional_marginal_single.pdf
 
 Top row, sd: exp(F - <F>) of ln sd_eff, the factor on the Gaussian's width before truncation to the physical range
 (the truncated width grows less where the Gaussian is broad); mean: F - <F> of mu_eff, the shift of the Gaussian's
 centre. <F> weights by the population: p(m1), p(q) (the draw's windowed mass field) and p(z) (its redshift power law).
 The bottom row is over the full chi_eff range (user, 2026-11-02; the core |chi_eff| < 0.8 gives nearly the same).
-Runs whose chains are missing are left out.
+Runs whose chains are missing are left out; a component a model does not have is not drawn. For runs without z, MARG
+uses N_MARG evenly spaced draws (the conditional is rebuilt per cell, ~1.3 s per draw on one core).
 """
 import os
 import sys
@@ -33,6 +36,10 @@ import analysis_z as Z
 # run: (label, colour); the first is drawn on top
 RUNS = {'ppc_gwtc5_k100_gauss_kz100_zb100_mqadd_zadd': (r'with redshift dependence, $F_{\ln m_1} + F_q + F_z$', 'C3'),
         'ppc_gwtc5_k100_gauss_mqadd': (r'no redshift dependence, $F_{\ln m_1} + F_q$', 'C0')}
+SINGLE_RUNS = {'ppc_gwtc5_k100_gauss_mqadd': (r'$F_{\ln m_1} + F_q$', 'k'),
+               'ppc_gwtc5_k100_gauss_mqadd_qonly': (r'$F_q$ only', 'C0'),
+               'ppc_gwtc5_k100_gauss_mqadd_m1only': (r'$F_{\ln m_1}$ only', 'C2')}
+N_MARG = 500
 MASS_KEYS = ('_gauss_sites', 'lnsigma_gauss', 'log_nu_gauss', 'log_ranges_gauss', '_gauss_q_sites', 'lnsigma_gauss_q',
              'log_nu_gauss_q', 'log_ranges_gauss_q')
 Z_KEYS = ('_gauss_z_sites', 'lnsigma_gauss_z', 'log_nu_gauss_z', 'log_ranges_gauss_z')
@@ -101,28 +108,38 @@ def build(run):
     Vm = Vq = v_ax[:, :km]
     one = lambda w, v, ls, lr, ln, wh, n: jnp.stack([to_grid(matern_spectrum([w], ls[i], lr[i], jnp.exp(ln), n),
                                                              wh[i], [v]) for i in range(5)])
-    keys = MASS_KEYS + (Z_KEYS if z else ())
     if z:
         _, _, _, kz, Bz, _ = Z.z_config(run)
         (wz, vz), = axis_eigs([pixelpop.utils.create_CAR_coupling_matrix(Bz, 1, isVisible=False)])
         Vz = vz[:, :kz]
         pz_of = Z.z_weights(run)
 
+    with h5py.File(chain_files(run)[0], 'r') as h:
+        has_m, has_q = '_gauss_sites' in h, '_gauss_q_sites' in h                       # q-only / m1-only runs
+    keys = (MASS_KEYS[:4] if has_m else ()) + (MASS_KEYS[4:] if has_q else ()) + (Z_KEYS if z else ())
+    zero = jnp.zeros((5, B))
+
     @jax.jit
-    def fields(white, lnsig, lognu, logr, white_q, lnsig_q, lognu_q, logr_q, *zargs):
-        out = [one(w_ax[:km], Vm, lnsig, logr, lognu, white, B), one(w_ax[:km], Vq, lnsig_q, logr_q, lognu_q, white_q, B)]
-        if zargs:
-            white_z, lnsig_z, lognu_z, logr_z = zargs
-            out.append(one(wz[:kz], Vz, lnsig_z, logr_z, lognu_z, white_z, Bz))
+    def fields(*args):
+        """[F1, F2 (, G)] from the chain's sites in ``keys`` order; zeros for a component the run does not have."""
+        args = list(args)
+        take = lambda: [args.pop(0) for _ in range(4)]                                   # white, lnsig, lognu, logr
+        def comp(w, v, n):
+            white, lnsig, lognu, logr = take()
+            return one(w, v, lnsig, logr, lognu, white, n)
+        out = [comp(w_ax[:km], Vm, B) if has_m else zero, comp(w_ax[:km], Vq, B) if has_q else zero]
+        if z:
+            out.append(comp(wz[:kz], Vz, Bz))
         return out
 
     marginals = marginal_fn(run)
 
-    names = ('offsets', 'F1', 'F2', 'W1', 'W2') + (('G', 'WZ') if z else ('MARG',))
-    out = {k: [] for k in names}
+    names = ('offsets', 'F1', 'F2', 'W1', 'W2') + (('G', 'WZ') if z else ())
+    out = {k: [] for k in names + ('MARG',)}
     files = chain_files(run)
     n = min(len(h5py.File(f, 'r')['log_likelihood']) for f in files)                    # load_light's draw order
-    for f in files:
+    marg_draws = np.unique(np.linspace(0, len(files) * n - 1, N_MARG).round().astype(int))
+    for c, f in enumerate(files):
         with h5py.File(f, 'r') as h:
             for i in range(n):
                 F = [np.asarray(x) for x in fields(*(jnp.asarray(h[k][i], dtype=float) for k in keys))]
@@ -132,12 +149,15 @@ def build(run):
                 row = {'offsets': off, 'F1': F[0], 'F2': F[1], 'W1': p.sum(1), 'W2': p.sum(0)}
                 if z:
                     row.update(G=F[2], WZ=np.asarray(pz_of(float(h['lamb'][i]))))
-                else:
+                elif c * n + i in marg_draws:
                     theta = off[:, None, None] + F[0][:, :, None] + F[1][:, None, :]
-                    row['MARG'] = np.asarray(marginals(jnp.asarray(theta), jnp.asarray(p)))
+                    out['MARG'].append(np.asarray(marginals(jnp.asarray(theta), jnp.asarray(p)), np.float32))
                 for k in names:
                     out[k].append(np.asarray(row[k], np.float32))
-    out = {k: np.array(v) for k, v in out.items()}
+    out = {k: np.array(v) for k, v in out.items() if len(v)}
+    if not z:
+        out['marg_draws'] = marg_draws
+    out['has'] = np.array([has_m, has_q])
     np.savez(cache_path(run), **out)
     return out
 
@@ -183,25 +203,30 @@ def load(run):
     return D
 
 
-def figure(R, stat, z0=False):
+def figure(R, stat, z0=False, runs=RUNS):
     """R: {run: load(run)}. stat 'sd' or 'mean': top row the conditional pieces (centred), bottom the marginals;
     columns m1, q, z (z only for runs with redshift dependence). ``z0``: the m1 and q marginals of runs with z at z = 0
-    (D['MARG_Z0'])."""
+    (D['MARG_Z0']). ``runs``: labels and colours ({run: (label, colour)}). Without runs with z, two columns."""
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
     from matplotlib.patches import Patch
     import paper_figs as F
     j, ip = Z.STATS.index(stat), (2 if stat == 'sd' else 0)            # ln sd_eff or mu_eff
-    fig, axes = plt.subplots(2, 3, figsize=(F.TWO_COL, 3.5), sharex='col')
-    ze = next(D['z_edges'] for D in R.values() if 'z_edges' in D)
-    zc = 0.5 * (ze[1:] + ze[:-1])
-    zx = np.concatenate([[ze[0]], zc, [ze[-1]]])
-    ranges = (M_RANGE, Q_RANGE, (ze[0], ze[-1]))
+    nc = 3 if any('z_edges' in D for D in R.values()) else 2
+    fig, axes = plt.subplots(2, nc, figsize=(F.TWO_COL * nc / 3 + (0.3 if nc == 2 else 0.), 3.5), sharex='col')
+    if nc == 3:
+        ze = next(D['z_edges'] for D in R.values() if 'z_edges' in D)
+        zc = 0.5 * (ze[1:] + ze[:-1])
+        zx = np.concatenate([[ze[0]], zc, [ze[-1]]])
+    ranges = (M_RANGE, Q_RANGE) + (((ze[0], ze[-1]),) if nc == 3 else ())
     top, ys = [], []
     for run, D in reversed(list(R.items())):                          # the first run drawn last, on top
-        col = RUNS[run][1]
+        col = runs[run][1]
+        has = D.get('has', (True, True))
         cols = [(A.m_c, D['F1'], D['W1']), (A.q_c, D['F2'], D['W2'])] + ([(zc, D['G'], D['WZ'])] if 'G' in D else [])
         for c, (x, Fx, W) in enumerate(cols):
+            if c < 2 and not has[c]:
+                continue                                                      # the model has no such component
             cen = Fx[:, ip] - (Fx[:, ip] * W).sum(1, keepdims=True)
             l, m, h = F.q5(np.exp(cen) if stat == 'sd' else cen)
             axes[0, c].fill_between(x, l, h, color=col, alpha=0.2, lw=0); axes[0, c].plot(x, m, color=col, lw=1.1)
@@ -216,7 +241,7 @@ def figure(R, stat, z0=False):
             vis = (x >= ranges[c][0]) & (x <= ranges[c][1])
             ys += [l[vis], h[vis]]
     lo, hi = min(np.nanmin(t) for t in top), max(np.nanmax(t) for t in top)
-    for c in range(3):
+    for c in range(nc):
         ax = axes[0, c]
         ax.axhline(1. if stat == 'sd' else 0., color='0.4', lw=0.7, ls=':')
         if stat == 'sd':
@@ -230,12 +255,14 @@ def figure(R, stat, z0=False):
             ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda v, _: f'${v:+.2f}$' if v else '$0$'))
         if c:
             ax.tick_params(labelleft=False)
-    for c, t in enumerate((r'at fixed $q$, $z$', r'at fixed $m_1$, $z$', r'at fixed $m_1$, $q$')):
+    fixed = ((r'at fixed $q$, $z$', r'at fixed $m_1$, $z$', r'at fixed $m_1$, $q$') if nc == 3 else
+             (r'at fixed $q$', r'at fixed $m_1$'))
+    for c, t in enumerate(fixed):
         axes[0, c].text(0.03, 0.93, t, transform=axes[0, c].transAxes, va='top', ha='left', fontsize=7,
                         bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.2))
     axes[0, 0].set_ylabel('width, relative' if stat == 'sd' else 'mean, relative')
     lo, hi = min(np.nanmin(y) for y in ys), max(np.nanmax(y) for y in ys)
-    for c in range(3):
+    for c in range(nc):
         ax = axes[1, c]
         if stat == 'sd':
             F.log_sd_axis(ax, lo, hi)
@@ -247,17 +274,20 @@ def figure(R, stat, z0=False):
     sym = r'\sigma' if stat == 'sd' else r'\mu'
     axes[1, 0].set_ylabel(rf'${sym}_{{\chi_\mathrm{{eff}}}}$')
     for c, t in enumerate((r'given $m_1$, at $z = 0$' if z0 else r'given $m_1$', r'given $q$, at $z = 0$' if z0
-                           else r'given $q$', r'given $z$')):
+                           else r'given $q$', r'given $z$')[:nc]):
         axes[1, c].text(0.03, 0.93, t, transform=axes[1, c].transAxes, va='top', ha='left', fontsize=7,
                         bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.2))
     axes[0, 0].set_xscale('log'); axes[0, 0].set_xlim(*M_RANGE)
     axes[1, 0].set_xticks((5, 10, 20, 50, 100), ['$5$', '$10$', '$20$', '$50$', '$100$']); axes[1, 0].minorticks_off()
     axes[0, 1].set_xlim(*Q_RANGE); axes[1, 1].set_xticks((0.2, 0.4, 0.6, 0.8))
-    axes[0, 2].set_xlim(ze[0], ze[-1]); axes[1, 2].set_xticks((0.5, 1., 1.5))
-    for c, lab in enumerate((r'$m_1\,[\textrm{M}_\odot]$', '$q$', '$z$')):
+    if nc == 3:
+        axes[0, 2].set_xlim(ze[0], ze[-1]); axes[1, 2].set_xticks((0.5, 1., 1.5))
+    else:
+        axes[1, 1].set_xticks((0.2, 0.4, 0.6, 0.8, 1.))
+    for c, lab in enumerate((r'$m_1\,[\textrm{M}_\odot]$', '$q$', '$z$')[:nc]):
         axes[1, c].set_xlabel(lab)
-    handles = [(Patch(color=RUNS[r][1], alpha=0.2, lw=0), Line2D([], [], color=RUNS[r][1], lw=1.1)) for r in R]
-    fig.legend(handles, [RUNS[r][0] for r in R], loc='upper center', ncol=len(R), bbox_to_anchor=(0.5, 1.0), **F.LEG)
+    handles = [(Patch(color=runs[r][1], alpha=0.2, lw=0), Line2D([], [], color=runs[r][1], lw=1.1)) for r in R]
+    fig.legend(handles, [runs[r][0] for r in R], loc='upper center', ncol=len(R), bbox_to_anchor=(0.5, 1.0), **F.LEG)
     fig.tight_layout(rect=(0, 0, 1, 1 - 0.17 / fig.get_figheight())); fig.subplots_adjust(hspace=0.06, wspace=0.05)
     return fig
 
@@ -269,17 +299,18 @@ def main():
     import matplotlib.pyplot as plt
     import plot_style
     import paper_figs as F
-    z0 = '--z0' in sys.argv[1:]
-    R = {run: load(run) for run in RUNS if chain_files(run)}
+    z0, single = '--z0' in sys.argv[1:], '--single' in sys.argv[1:]
+    runs = SINGLE_RUNS if single else RUNS
+    R = {run: load(run) for run in runs if chain_files(run)}
     if z0:
         for run, D in R.items():
             if 'G' in D:
                 _, D['MARG_Z0'] = marg_z0(run, D)
     print('runs:', list(R), flush=True)
     plot_style.apply(); plt.rcParams.update(F.SMALL_RC)
-    tag = '_z0' if z0 else ''
-    plot_style.save(figure(R, 'sd', z0), f'chi_eff_sd_conditional_marginal_additive{tag}')
-    plot_style.save(figure(R, 'mean', z0), f'chi_eff_mean_conditional_marginal_additive{tag}')
+    name = 'single' if single else 'additive' + ('_z0' if z0 else '')
+    for stat in ('sd', 'mean'):
+        plot_style.save(figure(R, stat, z0, runs), f'chi_eff_{stat}_conditional_marginal_{name}')
 
 
 if __name__ == '__main__':
