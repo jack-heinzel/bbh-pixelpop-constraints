@@ -64,6 +64,7 @@
 \newcommand{\featSixty}{59\xspace}
 
 
+\newcommand{\heading}[1]{\textbf{\textit{#1}}}
 
 \begin{document}
 
@@ -71,6 +72,8 @@
 
 \author{Jack Heinzel\,\orcidlink{0000-0002-5794-821X}}
 \email{jheinzel@flatironinstitute.org}
+
+\author{Matthew Mould\,\orcidlink{}}
 
 
 \date{\today}
@@ -83,26 +86,23 @@ abstracto petronum
 
 \maketitle
 
-\jh{IDK where to send this, but I feel like this is going to be a really good paper so I kinda want to send somewhere high impact. Annoyingly though I feel like it kind of needs to be long}
-
 % Gravitational waves are emerging as a powerful probe of the astrophysics of massive stars and the dynamics of dense stellar environments.
 % The LIGO \cite{LIGOScientific:2014pky, Capote:2024rmo, LIGO:2024kkz}, Virgo \cite{VIRGO:2014yos}, and KAGRA \cite{KAGRA:2020tym} (LVK) gravitational-wave (GW) detectors 
 
-\section{Introduction}
-
+\heading{Introduction.}
 With more than 250 \ac{BBH} mergers now cataloged by the LIGO \cite{}, Virgo \cite{}, and KAGRA \cite{} detectors \cite{}, we are beginning to reveal the structure of the \ac{BBH} population. The \ac{BH} mass distribution has a prominent peak at $\sim 10\Msun$, a feature at $\sim 30$--$35 \Msun$ which may be a local peak or steepening \citep{}, and a tail that extends into the theorized \ac{PISN} mass gap \cite{}. Most \ac{BH} spins are small \cite{}, though there exists a subpopulation of rapid spins \cite{}, and the astrophysical \ac{BBH} merger rate increases with redshift. 
 The population of \ac{BBH} is \textit{correlated} as well. The effective spin \cite{} distribution appears to broaden with mass ratio, redshift, and appears to have a nontrivial narrow-broad-narrow-broad structure across the mass distribution \cite{} \jh{fix that sentence}. 
 
 \jh{maybe something about astrophysics...?}
 Most of population results come from models that assume the population is uncorrelated or let a single pair of binary parameters correlate while holding the rest to a fixed, usually parametric, form. The $q$--$\chieff$ correlation, for example, is typically measured with a mass distribution that does not depend on spin, and the mass spectrum with a single mass ratio distribution at every primary mass. Each conclusion is therefore conditional on assumptions that other analyses relax. A fully joint model is computationally demanding, and for the smaller catalogs of a few dozen events, correlations among all the parameters at once were too subtle to detect \citep[e.g., ][]{Biscoveanu:2022qac}. With hundreds of \acp{BBH}, this is no longer true.
 
-Here we fit the masses, mass ratio and spins jointly, letting each distribution correlate in an unspecified, flexible manner \jh{also exploring redshift dependence, though chains not done so need to wait for conclusions}. Towards equal mass ratios, the primary mass spectrum peaks at $m_1 = \jointTenMuFlex\,\Msun$ and $\jointThirtyFiveMuFlex\,\Msun$ (mean $q = \jointTenQMeanFlex$ and $\jointThirtyFiveQMeanFlex$, but consistent with \textit{peaking} at $q\to 1$). The mean mass ratio falls away from these peaks, and at $q \sim 0.5$ we find \jh{99\%ish} evidence for a second pair of peaks, at $m_1 = \jointTwentyMuFlex\,\Msun$ and $\jointSixtyMuFlex\,\Msun$ (mean $q = \jointTwentyQMeanFlex$ and $\jointSixtyQMeanFlex$), about twice the masses of the first. The spin behavior splits the same way: the near-equal-mass peaks have a narrow effective spin distribution, while the $q \sim 0.5$ peaks have a broad, nearly symmetric one, as expected from large, isotropically oriented spins.
+Here we fit the masses, mass ratio and spins jointly, letting each distribution correlate in an unspecified, flexible manner \jh{also exploring redshift dependence, though chains not done so need to wait for conclusions}. Towards equal mass ratios, the primary mass spectrum peaks at $m_1 = \jointTenMuFlex\,\Msun$ and $\jointThirtyFiveMuFlex\,\Msun$ (mean $q = \jointTenQMeanFlex$ and $\jointThirtyFiveQMeanFlex$, but consistent with \textit{peaking} at $q\to 1$). The mean mass ratio falls away from these peaks, and at $q \sim 0.5$ we find \jh{99\%ish} evidence for a second pair of peaks, at $m_1 = \jointTwentyMuFlex\,\Msun$ and $\jointSixtyMuFlex\,\Msun$ (mean $q = \jointTwentyQMeanFlex$ and $\jointSixtyQMeanFlex$), about twice the masses of the first. The spin behavior also splits aligned with the mass ratios: the near-equal-mass peaks have a narrow effective spin distribution, while the $q \sim 0.5$ peaks have a broad, nearly symmetric one, as expected from large, isotropically oriented spins.
 
-We also show that the separation into two families of peaks with different mass ratios and spin properties also explains the broadening $\chieff$ with mass ratio, a correlation identified in \citet{LIGOScientific:2026ctl}, and can explain the observed broadening with redshift \cite{Biscoveanu:2022qac} as a confounding variable effect \jh{double check, but I think this is be right. Think a bit more about this}. These mass peaks appear remarkably consistent with a dynamical first generation and a hierarchical, second generation of \ac{BBH} mergers, and we show the observed mass ranges are consistent with the expected remnant masses from \ac{GR}. 
+We also show that the separation into two families of peaks with different mass ratios and spin properties explains the broadening $\chieff$ with mass ratio, a correlation identified in \citet{LIGOScientific:2026ctl}, and are consistent with the spin correlations identified in Refs.~\cite{Antonini:2025ilj, Tong:2025xir, Plunkett:2026pxt, Flanagan:2026ayy}. These mass peaks appear remarkably consistent with a dynamical first generation and a hierarchical, second generation of \ac{BBH} mergers, and we show the observed primary mass in the $q\sim 0.5$ features are consistent with the expected remnant masses from mergers in the $q\sim 1$ features (assuming \ac{GR}) \jh{some tension in 20M peak}. 
 
 The $\sim10\Msun$ peak does show a statistically significant preference for $\chieff > 0$, however, and the $\sim \featTwenty\,\Msun$ peak is slightly more massive than the typical remnants from $\sim \featTen\,\Msun$ peak \ac{BBH}. This suggests that not \textit{all} $\sim \featTen\,\Msun$ \ac{BBH} are assembled dynamically, or that \jh{more complex dynamical theories are required, like that "not all dynamical bhs have isotropic spins paper from Davide's group", or dynamical environments evolve over cosmic time, perhaps 2G mergers today had higher z progenitors which had higher masses, e.g., $\featTen\,\Msun$ peak drifts a bit over cosmic time... something something metallicity and winds} the dynamical environments responsible for the $\sim \featTwenty\,\Msun$ peak are at a different evolutionary period from the $\sim \featTen\,\Msun$ dynamical mergers. 
 
-\jh{maybe compare peak significance in mass ratio mean differences with an inpainting prior}
+% \jh{maybe compare peak significance in mass ratio mean differences with an inpainting prior}
 
 \section{Methods}
 
@@ -138,9 +138,9 @@ Our second model is a bivariate Gaussian in $(\chieff, \chip)$,
 \begin{equation}
     p(\chieff, \chip \mid m_1, q) = \mathcal{N}\big(\vec{\mu}, C\big),
 \end{equation}
-whose means $\mu_{\chieff}, \mu_{\chip}$, standard deviations $\sigma_{\chieff}, \sigma_{\chip}$ and correlation coefficient $\rho$ are each Mat\'ern fields over $(m_1, q)$ (explicit form in Eq.~\eqref{eq: gaussian cov} of the Supplemental Material), truncated to the effective spins physical domain (Eq.~12 of \citet{iwaya_analytic_2025}). \jh{we also test some other models where we say each Gaussian parameter can vary with mass, mass ratio, redshift, but as a separable, additive evolution like in Sylvia's paper. TBD on how those look.} 
+whose means $\mu_{\chieff}, \mu_{\chip}$, standard deviations $\sigma_{\chieff}, \sigma_{\chip}$ and correlation coefficient $\rho$ are each Mat\'ern fields over $(m_1, q)$, truncated to the effective spins physical domain (Eq.~12 of \citet{iwaya_analytic_2025}). We also consider variations where the mean and standard deviation evolve separately, described in the supplemental material.
 
-Though a Gaussian model may be misspecified against the astrophysical shape of the $\chieff, \chip$ population, Gaussian models are attractive for their interpretative abilities. We may directly interpret the measured moments against their prior. The \flexiblespins model allows for generic, non-Gaussian spin distributions, but it induces a nontrivial prior on the implied moments (mean and standard deviation) of the spin distribution. For instance, it is plausible that the \flexiblespins model preferentially broadens in regions which are poorly constrained by the data, as the model reverts to the preferentially-smooth field prior. Data-poor regions in the \gaussianspins model, by contrast, should correspond to broader \textit{uncertainties} on the moments, as opposed to \textit{biases}. \jh{In practice, we observe similar constraints on the population moments for both models.}
+Though a Gaussian model may be misspecified against the astrophysical shape of the $\chieff, \chip$ population, Gaussian models are attractive for their interpretative abilities: we may directly interpret the measured moments against their prior. The \flexiblespins model allows for generic, non-Gaussian spin distributions, but it induces a nontrivial prior on the implied moments (mean and standard deviation) of the spin distribution. For instance, the \flexiblespins model preferentially \textit{broadens} in regions which are poorly constrained by the data, as the model reverts to the smooth field prior. Data-poor regions in the \gaussianspins model, by contrast, should correspond to broader \textit{uncertainties} on the moments, as opposed to \textit{biases}. \jh{check in final runs:} In practice, we observe similar constraints on the population moments for both models.
 
 \section{Mass peaks}
 
@@ -382,7 +382,7 @@ The additive model cannot represent interactions, for example a primary mass dep
 \begin{figure*}
     \centering
     \includegraphics[width=\linewidth]{draft/plots/peak_excess.pdf}
-    \caption{\red{Move to the SM. As Fig.~\ref{fig: peak excess}, for every peak window (rows) in every $q$ slice (columns: all $q$, $0.3 < q < 0.65$, $0.8 < q < 1$); boxed: each peak's own $q$ range. The excess appears only in the own-$q$ panels; the others show what the statistic gives without a feature.}}
+    \caption{Move to the SM. As Fig.~\ref{fig: peak excess}, for every peak window (rows) in every $q$ slice (columns: all $q$, $0.3 < q < 0.65$, $0.8 < q < 1$); boxed: each peak's own $q$ range. The excess appears only in the own-$q$ panels; the others show what the statistic gives without a feature.}
     \label{fig: peak excess grid}
 \end{figure*}
 

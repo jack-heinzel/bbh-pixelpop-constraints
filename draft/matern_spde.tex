@@ -1,0 +1,62 @@
+% Mat\'ern SPDE prior, adapted from J. Heinzel, \textit{An operator-based formalism for inference on the population of
+% gravitational-wave sources} (LIGO DCC). Input from supplemental.tex; self-contained, so it can be dropped.
+% Notation: the field amplitude is s (sigma in the DCC note), to avoid confusion with the spin widths.
+
+All population fields are Mat\'ern Gaussian Markov random fields (\acp{GMRF}) on a regular grid. They generalize the \ac{CAR} prior of the original \PixelPop~\cite{Heinzel:2024jlc} using the correspondence between Gaussian processes and \acp{SPDE}: a foundational result~\cite{Whittle:1954abc, Whittle:1963abc, lindgren_explicit_2011} shows that the two approaches are equivalent (modulo boundary conditions), and that the Mat\'ern class of covariance kernels corresponds to the simple \ac{SPDE}
+\begin{equation}
+    [\kappa^2 - \nabla\cdot (H\nabla)]^{\alpha/2} \mathcal{F}(x) = \mathcal{W}(x),
+    \label{eq: lrl spde}
+\end{equation}
+where $\mathcal{W}(x)$ is a white-noise source field, $\langle \mathcal{W}(x)\mathcal{W}(y)\rangle = \delta(x-y)$, $\alpha = D/2 + \nu$ for a Mat\'ern smoothness $\nu$ and field dimension $D$, and $H$ is a positive-definite diffusion matrix. The \ac{CAR} prior of \PixelPop is the special case $\sigma^{-1}[\kappa^2 - \nabla^2]^{1/2} \mathcal{F} = \mathcal{W}$. \acp{SPDE} are computationally efficient compared to general Gaussian process regression, which scales as $\mathcal{O}(N^3)$ in the number of latent sites, because they can exploit sparse linear algebra.
+
+\textit{Length scales.} We take $H$ diagonal and write $H = \mathrm{diag}(\kappa^2\ell_d^2/8\nu)$, so that the \ac{SPDE} becomes
+\begin{equation}
+    S(\vec{\ell},\nu)\, s^{-1}\left[1 - \sum_{d=1}^D\frac{\ell_d^2}{8\nu}\partial_d^2\right]^{\alpha/2} \mathcal{F}(x) = \mathcal{W}(x),
+    \label{eq: lrl spde reformated}
+\end{equation}
+absorbing $\kappa$ into an amplitude $s$ and introducing a scaling function $S(\vec{\ell},\nu)$ which enforces that the bin-averaged variance is exactly $s^2$ (Eq.~\ref{eq: s normalization}). With this choice, $\ell_d$ is the effective correlation range along axis $d$: \citet{lindgren_explicit_2011} found empirically that the Mat\'ern field with identity diffusion drops to $\sim 10\%$ correlation over a distance $\sqrt{8\nu}/\kappa$.
+
+\textit{Eigenbasis.} We set Neumann (zero-derivative) boundary conditions and take the lattice to be a tensor product of one-dimensional lattices of lengths $N_1, \dots, N_D$, with basis vectors $e_{\vec{i}} = \bigotimes_{d=1}^D e_{i_d}^{(d)}$. On a uniform grid, the finite-difference Laplacian along each axis is the tridiagonal, symmetric Toeplitz matrix
+\begin{equation}
+    -\nabla^2 \overset{\textrm{discrete}}{\longrightarrow} \Delta \propto \begin{pmatrix}
+        1 & -1 &  &  &  \\
+        -1 & 2 & -1 &  &  \\
+         & \ddots & \ddots & \ddots &  \\
+         &  & -1 & 2 & -1  \\
+         &  &  & -1 & 1
+    \end{pmatrix},
+    \label{eq: discrete laplacian}
+\end{equation}
+proportional to the univariate ICAR precision matrix used in older implementations of \PixelPop. Its eigenspectrum is analytic (the discrete cosine transform, type II)~\cite{Strang:1999dct},
+\begin{equation}
+    v_{k} = \sqrt{\frac{2-\delta_{k0}}{N}}\sum_{i=1}^{N} \cos\left(\frac{(2i-1)\pi k }{2N}\right) e_i, \qquad
+    \lambda_k = 4\sin^2\left(\frac{\pi k}{2N}\right),
+\end{equation}
+for $k \in \{0, \dots, N-1\}$, with $v_k^\top v_{k'} = \delta_{kk'}$. The discretized operator of Eq.~\eqref{eq: lrl spde reformated} is then diagonal in the tensor-product basis,
+\begin{equation}
+    v_{\vec{k}} = \bigotimes_{d=1}^{D}v_{k_d}, \qquad
+    \lambda_{\vec{k}} = s^{-1}S(\vec{\ell},\nu)\left[1 + \sum_{d=1}^D \frac{\ell_d^2}{8\nu}\lambda_{k_d}\right]^{\alpha/2},
+\end{equation}
+and the bin-averaged variance is $s^2$ for
+\begin{equation}
+    S(\vec{\ell},\nu) = \left(\frac{1}{N_{\rm tot}}\sum_{\vec{k}\neq 0}\left[1 + \sum_{d=1}^D \frac{\ell_d^2}{8\nu}\lambda_{k_d}\right]^{-\alpha}\right)^{1/2},
+    \label{eq: s normalization}
+\end{equation}
+with $N_{\rm tot} = \prod_d N_d$. Any stationary covariance kernel with Neumann boundary conditions is diagonal under the discrete cosine transform; we restrict to the Mat\'ern class for its broad applicability and flexibility.
+
+\textit{Sampling.} Rather than sampling the white-noise field directly, we sample in the eigenbasis of the discretized operator. The \ac{SPDE} decouples mode by mode, and because the eigenbasis is orthonormal, the projections of the discretized white noise are again independent standard normal variables. We therefore sample $z_{\vec{k}} \sim \mathcal{N}(0,1)$ for each $\vec{k}\neq 0$ and construct the field as
+\begin{equation}
+    \mathcal{F}(x) = \sum_{\vec{k}\neq 0} \frac{z_{\vec{k}}}{\lambda_{\vec{k}}}\, v_{\vec{k}}(x) + c_0 v_0.
+    \label{eq: eigenbasis sampling}
+\end{equation}
+This is a non-centered parameterization~\cite{Papaspiliopoulos:2007abc, Betancourt:2017ebh}: the metaparameters $(s, \vec{\ell}, \nu)$ enter only through the eigenvalues, so the latent variables $z_{\vec{k}}$ are a priori independent of them. This avoids the funnel-shaped posteriors of a centered parameterization, in which a small $s$ or long $\ell_d$ confines the field to a narrow region and no single step size of Hamiltonian Monte Carlo is appropriate everywhere. We sample the latent coefficients, the constant mode and the metaparameters jointly with the No-U-Turn Sampler~\cite{Hoffman:2014nuts} in \textsc{NumPyro}~\cite{Phan:2019numpyro, Bingham:2019pyro}, with a dense mass matrix for the metaparameters.
+
+\textit{The constant mode.} The $\vec{k} = 0$ eigenvector, the constant field, sets the overall offset. For a probability density, which all of our fields are, it is fixed by the normalization $\int \exp[\mathcal{F}(x)]\,dx = 1$. (For a log rate intensity, it would carry an improper uniform prior, equivalent to $\pi(R) \propto 1/R$ on the integrated rate.)
+
+\textit{Metaparameter priors.} The diagonalized \ac{SPDE} admits any positive $\nu$, $\ell_d$ and $s$. Sensible length scales lie in $\ell_d \in [1, N_d]$ bins: over a bounded domain, $\ell_d > N_d$ has a diminishing effect on the prior. As $\nu \to \infty$ the Mat\'ern kernel approaches the radial basis function kernel, indistinguishable in practice at $\nu \gtrsim 5$, while as $\nu \to 0$ the field becomes jagged. Unless stated otherwise, we sample $\ln\nu\sim \mathcal{N}(0,0.5)$, $\ln s\sim\mathcal{N}(0,2)$ and $\ln\ell_d \sim \mathcal{U}(0,\ln N_d)$.
+
+\textit{Boundary conditions.} Neumann boundary conditions are equivalent to an infinite Mat\'ern field with mirror-image sources at the boundaries~\cite{lindgren_explicit_2011}, so they inflate the prior variance near the edges of the domain, by up to a factor of $2^D$ at its corners.
+
+\textit{Monte Carlo robustness.} The smoother Mat\'ern prior is more robust to Monte Carlo uncertainty in the likelihood than the \ac{CAR} prior. With a likelihood variance threshold $\sigma^2_{\ln \mathcal{L}} < 1$, the error statistic of \citet{Heinzel:2025ogf} for \ac{CAR} \PixelPop inferences is typically $\hat{E}\sim 0.2$--$0.3$ bits (that much information in the posterior is lost to Monte Carlo uncertainty), against $\hat{E}\sim 0.05$ bits for the Mat\'ern model. We expect this is because the Mat\'ern field suppresses high-frequency modes, which concentrate the population weight on a few \ac{PE} samples and injections and so reduce the effective sample sizes of the Monte Carlo integrals.
+
+\textit{Conditional and normalized fields.} The mass field is a log density on the $(\ln m_1, q)$ grid, windowed to $m_2 > 3\,\Msun$ and normalized over the grid (Sec.~\ref{sm: mass model}). The spin fields are \textit{conditional} densities: at each $(m_1, q)$ cell, the spin field is normalized over the physical spin bins (Sec.~\ref{sm: spin models}), so any component that is constant in $(\chieff, \chip)$ cancels and is dropped. The \flexiblespins model is a single four-dimensional Mat\'ern field whose tensor-product basis is truncated to the lowest $K \times K$ modes in $(\ln m_1, q)$ and keeps all spin modes, so the conditional spin distribution varies smoothly across the mass plane and is evaluated by a contraction over mass modes without forming the four-dimensional grid (Sec.~\ref{sm: implementation}). In the \gaussianspins model, each parameter of the spin distribution is a constant plus a two-dimensional Mat\'ern field over $(\ln m_1, q)$, with the constant mode of the field set to zero so that the constant carries the mean; the additive variants replace this field by a sum of one-dimensional Mat\'ern fields, each with its constant mode set to zero.
