@@ -130,15 +130,17 @@ def pct(p, n=None):
     return f'{x:.{d}f}'
 
 
-def fmt(x, decimals=None):
+def fmt(x, decimals=None, strict=False):
     """median^{+hi}_{-lo} (90%), all to the decimals of the smaller error (error_decimals), or to ``decimals`` (MASS_DEC,
     Q_DEC: a quantity kept uniform across macros), with at least two significant figures in the larger of |median| and
-    the smaller error (user, 2026-10-30; a median near 0, e.g. a contrast, then follows its error)."""
+    the smaller error (user, 2026-10-30; a median near 0, e.g. a contrast, then follows its error). ``strict``: exactly
+    ``decimals``, no significant-figure rule (the Table 1 masses, e.g. the ~0.8 Msun width of the 10 Msun peak; user,
+    2026-11-08)."""
     lo, md, hi = np.nanpercentile(x, [5, 50, 95])
     err = min(hi - md, md - lo)
     d = error_decimals(err) if decimals is None else decimals
     scale = max(abs(md), err)
-    if scale > 0 and np.isfinite(scale):
+    if scale > 0 and np.isfinite(scale) and not (strict and decimals is not None):
         d = max(d, 1 - int(np.floor(np.log10(scale))))
     return f'{md:.{d}f}^{{+{hi - md:.{d}f}}}_{{-{md - lo:.{d}f}}}'
 
@@ -195,7 +197,7 @@ def main(runs):
             lines.append(f'% peak {name}: q in {qr}, m1 window {win} Msun; {bad} of {len(F)} draws dropped')
             for par, col in (('Mu', 1), ('Sigma', 2), ('Alpha', 4), ('FracGauss', 5)):
                 dec = MASS_DEC if par in ('Mu', 'Sigma') else None
-                lines.append(rf'\newcommand{{\peak{tex}{par}{suffix}}}{{{fmt(F[:, col], dec)}}}')
+                lines.append(rf'\newcommand{{\peak{tex}{par}{suffix}}}{{{fmt(F[:, col], dec, strict=dec is not None)}}}')
             # the fraction of draws with a peak inside the window (the summaries above are conditional on it)
             lines.append(rf'\newcommand{{\peak{tex}PeakFrac{suffix}}}{{{pct(1 - bad / len(F))}}}')
         diagnostic(run, p_m1_by_q, fits, os.path.join(REPO, 'plots', f'{run}_peak_fits.pdf'))
