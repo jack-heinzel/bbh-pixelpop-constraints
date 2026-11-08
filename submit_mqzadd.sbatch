@@ -7,6 +7,7 @@
 # Chains >= WARM_FROM (default 1) start from the baseline Gaussian's lowest-Var(ln L) draw for the mass field, the
 # redshift slope and the five offsets (results/inits/ppc_gwtc5_k100_gauss_minvar_massoffsets.npz), the 1D spin fields
 # near zero (setup_model's initial values); lower chains from a prior draw (two of three such starts failed for _zadd).
+# ZONLY=1 (user, 2026-11-03): no F1(ln m1) or F2(q), the spins depend on z alone (--z-only) -> ..._mqadd_zonly_zadd
 # Submit from the repository:
 #     sbatch submit_mqzadd.sbatch
 #     sbatch --array=0 --export=ALL,CHAIN=3 submit_mqzadd.sbatch      (one task as a new chain index)
@@ -29,6 +30,7 @@ PY=~/venvs/gwjax313/bin/python
 c=${CHAIN:-$SLURM_ARRAY_TASK_ID}
 M="--spin-mass-modes 100 --spin-model gauss --spin-z-modes 100 --z-bins 100 --z-additive --mq-additive"
 R=k100_gauss_kz100_zb100_mqadd_zadd
+[ "${ZONLY:-0}" = 1 ] && M="$M --z-only" && R=k100_gauss_kz100_zb100_mqadd_zonly_zadd
 cat=gwtc5
 L=results/logs; LOG=$L/launch.log
 mkdir -p $L

@@ -207,7 +207,7 @@ def population_likelihood(pp, posteriors, injections, event_weights, inj_weights
 def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_range_floor=0.05,
                 likelihood_correction=True, record_weights=False, spin_model='field', gauss_sd_floor=GAUSS_SD_FLOOR,
                 spin_q_modes=None, spin_z_modes=0, z_bins=10, spin_z_additive=False, spin_mass_additive=False, spin_q_only=False,
-                spin_m1_only=False,
+                spin_m1_only=False, spin_z_only=False,
                 _dense_cube=False):
     """NumPyro model and initial values. ``pixelpop_data`` pixelates the mass plane (log_mass_1, mass_ratio) with
     ``spde_matern=True``; its posteriors and injections carry chi_eff and chi_p, binned here onto ``n_spin_bins`` over
@@ -238,6 +238,8 @@ def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_
     'gauss_params' (5, Bm, Bq) and G as 'gauss_params_z' (5, Bz); no 'spin_moments' (rebuild them).
     ``spin_q_only`` (with spin_mass_additive; user, 2026-11-02): F1 = 0, the spins depend on q alone (no F1 sites).
     ``spin_m1_only`` (likewise): F2 = 0, the spins depend on ln m1 alone (no F2 sites).
+    ``spin_z_only`` (with spin_mass_additive and spin_z_additive; user, 2026-11-03): F1 = F2 = 0, the spins depend on
+    z alone, offset + G(z) (no F1 or F2 sites).
     ``spin_mass_additive`` ('gauss'; user, 2026-10-30): F(ln m1, q) = F1(ln m1) + F2(q) instead, 1D Matern fields on
     ``spin_mass_modes`` and ``spin_q_modes`` modes, each with its own amplitude, nu and range (F1: the 'gauss' sites,
     F2: GAUSS_Q_SITES), mean modes pinned. With ``spin_z_additive`` every parameter is offset + F1 + F2 + G: no
@@ -271,6 +273,11 @@ def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_
         raise ValueError('spin_q_only needs spin_mass_additive (it drops F1 from offset + F1(ln m1) + F2(q))')
     if spin_m1_only and (not spin_mass_additive or spin_q_only):
         raise ValueError('spin_m1_only needs spin_mass_additive and not spin_q_only (it drops F2 from offset + F1 + F2)')
+    if spin_z_only and (not (spin_mass_additive and spin_z_additive) or spin_q_only or spin_m1_only):
+        raise ValueError('spin_z_only needs spin_mass_additive and spin_z_additive, not spin_q_only / spin_m1_only '
+                         '(it drops F1 and F2 from offset + F1 + F2 + G)')
+    if spin_z_only:
+        spin_q_only = spin_m1_only = True                                                # no F1, no F2
     if zdep and kz > Bz:
         raise ValueError(f'spin_z_modes {kz} exceeds z_bins {Bz}')
 
@@ -417,7 +424,13 @@ def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_
                                  'log_ranges_spin', Be * Bp, lo=spin_lo)                                # (Be, Bp)
         elif spin_model == 'split':
             G = split_field()
-        if spin_model == 'gauss' and zdep:
+        if spin_model == 'gauss' and zdep and spin_z_only:
+            # z alone: theta = offset + G(z), the same at every (m1, q), so the conditional's normalization depends on
+            # (q, z) only (the window depends on q); computed once instead of per (m1, q, z) cell (user, 2026-11-04:
+            # the generic path below took 25-40 s per NUTS step, ~100x the no-z models)
+            theta_z = gauss_fields()[:, 0, 0]                                             # (5, Bz)
+            event_f = lambda im, iq, iz, ie, ip: gauss_log_kernel(theta_z[:, iz], e_c[ie], p_c[ip], gauss_sd_floor)
+        elif spin_model == 'gauss' and zdep:
             theta = gauss_fields()                                                        # (5, Bm, Bq, Bz)
             slab_T = lambda m: gauss_log_kernel(theta[:, m][..., None, None], e_c[:, None], p_c[None, :],
                                                 gauss_sd_floor)                           # (Bq, Bz, Be, Bp)
@@ -448,7 +461,16 @@ def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_
             slab_T = lambda m: jnp.einsum('k,ql,klep->qep', Vm[m], Vq, G)
             event_f = lambda im, iq, ie, ip: jnp.einsum('...k,...l,kl...->...', Vm[im], Vq[iq], G[:, :, ie, ip])
 
-        if zdep:
+        if zdep and spin_z_only:
+            T = (gauss_log_kernel(theta_z[..., None, None], e_c[:, None], p_c[None, :], gauss_sd_floor)[None]
+                 + log_support[:, None])                                                  # (Bq, Bz, Be, Bp)
+            log_z_qz = LSE(T + log_window[:, None], axis=(2, 3))                          # (Bq, Bz)
+
+            def log_p_at(idx):
+                im, iq, iz, ie, ip = idx
+                return (L[im, iq] - log_tot + event_f(im, iq, iz, ie, ip) + log_support[iq, ie, ip]
+                        - log_z_qz[iq, iz])
+        elif zdep:
             # as below, per (m1, q, z) cell; only ln Z and the conditional's moments (the population marginals need
             # p(z), a parametric model sampled below)
             @jax.checkpoint
@@ -571,8 +593,8 @@ def setup_model(pixelpop_data, spin_mass_modes=10, n_spin_bins=(100, 100), spin_
 
 
 def mass_matrix_blocks(spin_model='field', spin_z_additive=False, spin_mass_additive=False, spin_q_only=False,
-                       spin_m1_only=False):
+                       spin_m1_only=False, spin_z_only=False):
     """Dense mass-matrix blocks for NUTS: each field's hyperparameters together (latent white sites stay diagonal)."""
-    spin = ('gauss_offsets',) if spin_q_only else SPIN_SITES[spin_model]                # q only: no F1 hyperparameters
-    return ([L_SITES, spin] + ([GAUSS_Q_SITES] if spin_mass_additive and not spin_m1_only else [])
+    spin = ('gauss_offsets',) if spin_q_only or spin_z_only else SPIN_SITES[spin_model]  # no F1 hyperparameters
+    return ([L_SITES, spin] + ([GAUSS_Q_SITES] if spin_mass_additive and not (spin_m1_only or spin_z_only) else [])
             + ([GAUSS_Z_SITES] if spin_z_additive else []))

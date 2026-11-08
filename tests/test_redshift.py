@@ -178,3 +178,31 @@ def test_m1_only_gauss():
     for bad in (dict(spin_m1_only=True), dict(spin_mass_additive=True, spin_q_only=True, spin_m1_only=True)):
         with np.testing.assert_raises(ValueError):
             setup_model(pp, spin_mass_modes=KM, n_spin_bins=SPIN_BINS, spin_model='gauss', **bad)
+
+
+def test_z_only_gauss():
+    """spin_z_only: theta = offset + G(z), no F1 or F2 sites; equals the fully additive model with F1 = F2 = 0."""
+    pp, kw = synthetic()
+    common = dict(spin_mass_modes=KM, n_spin_bins=SPIN_BINS, spin_model='gauss', spin_q_modes=KQ, spin_z_modes=KZ,
+                  z_bins=BZ, spin_z_additive=True, spin_mass_additive=True)
+    a, init_a = setup_model(pp, **common)
+    b, init_b = setup_model(pp, **common, spin_z_only=True)
+    assert not any(k in init_b for k in ('_gauss_sites', 'lnsigma_gauss', 'log_nu_gauss', 'log_ranges_gauss',
+                                         '_gauss_q_sites') + M.GAUSS_Q_SITES)
+    rng = np.random.default_rng(29)
+    wz = jnp.asarray(rng.normal(size=np.shape(init_b['_gauss_z_sites'])))
+    lat_b = dict(common_latents(init_b), _gauss_z_sites=wz)
+    lat_a = dict(common_latents(init_a), _gauss_z_sites=wz, _gauss_sites=jnp.zeros_like(init_a['_gauss_sites']),
+                 _gauss_q_sites=jnp.zeros_like(init_a['_gauss_q_sites']))
+    np.testing.assert_allclose(lnl(b, lat_b, kw), lnl(a, lat_a, kw), rtol=1e-6, atol=1e-4)
+    t = trace_at(b, lat_b, **kw)
+    theta = np.asarray(t['gauss_params']['value'])
+    np.testing.assert_allclose(np.ptp(theta.reshape(5, -1), axis=1), 0., atol=1e-12)    # constant in (m1, q)
+    assert np.ptp(np.asarray(t['gauss_params_z']['value']), axis=1).min() > 1e-3
+    blocks = M.mass_matrix_blocks('gauss', True, True, spin_z_only=True)
+    assert M.GAUSS_Q_SITES not in blocks and ('gauss_offsets',) in blocks
+    for bad in (dict(spin_z_only=True), dict(spin_mass_additive=True, spin_z_only=True),
+                dict(spin_mass_additive=True, spin_z_modes=KZ, z_bins=BZ, spin_z_additive=True, spin_z_only=True,
+                     spin_q_only=True)):
+        with np.testing.assert_raises(ValueError):
+            setup_model(pp, spin_mass_modes=KM, n_spin_bins=SPIN_BINS, spin_model='gauss', **bad)

@@ -21,8 +21,8 @@ figure:
            plots/spin_peak_regions_slices.pdf   Fig. 2 with slice panels (median and 90% over draws)
            plots/spin_peak_regions_marginals.pdf   Fig. 2 with 1D marginal panels of both models (median and 90%)
            plots/mass_spin_zoom_talk.pdf   for talks: median p(m1, q), zooms on the peak regions, their spin blocks
-           plots/peak_bookkeeping.pdf      Fig. 3: (a) peak location against mean q (joint fits, bounded KDE);
-                                           (b) fit-free retained fraction for both pairs; one column
+           plots/peak_bookkeeping.pdf      Fig. 3: (a) peak location against mean q (joint fits, Gaussian KDE);
+                                           (b) mean retained fraction for both pairs; one column
 
 The panels are drawn as in analysis.summary_figure (90% bands and medians per q range, black lines for all q; p(q | m1)
 median with the 90% / 99% intervals of <q>), on m1 from M_MIN to 200 Msun. --core: the chi_eff rows use
@@ -42,6 +42,7 @@ import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy.stats import gaussian_kde
 from matplotlib.lines import Line2D
 from matplotlib.patches import Patch
 
@@ -531,9 +532,18 @@ def talk_figure(r):
     return fig
 
 
+def feature_masses():
+    """The draft's peak labels, \\featTen etc. in draft/letter.tex, keyed as peak_fits.PEAKS ('10', '35', '20', '60')."""
+    import re
+    tex = open(os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'draft', 'letter.tex')).read()
+    names = {'10': 'Ten', '20': 'Twenty', '35': 'ThirtyFive', '60': 'Sixty'}
+    return {k: re.search(r'\\newcommand\{\\feat' + v + r'\}\{(\d+)', tex).group(1) for k, v in names.items()}
+
+
 def bookkeeping_figure():
-    """Fig. 3: (a) each peak's location against the mean q of its peak (joint fits; reflection-bounded KDE, 90% solid
-    and 50% dashed; both spin models); (b) the fit-free retained fraction mu_hi / M_lo for both pairs."""
+    """Fig. 3: (a) each peak's location against the mean q of its peak (joint fits; Gaussian KDE, no reflection, 90% solid
+    and 50% dashed; both spin models); (b) the retained fraction mu_hi / <m1 (1 + q)>_lo for both pairs, the lower peak's mean total mass from
+    binaries drawn from its fitted Gaussians (peak_pairs.mc_total_mass)."""
     import window_fits_fig as W
     import peak_pairs as PP
     from peak_fits import PEAKS
@@ -541,13 +551,13 @@ def bookkeeping_figure():
     fig, (a1, a2) = plt.subplots(2, 1, figsize=(ONE_COL, 4.5), gridspec_kw=dict(height_ratios=(1.3, 1)))
     colours = {'Flexible': 'C0', 'Gaussian': 'C3'}
     for name, (_, win, _) in PEAKS.items():
-        lo, hi = (np.log(win[0]), 0.), (np.log(win[1]), 1.)
-        X, Y = np.meshgrid(np.linspace(lo[0], hi[0], 120), np.linspace(0, 1, 120))
+        pad = 0.3                                           # plain (unreflected) KDE: let the contours close
+        X, Y = np.meshgrid(np.linspace(np.log(win[0]) - pad, np.log(win[1]) + pad, 150), np.linspace(-pad, 1 + pad, 150))
         grid = np.vstack([X.ravel(), Y.ravel()])
         for run, (label, _) in W.RUNS.items():
             st = post[run][name]
             xy = np.vstack([np.log(st['mu']), st['qmean']])
-            dens = W.bounded_kde(xy, lo, hi)
+            dens = gaussian_kde(xy)
             a1.contour(np.exp(X), Y, dens(grid).reshape(X.shape), levels=sorted(W.hpd_levels(dens, xy)),
                        colors=colours[label], linewidths=(1.0, 0.7), linestyles=('-', '--'))
     m1_axis(a1, True); a1.set_xlim(4, 110)
@@ -558,20 +568,99 @@ def bookkeeping_figure():
     for run, (label, _) in PP.RUN_LABELS.items():
         for pair, col in pair_col.items():
             st = PP.pair_stats(run, *pair)
-            a2.hist(st['retained_mode'], bins=bins, density=True, histtype='step', color=col, lw=1.0,
+            a2.hist(st['retained_mean'], bins=bins, density=True, histtype='step', color=col, lw=1.0,
                     ls='-' if label == 'Flexible' else '--')
     a2.axvline(PP.RETAINED, color='k', lw=0.8, ls=':')
     a2.axvspan(1., bins[-1], color='0.92', zorder=0, lw=0)
     a2.set_xlim(bins[0], bins[-1]); a2.set_yticks([])
-    a2.set_xlabel(r'retained fraction $m_{1,\mathrm{hi}} / M_\mathrm{lo}$'); a2.set_ylabel('density')
+    a2.set_xlabel(r"$\langle m_1 \rangle[\mathrm{B}] \,/\, \langle M_\mathrm{tot} \rangle[\mathrm{A}]$"); a2.set_ylabel('density')
     handles = ([Line2D([], [], color=c, lw=1.0) for c in pair_col.values()] +
                [Line2D([], [], color='0.3', lw=1.0), Line2D([], [], color='0.3', lw=1.0, ls='--')])
-    labels = [r'$\sim 10 \to \sim 20\,\textrm{M}_\odot$', r'$\sim 35 \to \sim 60\,\textrm{M}_\odot$', 'Flexible', 'Gaussian']
+    f = feature_masses()
+    labels = [rf'A $= {f[lo]}$, B $= {f[hi]}\,\textrm{{M}}_\odot$' for lo, hi in pair_col] + ['Flexible', 'Gaussian']
+    a2.set_ylim(0, 1.6 * a2.get_ylim()[1])                  # headroom: the legend above the histograms
     a2.legend(handles, labels, loc='upper right', **LEG)
     for ax, t in ((a1, '(a)'), (a2, '(b)')):
         ax.text(0.97 if ax is a1 else 0.03, 0.96, t, transform=ax.transAxes, va='top',
                 ha='right' if ax is a1 else 'left')
     fig.tight_layout(); fig.subplots_adjust(hspace=0.38)
+    return fig
+
+
+RETAIN = 0.95          # remnant mass / total mass (~5% radiated)
+NS_REM = 4             # sub-cells per (ln m1, q) cell edge when binning m_rem = RETAIN m1 (1 + q)
+
+
+def remnant_matrix(q_band):
+    """(B*B, B) weights taking the windowed p(ln m1, q) cell probabilities to p(ln m_rem, q in q_band) per d ln m on
+    A.lnm_edges, m_rem = RETAIN m1 (1 + q): each cell split into NS_REM x NS_REM sub-cells, binned by their centres."""
+    du = (np.arange(NS_REM) + 0.5) / NS_REM - 0.5
+    lr = (np.log(RETAIN) + A.lnm_c[:, None, None, None] + du[None, :, None, None] * A.dlnm
+          + np.log1p(A.q_c[None, None, :, None] + du[None, None, None, :] * A.dq))          # (Bm, NS, Bq, NS)
+    idx = np.floor((lr - A.lnm_edges[0]) / A.dlnm).astype(int)
+    idx = np.moveaxis(idx, 2, 1).reshape(A.B * A.B, NS_REM ** 2)
+    keep = np.broadcast_to(((A.q_c >= q_band[0]) & (A.q_c <= q_band[1]))[None], (A.B, A.B)).ravel()
+    W = np.zeros((A.B * A.B, A.B))
+    for k in range(NS_REM ** 2):
+        ok = keep & (idx[:, k] >= 0) & (idx[:, k] < A.B)
+        np.add.at(W, (np.nonzero(ok)[0], idx[ok, k]), 1. / NS_REM ** 2)
+    return W * A.dq                                # cell probability = p dlnm dq; per d ln m_rem: / dlnm cancels dlnm
+
+
+def remnant_densities(r, qa, qb):
+    """Per draw, on the ln m1 grid and from the same normalized windowed p(ln m1, q) (so their ratio is a count
+    ratio): the remnants of the near-equal-mass band, p(ln m_rem, q in qa), and the primaries of the low-q band,
+    p(ln m1, q in qb), both per d ln m."""
+    P = r.p_mass.reshape(len(r.p_mass), -1).astype(float)
+    rem = P @ remnant_matrix(qa)
+    selb = (A.q_c >= qb[0]) & (A.q_c <= qb[1])
+    prim = r.p_mass[:, :, selb].astype(float).sum(2) * A.dq
+    return rem, prim
+
+
+def remnant_figure(R, low_frac=0.01):
+    """Remnant check (user, 2026-11-08): top, 90% bands (and medians) of p(ln m_rem, 0.8 < q < 1), the remnant mass
+    m_rem = 0.95 m1 (1 + q) of the near-equal-mass binaries, and of p(ln m1, 0.3 < q < 0.65), the primaries of the low-q
+    binaries; bottom, their ratio per draw (median, 90%) on a log scale, the number of low-q primaries per near-equal-mass
+    remnant at that mass (top on a log scale: the narrow ~18 Msun remnant peak would hide the rest). If the low-q primaries are those remnants, the ratio is flat in m (its level, the yield, is
+    not a retention fraction). Unstable where the remnant density is small: masses where its median is below low_frac
+    of its maximum are greyed. One column per spin model; vertical lines at the draft's peak labels (featTwenty, featSixty)."""
+    from peak_fits import PEAKS
+    qa, qb = PEAKS['10'][0], PEAKS['20'][0]
+    f = feature_masses()
+    fig, axes = plt.subplots(2, len(R), figsize=(TWO_COL, 3.6), sharex=True, sharey='row',
+                             gridspec_kw=dict(height_ratios=(1, 1), hspace=0.06, wspace=0.06), squeeze=False)
+    cols = {'rem': 'C9', 'prim': 'C1'}
+    m = A.m_c; sel = (m >= M_MIN) & (m <= 150)
+    for j, (run, r) in enumerate(R.items()):
+        rem, prim = remnant_densities(r, qa, qb)
+        a1, a2 = axes[0, j], axes[1, j]
+        for y, c in ((rem, cols['rem']), (prim, cols['prim'])):
+            lo, md, hi = np.percentile(y, [5, 50, 95], axis=0)
+            a1.fill_between(m[sel], lo[sel], hi[sel], color=c, alpha=0.3, lw=0)
+            a1.plot(m[sel], md[sel], color=c, lw=0.9)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            ratio = prim / rem
+        lo, md, hi = np.nanpercentile(np.where(np.isfinite(ratio), ratio, np.nan), [5, 50, 95], axis=0)
+        a2.fill_between(m[sel], lo[sel], hi[sel], color='0.3', alpha=0.3, lw=0)
+        a2.plot(m[sel], md[sel], color='k', lw=0.9)
+        med_rem = np.median(rem, 0)
+        low = med_rem < low_frac * med_rem[sel].max()
+        for ax in (a1, a2):
+            for k in np.nonzero(low & sel)[0]:
+                ax.axvspan(m_edges[k], m_edges[k + 1], color='0.92', lw=0, zorder=0)
+            for key in ('20', '60'):
+                ax.axvline(float(f[key]), color='0.5', lw=0.6, ls=':')
+            ax.grid(True, which='major', axis='y', **GRID)
+        a2.set_yscale('log'); a2.set_ylim(1e-2, 1e2)
+        m1_axis(a2, True); a2.set_xlim(M_MIN, 150)
+        a1.text(0.03, 0.95, RUNS[run], transform=a1.transAxes, va='top', ha='left')
+        a1.set_yscale('log'); a1.set_ylim(1e-3, 10)
+    axes[0, 0].set_ylabel(r'$p(\ln m)$')
+    axes[1, 0].set_ylabel(r'$p_{\rm B}(\ln m_1) / p_{\rm A}(\ln m_{\rm rem})$')
+    axes[0, -1].legend([Line2D([], [], color=c, lw=0.9) for c in cols.values()],
+                       [rf'A: $m_{{\rm rem}} = {RETAIN:g}\,M_{{\rm tot}}$, ${qa[0]:g} < q < {qa[1]:g}$',
+                        rf'B: $m_1$, ${qb[0]:g} < q < {qb[1]:g}$'], loc='upper right', **LEG)
     return fig
 
 
@@ -900,13 +989,13 @@ def corr_map_figure(R, core):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'chip', 'chiq', 'chiqm', 'corr', 'm2', 'spin', 'book', 'talk', 'all'))
+    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'chip', 'chiq', 'chiqm', 'corr', 'm2', 'spin', 'book', 'remnant', 'talk', 'all'))
     ap.add_argument('--core', action='store_true')
     ap.add_argument('--prior', action='store_true', help='chi / chip: overlay the spin prior (macros/spin_prior.py)')
     ap.add_argument('--lvk', action='store_true', help='chiq: overlay the GWTC-5 chi_eff | q models (lvk_chi_q)')
     ap.add_argument('--mean-asinh', type=float, default=0.03)
     args = ap.parse_args()
-    need = {'mass': list(RUNS), 'chi': list(RUNS), 'chip': list(RUNS), 'chiq': list(RUNS), 'chiqm': list(RUNS), 'corr': list(RUNS), 'm2': list(RUNS), 'talk': list(RUNS)[:1],
+    need = {'mass': list(RUNS), 'chi': list(RUNS), 'chip': list(RUNS), 'chiq': list(RUNS), 'chiqm': list(RUNS), 'corr': list(RUNS), 'm2': list(RUNS), 'remnant': list(RUNS), 'talk': list(RUNS)[:1],
             'all': list(RUNS)}.get(args.what, [])
     R = {run: A.load_light(run) for run in need}
     import pixelpop  # noqa: F401  (its import resets matplotlib's rcParams; import it before the style)
@@ -926,6 +1015,8 @@ def main():
         plt.rcParams.update(SMALL_RC)
     if args.what in ('book', 'all'):
         plot_style.save(bookkeeping_figure(), 'peak_bookkeeping')
+    if args.what in ('remnant', 'all'):
+        plot_style.save(remnant_figure(R), 'remnant_vs_low_q_primaries')
     if args.what in ('chip', 'all'):
         for r in R.values():
             if r.MOM.shape[-1] == 2:

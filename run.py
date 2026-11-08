@@ -42,6 +42,9 @@ def make_parser():
                     help="with --mq-additive: no F1(ln m1), the spins depend on q alone (model.py spin_q_only); adds '_qonly'")
     ap.add_argument('--m1-only', action='store_true',
                     help="with --mq-additive: no F2(q), the spins depend on ln m1 alone (model.py spin_m1_only); adds '_m1only'")
+    ap.add_argument('--z-only', action='store_true',
+                    help="with --mq-additive --z-additive: no F1, F2, the spins depend on z alone (model.py spin_z_only); "
+                         "adds '_zonly'")
     ap.add_argument('--mq-additive', action='store_true',
                     help="gauss: F(ln m1, q) = F1(ln m1) + F2(q), 1D fields on --spin-mass-modes / --spin-q-modes modes "
                          "(model.py spin_mass_additive; with --z-additive, offset + F1 + F2 + G(z)); adds '_mqadd'")
@@ -102,6 +105,7 @@ def run_name(args):
             + (f'_kz{args.spin_z_modes}' if args.spin_z_modes else '')
             + (f'_zb{args.z_bins}' if args.spin_z_modes and args.z_bins != 10 else '')
             + ('_mqadd' if args.mq_additive else '') + ('_qonly' if args.q_only else '') + ('_m1only' if args.m1_only else '')
+            + ('_zonly' if args.z_only else '')
             + ('_zadd' if args.z_additive else '')
             + (f'_sdfloor{args.gauss_sd_floor:g}' if args.spin_model == 'gauss' and args.gauss_sd_floor != 0.02 else '')
             + (f'_neff{args.event_neff_cut:g}' if args.event_neff_cut != 100. else '')
@@ -168,7 +172,7 @@ def build(args, name, record_weights=False):
                                          gauss_sd_floor=args.gauss_sd_floor, spin_q_modes=args.spin_q_modes,
                                          spin_z_modes=args.spin_z_modes, z_bins=args.z_bins,
                                          spin_z_additive=args.z_additive, spin_mass_additive=args.mq_additive,
-                                         spin_q_only=args.q_only, spin_m1_only=args.m1_only)
+                                         spin_q_only=args.q_only, spin_m1_only=args.m1_only, spin_z_only=args.z_only)
     return prob_model, init, posteriors, injections, pp
 
 
@@ -231,7 +235,8 @@ def main():
     scalar_spin = [k for k in model.SPIN_SITES[args.spin_model] if k.startswith('lnsigma') and k != 'lnsigma_gauss']
     print_keys = (['log_likelihood', 'log_likelihood_variance', 'log_likelihood_correction', 'lnsigma', *scalar_spin,
                    'detection_efficiency'] + [h for h, (_, d) in pp.priors.items() if d is not dist.Delta])
-    dense = model.mass_matrix_blocks(args.spin_model, args.z_additive, args.mq_additive, args.q_only, args.m1_only)
+    dense = model.mass_matrix_blocks(args.spin_model, args.z_additive, args.mq_additive, args.q_only, args.m1_only,
+                                     args.z_only)
     if args.parametric:
         import parametric
         print_keys = ['log_likelihood', 'log_likelihood_variance', 'log_likelihood_correction', 'zeta', 'mpp_1_hi',

@@ -87,8 +87,27 @@ def compute_modes(run):
     print('saved', modes_path(run))
 
 
+def mc_total_mass(F, n=20000, seed=0, window=None):
+    """Mean total mass M = m1 (1 + q) of each draw's fitted peak (joint_fits rows F), from n binaries drawn
+    explicitly: m1 ~ N(mu, sigma) (kept > 3 Msun, or inside ``window``), then q ~ N(mu_q, sigma_q) truncated to
+    [3 Msun / m1, 1] at that m1, by the inverse CDF. Unlike mu (1 + mean q), this carries the widths: the m1
+    truncation and the m1 dependence of q's lower bound."""
+    from scipy.special import ndtr, ndtri
+    rng = np.random.default_rng(seed)
+    out = np.empty(len(F))
+    lo_m, hi_m = window if window is not None else (3., np.inf)
+    for i, (_, mu, sig, mq, sq, *_) in enumerate(F):
+        a, b = ndtr((lo_m - mu) / sig), ndtr((hi_m - mu) / sig)          # m1: truncated Gaussian
+        m1 = mu + sig * ndtri(a + (b - a) * rng.random(n))
+        qa, qb = ndtr((3. / m1 - mq) / sq), ndtr((1. - mq) / sq)
+        q = mq + sq * ndtri(qa + (qb - qa) * rng.random(n))
+        out[i] = np.mean(m1 * (1 + q))
+    return out
+
+
 def pair_stats(run, lo, hi):
-    """Per-draw retained fraction (mean q and mu_q), R and location ratio, for draws with both peaks."""
+    """Per-draw retained fraction (mean q and mu_q; mean: mu_hi over the mean total mass of binaries drawn from the
+    fitted lower peak, mc_total_mass), R and location ratio, for draws with both peaks."""
     d = np.load(npz_path(run))
     A, B = d[lo], d[hi]
     ok = np.all(np.isfinite(A), 1) & np.all(np.isfinite(B), 1)
@@ -96,6 +115,8 @@ def pair_stats(run, lo, hi):
     qmean = q_moments(A)[0]
     M, M_muq = A[:, 1] * (1 + qmean), A[:, 1] * (1 + A[:, 3])
     out = {'retained': B[:, 1] / M, 'retained_muq': B[:, 1] / M_muq, 'R': M / B[:, 1], 'loc': B[:, 1] / A[:, 1]}
+    Mt = mc_total_mass(A)                                  # <M_lo> from binaries drawn from the fitted peak
+    out.update(Mtot_mean=Mt, retained_mean=B[:, 1] / Mt)
     if os.path.exists(modes_path(run)):
         m = np.load(modes_path(run))
         Mt, mh = m[f'Mtot_{lo}'], m[f'm1_{hi}']
@@ -118,6 +139,11 @@ def write_tex(S):
                              ('LocRatio', 'loc')):
                 lines.append(rf'\newcommand{{\pair{tex}{par}{suffix}}}{{{fmt(s[key])}}}')
             lines.append(rf'\newcommand{{\pair{tex}QuantileRetained{suffix}}}{{{pct(np.mean(s["retained"] < RETAINED))}}}')
+            lines.append(f'% mean version (Fig. 3b): mu_hi / <m1 (1 + q)>_lo, binaries drawn from the fitted lower peak')
+            lines.append(rf'\newcommand{{\pair{tex}MTotMean{suffix}}}{{{fmt(s["Mtot_mean"], MASS_DEC)}}}')
+            lines.append(rf'\newcommand{{\pair{tex}RetainedMean{suffix}}}{{{fmt(s["retained_mean"])}}}')
+            lines.append(rf'\newcommand{{\pair{tex}QuantileRetainedMean{suffix}}}'
+                         rf'{{{pct(np.mean(s["retained_mean"] < RETAINED))}}}')
             if 'retained_mode' in s:
                 lines.append(f'% fit-free: modes of p(M | q band) and p(m1 | q band); {len(s["retained_mode"])} draws')
                 for par, key in (('MTotMode', 'Mtot_mode'), ('HiMode', 'hi_mode'), ('RetainedMode', 'retained_mode')):

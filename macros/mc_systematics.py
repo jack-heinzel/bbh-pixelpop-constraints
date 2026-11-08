@@ -25,7 +25,11 @@ order, so they line up with the quantities. Also saved: the precision statistic 
 Quantities (each per draw; analysis.load_light and its spin cache): ln p(ln m1, q) (windowed); ln p(m1 | q range) for
 all q and analysis.SUMMARY_Q_RANGES; per-cell (m1, q) mean and sd of chi_eff (also |chi_eff| < CHI_CORE) and chi_p;
 the q-averaged chi_eff / chi_p mean and sd against m1 (all q and each q range; chi_eff also core), as the paper's
-figures; and the m1-averaged ones against q (paper_figs.m1_averaged_moments).
+figures; and the m1-averaged ones against q (paper_figs.m1_averaged_moments). Also the mean and width of each mass
+peak from the one-dimensional windowed fits of Table 1 (peak_fits.fit_peak on p(m1 | q range), peak_<name>_mu and
+_sigma; user, 2026-11-04). A fit fails or ends on a bound in some draws (NaN; the table drops them): every quantity is
+taken over the draws where it is finite, df_n = f_n - mean over those draws and 0 elsewhere, normalized by their number
+(the shift of the mean over that subset). Quantities finite in fewer than half the draws are left out.
 """
 import argparse
 import os
@@ -91,6 +95,11 @@ def quantities(run):
     for spin, short, core in (('chi_eff', 'eff', False), ('chi_eff', 'eff_core', True), ('chi_p', 'p', False)):
         M = m1_averaged_moments(r, core, spin)
         Q[f'mu_{short}_q'], Q[f'sd_{short}_q'] = M['mean'].astype(float), M['sd'].astype(float)
+    from peak_fits import PEAKS, fit_peak                       # Table 1: the windowed Gaussian + power-law fits
+    by_q = {qr: A.p_m1_given_q_range(r, qr) for qr in {v[0] for v in PEAKS.values()}}
+    for name, (qr, win, _) in PEAKS.items():
+        fit = fit_peak(by_q[qr], win)
+        Q[f'peak{name}_mu'], Q[f'peak{name}_sigma'] = fit[:, 1:2].astype(float), fit[:, 2:3].astype(float)
     return r, Q
 
 
@@ -126,11 +135,16 @@ def main(runs, chunk, check, block=4096):
         shapes = {k: Q[k].shape[1:] for k in names}
         F = np.concatenate([Q[k][:N].reshape(N, -1) for k in names], 1)                     # (N, n_q)
         del Q
-        good = np.all(np.isfinite(F), 0)
-        F = np.where(good, F, 0.)
-        dF = F - F.mean(0)
-        sig_stat = np.where(good, dF.std(0), np.nan)
-        print(f'{run}: {N} draws, {F.shape[1]} quantities ({good.sum()} finite in every draw), '
+        fin = np.isfinite(F)
+        n_fin = fin.sum(0)
+        good = n_fin >= N / 2
+        F = np.where(fin, F, 0.)
+        mean = F.sum(0) / np.maximum(n_fin, 1)
+        dF = np.where(fin, F - mean, 0.)                                                  # 0 where f is undefined
+        sig_stat = np.where(good, np.sqrt((dF ** 2).sum(0) / np.maximum(n_fin, 1)), np.nan)
+        scale = np.where(good, 1. / np.maximum(n_fin, 1), 0.)                             # 1 / (draws where finite)
+        print(f'{run}: {N} draws, {F.shape[1]} quantities ({np.all(fin, 0).sum()} finite in every draw, '
+              f'{good.sum()} in at least half), '
               f'{time.time() - t0:.0f} s to load', flush=True)
         lats = list(itertools.islice(latent_draws(run, keys, r.n_draws), N))     # in memory: read once, not per pass
         draws = lambda: iter(lats)
@@ -157,7 +171,7 @@ def main(runs, chunk, check, block=4096):
         c = jnp.concatenate([jnp.repeat(1. / (counts * (counts - 1.)), npe),
                              jnp.full(n_inj, n_obs ** 2 / (T * (T - 1.)), jnp.float32)])  # c_i
         n_tot = len(c)
-        dFj = jnp.asarray(dF.T / N, jnp.float32)                                           # (n_q, N)
+        dFj = jnp.asarray(dF.T * scale[:, None], jnp.float32)                              # (n_q, N)
         S = jnp.zeros(F.shape[1], jnp.float32)
         m1, m2 = np.zeros(n_tot), np.zeros(n_tot)                       # sum_n w~ and sum_n w~^2 per sample
         for start in range(0, n_tot, chunk):
@@ -183,7 +197,7 @@ def main(runs, chunk, check, block=4096):
                                                               event_counts=counts)) for m in range(N)]
                           for n in range(N)])
             idx = np.flatnonzero(good)[np.linspace(0, good.sum() - 1, 20).astype(int)]
-            explicit = np.sqrt(np.maximum(np.einsum('nq,nm,mq->q', dF[:, idx], C, dF[:, idx]) / N ** 2, 0.))
+            explicit = np.sqrt(np.maximum(np.einsum('nq,nm,mq->q', dF[:, idx], C, dF[:, idx]) * scale[idx] ** 2, 0.))
             print('  explicit (population_error) / factorized sigma_syst:', np.round(explicit / sig_syst[idx], 4))
             prec = (np.mean(np.diag(C)) - np.mean(C)) / 2 / np.log(2)
             print(f'  precision statistic, explicit: {prec:.4f} bits (factorized {precision:.4f})', flush=True)
@@ -194,6 +208,9 @@ def main(runs, chunk, check, block=4096):
             for key, x in (('ratio', ratio), ('syst', sig_syst), ('stat', sig_stat)):
                 out[f'{key}/{k}'] = x[off:off + n].reshape(shapes[k])
             off += n
+        for k in names:
+            if k.startswith('peak'):
+                print(f'  {k}: sigma_syst / sigma_stat {out["ratio/" + k].item():.3f}', flush=True)
         np.savez(out_path(run), precision_bits=precision, n_draws=N, **out)
         print('saved', out_path(run), f'{time.time() - t0:.0f} s', flush=True)
 
