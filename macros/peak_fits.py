@@ -146,34 +146,62 @@ def fmt(x, decimals=None, strict=False):
 
 
 def diagnostic(run, p_m1_by_q, fits, path):
+    """One column per peak. Top: the PixelPop p(m1 | q band) (90% band, median) against the Gaussian + power-law fit
+    (90% band, median; median Gaussian and power-law parts), the fit window shaded, the q band in each panel's label.
+    Bottom: the residual ln[p_PixelPop / p_fit] per draw, each draw's fit against its own density (median, 90%), over
+    the window (user, 2026-11-09)."""
     import matplotlib
     matplotlib.use('Agg')
     import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
     import plot_style
     plot_style.apply()
-    fig, axes = plt.subplots(1, len(PEAKS), figsize=(4.5 * len(PEAKS), 3.8))
-    for ax, (name, (qr, win, _)) in zip(axes, PEAKS.items()):
+    fig, axes = plt.subplots(2, len(PEAKS), figsize=(4.5 * len(PEAKS), 5.6), sharex='col',
+                             gridspec_kw=dict(height_ratios=(2.6, 1), hspace=0.05), squeeze=False)
+    for k, (name, (qr, win, _)) in enumerate(PEAKS.items()):
+        ax, ar = axes[0, k], axes[1, k]
         sel = (A.m_c >= win[0] / 1.4) & (A.m_c <= win[1] * 1.4)
         lo, md, hi = np.nanpercentile(p_m1_by_q[qr][:, sel], [5, 50, 95], axis=0)
         ax.fill_between(A.m_c[sel], lo, hi, color='C0', alpha=0.3, lw=0)
-        ax.plot(A.m_c[sel], md, color='C0', label=rf'$p(m_1 \mid {qr[0]:g} < q < {qr[1]:g})$')
+        ax.plot(A.m_c[sel], md, color='C0')
         mm = np.linspace(*win, 200); m_ref = 0.5 * (win[0] + win[1])
         ok = np.all(np.isfinite(fits[name]), 1)
         comps = np.array([components(mm, *p[:5], m_ref) for p in fits[name][ok]])     # (draws, 2, mm)
         total = comps.sum(1)
         ax.fill_between(mm, *np.percentile(total, [5, 95], 0), color='C3', alpha=0.25, lw=0)
-        ax.plot(mm, np.median(total, 0), color='C3', label='Gaussian + power law')
-        ax.plot(mm, np.median(comps[:, 0], 0), color='C3', ls='--', lw=1, label='Gaussian part')
-        ax.plot(mm, np.median(comps[:, 1], 0), color='C3', ls=':', lw=1, label='power-law part')
-        ax.axvspan(*win, color='0.92', zorder=0)
-        ax.set_xscale('log'); ax.set_yscale('log')
+        ax.plot(mm, np.median(total, 0), color='C3')
+        ax.plot(mm, np.median(comps[:, 0], 0), color='C3', ls='--', lw=1)
+        ax.plot(mm, np.median(comps[:, 1], 0), color='C3', ls=':', lw=1)
+        # residuals: each draw's fit against its own PixelPop density, on the bins inside the window
+        w = (A.m_c >= win[0]) & (A.m_c <= win[1])
+        fit_c = np.array([components(A.m_c[w], *p[:5], m_ref) for p in fits[name][ok]]).sum(1)
+        with np.errstate(divide='ignore', invalid='ignore'):
+            res = np.log(p_m1_by_q[qr][ok][:, w] / fit_c)
+        rlo, rmd, rhi = np.nanpercentile(np.where(np.isfinite(res), res, np.nan), [5, 50, 95], axis=0)
+        ar.fill_between(A.m_c[w], rlo, rhi, color='0.4', alpha=0.3, lw=0)
+        ar.plot(A.m_c[w], rmd, color='k', lw=1.2)
+        ar.axhline(0, color='C3', lw=0.8)
+        for a in (ax, ar):
+            a.axvspan(*win, color='0.92', zorder=0)
+            a.set_xscale('log')
+        ax.set_yscale('log')
         ax.set_ylim(np.nanmin(lo[lo > 0]) / 2, hi.max() * 2)
-        ax.set_xlabel(r'$m_1\,[\textrm{M}_\odot]$')
+        lim = 1.1 * np.nanmax(np.abs([rlo, rhi]))
+        ar.set_ylim(-lim, lim)
+        ar.set_xlabel(r'$m_1\,[\textrm{M}_\odot]$')
+        ax.text(0.04, 0.96, rf'${qr[0]:g} < q < {qr[1]:g}$', transform=ax.transAxes, va='top', fontsize=11)
         ax.text(0.04, 0.05, rf'$\mu = {fmt(fits[name][:, 1])}$' '\n' rf'$\sigma = {fmt(fits[name][:, 2])}$' '\n'
                 rf'$\alpha = {fmt(fits[name][:, 4])}$' '\n' rf'$f_G = {fmt(fits[name][:, 5])}$',
                 transform=ax.transAxes, va='bottom', fontsize=11)
-    axes[0].set_ylabel(r'$p(m_1 \mid q)\,[\textrm{M}_\odot^{-1}]$')
-    axes[-1].legend(loc='upper right', **dict(plot_style.LEG_KW, fontsize=11))
+    axes[0, 0].set_ylabel(r'$p(m_1 \mid q\ \textrm{band})\,[\textrm{M}_\odot^{-1}]$')
+    axes[1, 0].set_ylabel(r'$\ln (p_\mathrm{PixelPop} / p_\mathrm{fit})$')
+    handles = [(Patch(color='C0', alpha=0.3, lw=0), Line2D([], [], color='C0')),
+               (Patch(color='C3', alpha=0.25, lw=0), Line2D([], [], color='C3')),
+               Line2D([], [], color='C3', ls='--', lw=1), Line2D([], [], color='C3', ls=':', lw=1),
+               (Patch(color='0.4', alpha=0.3, lw=0), Line2D([], [], color='k', lw=1.2))]
+    labels = ['PixelPop', 'Gaussian + power law', 'Gaussian part', 'power-law part', 'residual per draw']
+    axes[0, -1].legend(handles, labels, loc='upper right', **dict(plot_style.LEG_KW, fontsize=10))
     fig.tight_layout()
     fig.savefig(path, bbox_inches='tight')
     print('saved', path)
