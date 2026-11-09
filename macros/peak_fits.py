@@ -1,7 +1,8 @@
 """Gaussian + power-law fits to the peaks of p(m1 | q in Q), per hyperparameter draw, written as LaTeX macros.
 
-    python macros/peak_fits.py [<run> ...]      (default: ppc_gwtc5_k10 ppc_gwtc5_k100_gauss)
+    python macros/peak_fits.py [--wide] [<run> ...]      (default: ppc_gwtc5_k10 ppc_gwtc5_k100_gauss)
         -> macros/peak_fits.tex, plots/<run>_peak_fits.pdf
+           (--wide: WIDE_PEAKS windows -> macros/peak_fits_wide.tex (\\peakWideTen...), plots/<run>_peak_fits_wide.pdf)
 
 For each draw, p(m1 | q in Q) is the windowed mass field summed over the q bins in Q (analysis.p_m1_given_q_range), a
 density per Msun on the m1 bin centres. On the bins inside each peak's window (PEAKS: by eye, user 2026-10-24) it is
@@ -40,6 +41,11 @@ PEAKS = {'10': ((0.8, 1.0), (5., 15.), 'Ten'),          # widened from 8-12 (use
          '35': ((0.8, 1.0), (25., 40.), 'ThirtyFive'),
          '20': ((0.3, 0.65), (15., 30.), 'Twenty'),
          '60': ((0.3, 0.65), (40., 100.), 'Sixty')}
+# --wide: the same peaks in windows ~1.25x wider on each side (user, 2026-11-09), a check of the window choice
+WIDE_PEAKS = {'10': ((0.8, 1.0), (4., 19.), 'WideTen'),
+              '35': ((0.8, 1.0), (20., 50.), 'WideThirtyFive'),
+              '20': ((0.3, 0.65), (12., 36.), 'WideTwenty'),
+              '60': ((0.3, 0.65), (32., 130.), 'WideSixty')}
 RUN_NAMES = {'ppc_gwtc5_k10': 'Flex', 'ppc_gwtc5_k100_gauss': 'Gauss'}     # macro suffixes
 PARAMS = ('lnA', 'mu', 'sigma', 'lnB', 'alpha')
 
@@ -145,10 +151,10 @@ def fmt(x, decimals=None, strict=False):
     return f'{md:.{d}f}^{{+{hi - md:.{d}f}}}_{{-{md - lo:.{d}f}}}'
 
 
-def diagnostic(run, p_m1_by_q, fits, path):
-    """One column per peak. Top: the PixelPop p(m1 | q band) (90% band, median) against the Gaussian + power-law fit
+def diagnostic(run, p_m1_by_q, fits, path, peaks=PEAKS):
+    """2 x 2 blocks, one per peak (near-equal-mass top row, q ~ 0.5 bottom row), the legend above. Top of each: the PixelPop p(m1 | q band) (90% band, median) against the Gaussian + power-law fit
     (90% band, median; median Gaussian and power-law parts), the fit window shaded, the q band in each panel's label.
-    Bottom: the residual ln[p_PixelPop / p_fit] per draw, each draw's fit against its own density (median, 90%), over
+    Below it: the residual ln[p_PixelPop / p_fit] per draw, each draw's fit against its own density (median, 90%), over
     the window (user, 2026-11-09)."""
     import matplotlib
     matplotlib.use('Agg')
@@ -157,10 +163,15 @@ def diagnostic(run, p_m1_by_q, fits, path):
     from matplotlib.patches import Patch
     import plot_style
     plot_style.apply()
-    fig, axes = plt.subplots(2, len(PEAKS), figsize=(4.5 * len(PEAKS), 5.6), sharex='col',
-                             gridspec_kw=dict(height_ratios=(2.6, 1), hspace=0.05), squeeze=False)
-    for k, (name, (qr, win, _)) in enumerate(PEAKS.items()):
-        ax, ar = axes[0, k], axes[1, k]
+    from matplotlib.ticker import FixedLocator, NullFormatter
+    fig = plt.figure(figsize=(9.5, 9.))
+    outer = fig.add_gridspec(2, 2, hspace=0.22, wspace=0.2)      # near-equal-mass peaks on top, q ~ 0.5 below
+    left = []
+    for k, (name, (qr, win, _)) in enumerate(peaks.items()):
+        sub = outer[k // 2, k % 2].subgridspec(2, 1, height_ratios=(2.6, 1), hspace=0.05)
+        ax = fig.add_subplot(sub[0]); ar = fig.add_subplot(sub[1], sharex=ax)
+        if k % 2 == 0:
+            left.append((ax, ar))
         sel = (A.m_c >= win[0] / 1.4) & (A.m_c <= win[1] * 1.4)
         lo, md, hi = np.nanpercentile(p_m1_by_q[qr][:, sel], [5, 50, 95], axis=0)
         ax.fill_between(A.m_c[sel], lo, hi, color='C0', alpha=0.3, lw=0)
@@ -190,34 +201,43 @@ def diagnostic(run, p_m1_by_q, fits, path):
         lim = 1.1 * np.nanmax(np.abs([rlo, rhi]))
         ar.set_ylim(-lim, lim)
         ar.set_xlabel(r'$m_1\,[\textrm{M}_\odot]$')
+        ax.set_xlim(A.m_c[sel][0], A.m_c[sel][-1])
+        ticks = [t for t in (3, 4, 5, 6, 8, 10, 15, 20, 30, 40, 50, 60, 80, 100, 150, 200)
+                 if A.m_c[sel][0] <= t <= A.m_c[sel][-1]]
+        for a in (ax, ar):                                  # plain labels on the log axis, no 4x10^0
+            a.xaxis.set_major_locator(FixedLocator(ticks)); a.xaxis.set_minor_formatter(NullFormatter())
+        ax.set_xticklabels([]); ar.set_xticklabels([f'{t:g}' for t in ticks])
+        ax.tick_params(labelbottom=False)
         ax.text(0.04, 0.96, rf'${qr[0]:g} < q < {qr[1]:g}$', transform=ax.transAxes, va='top', fontsize=11)
         ax.text(0.04, 0.05, rf'$\mu = {fmt(fits[name][:, 1])}$' '\n' rf'$\sigma = {fmt(fits[name][:, 2])}$' '\n'
                 rf'$\alpha = {fmt(fits[name][:, 4])}$' '\n' rf'$f_G = {fmt(fits[name][:, 5])}$',
                 transform=ax.transAxes, va='bottom', fontsize=11)
-    axes[0, 0].set_ylabel(r'$p(m_1 \mid q\ \textrm{band})\,[\textrm{M}_\odot^{-1}]$')
-    axes[1, 0].set_ylabel(r'$\ln (p_\mathrm{PixelPop} / p_\mathrm{fit})$')
+    for ax, ar in left:
+        ax.set_ylabel(r'$p(m_1 \mid q\ \textrm{band})\,[\textrm{M}_\odot^{-1}]$')
+        ar.set_ylabel(r'$\ln (p_\mathrm{PP} / p_\mathrm{fit})$', fontsize=10)
+    fig.align_ylabels([a for pair in left for a in pair])
     handles = [(Patch(color='C0', alpha=0.3, lw=0), Line2D([], [], color='C0')),
                (Patch(color='C3', alpha=0.25, lw=0), Line2D([], [], color='C3')),
                Line2D([], [], color='C3', ls='--', lw=1), Line2D([], [], color='C3', ls=':', lw=1),
                (Patch(color='0.4', alpha=0.3, lw=0), Line2D([], [], color='k', lw=1.2))]
     labels = ['PixelPop', 'Gaussian + power law', 'Gaussian part', 'power-law part', 'residual per draw']
-    axes[0, -1].legend(handles, labels, loc='upper right', **dict(plot_style.LEG_KW, fontsize=10))
-    fig.tight_layout()
+    fig.legend(handles, labels, loc='lower center', bbox_to_anchor=(0.5, 0.905), ncol=len(labels),
+               **dict(plot_style.LEG_KW, fontsize=10))
     fig.savefig(path, bbox_inches='tight')
     print('saved', path)
 
 
-def main(runs):
+def main(runs, peaks=PEAKS, tag=''):
     lines = ['% Gaussian + power-law fits to the peaks of p(m1 | q in Q), minimizing the KL divergence (cross entropy),'
              ' median and 90% over draws with a peak (macros/peak_fits.py)']
     for run in runs:
         r = A.load_light(run)
-        p_m1_by_q = {qr: A.p_m1_given_q_range(r, qr) for qr in {v[0] for v in PEAKS.values()}}
+        p_m1_by_q = {qr: A.p_m1_given_q_range(r, qr) for qr in {v[0] for v in peaks.values()}}
         del r
-        fits = {name: fit_peak(p_m1_by_q[qr], win) for name, (qr, win, _) in PEAKS.items()}
+        fits = {name: fit_peak(p_m1_by_q[qr], win) for name, (qr, win, _) in peaks.items()}
         suffix = RUN_NAMES.get(run, run.replace('_', ''))
         lines.append(f'% {run}')
-        for name, (qr, win, tex) in PEAKS.items():
+        for name, (qr, win, tex) in peaks.items():
             F = fits[name]
             bad = int(np.isnan(F[:, 1]).sum())
             print(f'{run} peak {name} (q {qr}, m1 {win}): mu {fmt(F[:, 1])}, sigma {fmt(F[:, 2])}, '
@@ -228,12 +248,14 @@ def main(runs):
                 lines.append(rf'\newcommand{{\peak{tex}{par}{suffix}}}{{{fmt(F[:, col], dec, strict=dec is not None)}}}')
             # the fraction of draws with a peak inside the window (the summaries above are conditional on it)
             lines.append(rf'\newcommand{{\peak{tex}PeakFrac{suffix}}}{{{pct(1 - bad / len(F))}}}')
-        diagnostic(run, p_m1_by_q, fits, os.path.join(REPO, 'plots', f'{run}_peak_fits.pdf'))
-    path = os.path.join(HERE, 'peak_fits.tex')
+        diagnostic(run, p_m1_by_q, fits, os.path.join(REPO, 'plots', f'{run}_peak_fits{tag}.pdf'), peaks)
+    path = os.path.join(HERE, f'peak_fits{tag}.tex')
     with open(path, 'w') as f:
         f.write('\n'.join(lines) + '\n')
     print('wrote', path)
 
 
 if __name__ == '__main__':
-    main(sys.argv[1:] or list(RUN_NAMES))
+    wide = '--wide' in sys.argv[1:]
+    runs = [a for a in sys.argv[1:] if not a.startswith('--')] or list(RUN_NAMES)
+    main(runs, WIDE_PEAKS, '_wide') if wide else main(runs)

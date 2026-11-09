@@ -16,6 +16,10 @@ Macros \\peakOdds<Q><Stat><Run>, Q in (All, Hi), Run in (Flex, Gauss), Stat:
     BF: posterior odds / prior odds of that event ('> x' when every posterior draw is a peak, from 1 - P < 1/n);
     PLo, PHi (and PLoPrior, PHiPrior): P(R_mid > R_lo), P(R_mid > R_hi) separately;
     RatioLo, RatioHi: R_mid / R_lo, R_mid / R_hi (median and 90%).
+\\peakOddsAvg<Q><Stat><Run>: the same with the mean rate per Msun, R_W / |W|, in [30, 35] against [20, 30] and
+[35, 45] (AVG_WINDOWS; user, 2026-11-09).
+\\peakOddsGap<Q><Stat><Run>: [30, 35] against [20, 25] and [40, 45] (GAP_WINDOWS; equal widths, so integrated and
+average rates give the same odds).
 """
 import os
 import sys
@@ -31,6 +35,12 @@ from peak_fits import RUN_NAMES, fmt, pct
 from prior_fits import load_hyper, prior_p_mass
 
 WINDOWS = {'lo': (25., 30.), 'mid': (30., 35.), 'hi': (35., 40.)}
+# alternative (user, 2026-11-09): the average rate per Msun in [30, 35] against the averages over the wider neighbours
+# [20, 30] and [35, 45] (macros \peakOddsAvg...), instead of integrated rates in equal 5 Msun windows
+AVG_WINDOWS = {'lo': (20., 30.), 'mid': (30., 35.), 'hi': (35., 45.)}
+# and equal 5 Msun windows with 5 Msun gaps (user, 2026-11-09; macros \peakOddsGap...): integrated and average agree
+GAP_WINDOWS = {'lo': (20., 25.), 'mid': (30., 35.), 'hi': (40., 45.)}
+VARIANTS = {'': {}, 'Avg': dict(windows=AVG_WINDOWS, average=True), 'Gap': dict(windows=GAP_WINDOWS)}
 Q_RANGES = {'All': (0., 1.), 'Hi': (0.8, 1.)}
 
 
@@ -40,11 +50,12 @@ def m1_weights(window):
     return np.clip(np.minimum(A.lnm_edges[1:], hi) - np.maximum(A.lnm_edges[:-1], lo), 0., None)
 
 
-def rates(p_mass, q_range):
-    """(draws, 3): the integrated rate (as a fraction of the population) in each window of WINDOWS."""
+def rates(p_mass, q_range, windows=WINDOWS, average=False):
+    """(draws, 3): the integrated rate (as a fraction of the population) in each window of ``windows``; with
+    ``average``, divided by the window's width in Msun (the mean dR/dm1 over the window)."""
     t = (A.q_c >= q_range[0]) & (A.q_c <= q_range[1])
     p_m = p_mass[:, :, t].astype(float).sum(2) * A.dq                                   # (draws, Bm) per d ln m1
-    return np.stack([p_m @ m1_weights(w) for w in WINDOWS.values()], 1)
+    return np.stack([p_m @ m1_weights(w) / ((w[1] - w[0]) if average else 1.) for w in windows.values()], 1)
 
 
 def bf(post, prior):
@@ -61,22 +72,24 @@ def pstr(p):
 
 def main():
     lines = ['% Integrated rate in m1 [30, 35] against [25, 30] and [35, 40] (macros/peak_odds.py), q marginalized (All) '
-             'and q in [0.8, 1] (Hi); posterior and empirical-Bayes prior']
+             'and q in [0.8, 1] (Hi); posterior and empirical-Bayes prior. Avg: the mean rate per Msun in [30, 35] '
+             'against the means over [20, 30] and [35, 45]. Gap: [30, 35] against [20, 25] and [40, 45]']
     for run, suffix in RUN_NAMES.items():
         post = A.load_light(run).p_mass
         prior = prior_p_mass(load_hyper(run))
-        for qname, qr in Q_RANGES.items():
-            Rp, Rr = rates(post, qr), rates(prior, qr)
+        for (variant, qname), qr in [((v, k), q) for v in VARIANTS for k, q in Q_RANGES.items()]:
+            kw = VARIANTS[variant]
+            Rp, Rr = rates(post, qr, **kw), rates(prior, qr, **kw)
             gt = lambda R, j: R[:, 1] > R[:, j]
             peak_p, peak_r = gt(Rp, 0) & gt(Rp, 2), gt(Rr, 0) & gt(Rr, 2)
             vals = {'P': pstr(peak_p.mean()), 'PPrior': pstr(peak_r.mean()), 'BF': bf(peak_p, peak_r),
                     'PLo': pstr(gt(Rp, 0).mean()), 'PHi': pstr(gt(Rp, 2).mean()),
                     'PLoPrior': pstr(gt(Rr, 0).mean()), 'PHiPrior': pstr(gt(Rr, 2).mean()),
                     'RatioLo': fmt(Rp[:, 1] / Rp[:, 0]), 'RatioHi': fmt(Rp[:, 1] / Rp[:, 2])}
-            print(f'{run} q {qname} {qr}: ' + ', '.join(f'{k} {v}' for k, v in vals.items())
+            print(f'{run} {variant or "Int"} q {qname} {qr}: ' + ', '.join(f'{k} {v}' for k, v in vals.items())
                   + f'; prior ratios {fmt(Rr[:, 1] / Rr[:, 0])}, {fmt(Rr[:, 1] / Rr[:, 2])}', flush=True)
             for k, v in vals.items():
-                lines.append(rf'\newcommand{{\peakOdds{qname}{k}{suffix}}}{{{v}}}')
+                lines.append(rf'\newcommand{{\peakOdds{variant}{qname}{k}{suffix}}}{{{v}}}')
         del post, prior
     path = os.path.join(HERE, 'peak_odds.tex')
     with open(path, 'w') as f:
