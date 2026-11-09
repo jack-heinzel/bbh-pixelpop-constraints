@@ -50,7 +50,8 @@ def main():
             print(f'{run} {tag or "all"}: sigma({Q_LO:g}) {fmt(lo[ok])}, sigma({Q_HI:g}) {fmt(hi[ok])}, ratio '
                   f'{fmt(lo[ok] / hi[ok])}, P {prob:.3f} (prior {pprob:.3f}), {ok.sum()} draws')
             for par, x in (('SdQLo', lo[ok]), ('SdQHi', hi[ok]), ('SdRatio', lo[ok] / hi[ok])):
-                lines.append(rf'\newcommand{{\chiQBroad{par}{tag}{suffix}}}{{{fmt(x)}}}')
+                v = fmt(x) if par == 'SdRatio' else fmt(x, 2, strict=True)     # sds to two decimals (user, 2026-11-09)
+                lines.append(rf'\newcommand{{\chiQBroad{par}{tag}{suffix}}}{{{v}}}')
             lines.append(rf'\newcommand{{\chiQBroadProb{tag}{suffix}}}{{{pfmt(prob)}}}')
             lines.append(rf'\newcommand{{\chiQBroadProbPrior{tag}{suffix}}}{{{pfmt(pprob)}}}')
         del r

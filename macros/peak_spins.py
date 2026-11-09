@@ -64,14 +64,16 @@ def main():
         MOM = np.concatenate([h5py.File(A.post_path(run, f), 'r')['MOM'][:r.n_draws] for f in files])
         MOM_CORE = r.MOM_CORE
         d = np.load(os.path.join(REPO, 'results', 'post_processing', f'{run}_spin_prior.npz'))
-        lines.append(f'% {run}: {r.n_draws} posterior draws, {len(d["draws"])} prior draws')
+        lines.append(f'% {run}: {len(MOM)} posterior draws ({len(files)} chains), {len(d["draws"])} prior draws')
         for name, region in zip(PEAK_NAMES, SPIN_PEAK_REGIONS):
             post = region_moments(r.p_mass, MOM, MOM_CORE, region)
             prior = region_moments(r.p_mass[d['draws']], d['MOM'], d['MOM_CORE'], region)
             lines.append(f'% {name}: m1 in {region[0]} Msun, q in {region[1]}')
             for tag, res in (('', post), ('Prior', prior)):
                 for k, x in res.items():
-                    lines.append(rf'\newcommand{{\peakSpin{name}{k}{tag}{suffix}}}{{{fmt(x)}}}')
+                    # sds (EffSd, EffSdCore, PSd) to exactly two decimals (user, 2026-11-09)
+                    v = fmt(x, 2, strict=True) if k.endswith('Sd') or 'SdCore' in k else fmt(x)
+                    lines.append(rf'\newcommand{{\peakSpin{name}{k}{tag}{suffix}}}{{{v}}}')
                 lines.append(rf'\newcommand{{\peakSpin{name}PEffPos{tag}{suffix}}}{{{pfmt(np.mean(res["EffMeanCore"] > 0))}}}')
             print(f'{run} {name} {region}: ' + ', '.join(f'{k} {fmt(x)} (prior {fmt(prior[k])})' for k, x in post.items())
                   + f"; P(core mean chi_eff > 0) {pfmt(np.mean(post['EffMeanCore'] > 0))}", flush=True)
