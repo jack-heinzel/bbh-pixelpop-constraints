@@ -573,7 +573,7 @@ def bookkeeping_figure():
     a2.axvline(PP.RETAINED, color='k', lw=0.8, ls=':')
     a2.axvspan(1., bins[-1], color='0.92', zorder=0, lw=0)
     a2.set_xlim(bins[0], bins[-1]); a2.set_yticks([])
-    a2.set_xlabel(r"$\langle m_1 \rangle[\mathrm{B}] \,/\, \langle M_\mathrm{tot} \rangle[\mathrm{A}]$"); a2.set_ylabel('density')
+    a2.set_xlabel(r"$\langle m_1 \rangle[\textrm{feature B}] \,/\, \langle M_\mathrm{tot} \rangle[\textrm{feature A}]$"); a2.set_ylabel('density')
     handles = ([Line2D([], [], color=c, lw=1.0) for c in pair_col.values()] +
                [Line2D([], [], color='0.3', lw=1.0), Line2D([], [], color='0.3', lw=1.0, ls='--')])
     f = feature_masses()

@@ -211,7 +211,8 @@ def diagnostic(run, p_m1_by_q, fits, path, peaks=PEAKS):
         ax.text(0.04, 0.96, rf'${qr[0]:g} < q < {qr[1]:g}$', transform=ax.transAxes, va='top', fontsize=11)
         ax.text(0.04, 0.05, rf'$\mu = {fmt(fits[name][:, 1])}$' '\n' rf'$\sigma = {fmt(fits[name][:, 2])}$' '\n'
                 rf'$\alpha = {fmt(fits[name][:, 4])}$' '\n' rf'$f_G = {fmt(fits[name][:, 5])}$',
-                transform=ax.transAxes, va='bottom', fontsize=11)
+                transform=ax.transAxes, va='bottom', fontsize=11, linespacing=1.6,
+                bbox=dict(boxstyle='round,pad=0.3', facecolor='white', edgecolor='none', alpha=0.85))
     for ax, ar in left:
         ax.set_ylabel(r'$p(m_1 \mid q\ \textrm{band})\,[\textrm{M}_\odot^{-1}]$')
         ar.set_ylabel(r'$\ln (p_\mathrm{PP} / p_\mathrm{fit})$', fontsize=10)
