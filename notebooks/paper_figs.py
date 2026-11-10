@@ -18,6 +18,7 @@ figure:
                                            column
            plots/m2_fixed_m1_and_m1_q_hi.pdf   (m2fix) p(m2 | m1) at m1 = 21, 59 Msun (fixed m1, interpolated in
                                            ln m1) above p(m1 | 0.8 < q < 1); one column
+           plots/m1_q_hi_vs_m2_q_lo.pdf    (m1m2) p(m1 | 0.8 < q < 1) against p(m2 | 0.3 < q < 0.65); one column
            plots/spin_peak_regions.pdf     Fig. 2: p(chi_eff, chi_p) in the four peak regions, the flexible model's
                                            median (heatmap) and the Gaussian model's (contours); two columns
            plots/spin_peak_regions_slices.pdf   Fig. 2 with slice panels (median and 90% over draws)
@@ -310,6 +311,39 @@ def m2_fixed_m1_figure(R):
     a2.set_yscale('log'); a2.set_ylim(hi * 1e-4, hi * 3)
     a2.set_ylabel(rf'$p(m_1 \mid {Q_HI[0]:g} < q < {Q_HI[1]:g})\,[\textrm{{M}}_\odot^{{-1}}]$')
     fig.tight_layout(rect=(0, 0, 1, 1 - 0.32 / fig.get_figheight())); fig.subplots_adjust(hspace=0.35)
+    return fig
+
+
+def m1_hi_vs_m2_lo_figure(R):
+    """p(m1 | q in Q_HI) against p(m2 | q in Q_LO) on one mass axis (user, 2026-11-10): both normalized conditional
+    densities per Msun; q-range colours as Fig. 1. Flexible: 90% band and median; Gaussian: median (dashed)."""
+    q_lo = A.SUMMARY_Q_RANGES[0]
+    fig, ax = plt.subplots(figsize=(ONE_COL, 2.3))
+    hi = 0
+    for run, r in R.items():
+        flex = run == 'ppc_gwtc5_k10'
+        for x, y, col in ((mx, ext(q5(A.p_m1_given_q_range(r, Q_HI))), COLS[1]),
+                          (m2_c, np.nanpercentile(p_m2_given_q_range(r, q_lo), [5, 50, 95], axis=0), COLS[0])):
+            if flex:
+                ax.fill_between(x, y[0], y[2], color=col, alpha=0.3, lw=0)
+                hi = max(hi, np.nanmax(y[2][x >= M_MIN]))
+            ax.plot(x, y[1], color=col, lw=1.0, ls='-' if flex else '--')
+    fx = feature_masses()
+    feats = [float(fx[k]) for k in ('10', '20', '35', '60')]
+    ticks = [3., 5.] + feats + [200.]
+    ax.set_xscale('log'); ax.set_xlim(A.MIN_M, A.MAX_M)
+    ax.set_xticks(ticks, [f'${t:g}$' for t in ticks]); ax.minorticks_off()
+    for t in feats:
+        ax.axvline(t, color='0.6', lw=0.5, alpha=0.7, zorder=3)
+    ax.set_yscale('log'); ax.set_ylim(hi * 1e-4, hi * 3)
+    ax.set_xlabel(r'$m\,[\textrm{M}_\odot]$'); ax.set_ylabel(r'$p(m)\,[\textrm{M}_\odot^{-1}]$')
+    h = [(Patch(color=COLS[1], alpha=0.3, lw=0), Line2D([], [], color=COLS[1], lw=1.0)),
+         (Patch(color=COLS[0], alpha=0.3, lw=0), Line2D([], [], color=COLS[0], lw=1.0)),
+         Line2D([], [], color='k', lw=1.0), Line2D([], [], color='k', lw=1.0, ls='--')]
+    lab = [rf'$p(m_1 \mid {Q_HI[0]:g} < q < {Q_HI[1]:g})$', rf'$p(m_2 \mid {q_lo[0]:g} < q < {q_lo[1]:g})$',
+           r'Flexible (90\%)', 'Gaussian (median)']
+    fig.legend(h, lab, loc='upper center', ncol=2, bbox_to_anchor=(0.5, 1.0), **LEG)
+    fig.tight_layout(rect=(0, 0, 1, 1 - 0.32 / fig.get_figheight()))
     return fig
 
 
@@ -1054,13 +1088,13 @@ def corr_map_figure(R, core):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'chip', 'chiq', 'chiqm', 'corr', 'm2', 'm2fix', 'spin', 'book', 'remnant', 'talk', 'all'))
+    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'chip', 'chiq', 'chiqm', 'corr', 'm2', 'm2fix', 'm1m2', 'spin', 'book', 'remnant', 'talk', 'all'))
     ap.add_argument('--core', action='store_true')
     ap.add_argument('--prior', action='store_true', help='chi / chip: overlay the spin prior (macros/spin_prior.py)')
     ap.add_argument('--lvk', action='store_true', help='chiq: overlay the GWTC-5 chi_eff | q models (lvk_chi_q)')
     ap.add_argument('--mean-asinh', type=float, default=0.03)
     args = ap.parse_args()
-    need = {'mass': list(RUNS), 'chi': list(RUNS), 'chip': list(RUNS), 'chiq': list(RUNS), 'chiqm': list(RUNS), 'corr': list(RUNS), 'm2': list(RUNS), 'm2fix': list(RUNS), 'remnant': list(RUNS), 'talk': list(RUNS)[:1],
+    need = {'mass': list(RUNS), 'chi': list(RUNS), 'chip': list(RUNS), 'chiq': list(RUNS), 'chiqm': list(RUNS), 'corr': list(RUNS), 'm2': list(RUNS), 'm2fix': list(RUNS), 'm1m2': list(RUNS), 'remnant': list(RUNS), 'talk': list(RUNS)[:1],
             'all': list(RUNS)}.get(args.what, [])
     R = {run: A.load_light(run) for run in need}
     import pixelpop  # noqa: F401  (its import resets matplotlib's rcParams; import it before the style)
@@ -1116,6 +1150,8 @@ def main():
         plot_style.save(m2_given_m1_figure(R), 'm2_m1_windows')
     if args.what in ('m2fix', 'all'):
         plot_style.save(m2_fixed_m1_figure(R), 'm2_fixed_m1_and_m1_q_hi')
+    if args.what in ('m1m2', 'all'):
+        plot_style.save(m1_hi_vs_m2_lo_figure(R), 'm1_q_hi_vs_m2_q_lo')
     if args.what in ('chi', 'all'):
         D = {RUNS[run]: chi_data(r, args.core) for run, r in R.items()}
         Pr = {RUNS[run]: chi_prior_data(r, args.core) for run, r in R.items()} if args.prior else None
