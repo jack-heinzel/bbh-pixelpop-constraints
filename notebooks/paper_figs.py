@@ -16,6 +16,8 @@ figure:
                                            2026-10-26); one column
            plots/m2_m1_windows.pdf         p(m2 | m1 in a window around each peak), one row per spin model; one
                                            column
+           plots/m2_fixed_m1_and_m1_q_hi.pdf   (m2fix) p(m2 | m1) at m1 = 21, 59 Msun (fixed m1, interpolated in
+                                           ln m1) above p(m1 | 0.8 < q < 1); one column
            plots/spin_peak_regions.pdf     Fig. 2: p(chi_eff, chi_p) in the four peak regions, the flexible model's
                                            median (heatmap) and the Gaussian model's (contours); two columns
            plots/spin_peak_regions_slices.pdf   Fig. 2 with slice panels (median and 90% over draws)
@@ -245,6 +247,69 @@ def m2_given_m1_figure(R):
     labels = [rf'${a:g} < m_1 < {b:g}$' for a, b in M1_WINDOWS.values()]
     fig.legend(handles, labels, loc='upper center', ncol=2, bbox_to_anchor=(0.5, 1.0), **LEG)
     fig.tight_layout(rect=(0, 0, 1, 1 - 0.3 / fig.get_figheight())); fig.subplots_adjust(hspace=0.06)
+    return fig
+
+
+M1_FIXED = (21., 59.)                              # the unequal-mass features (user, 2026-11-10: fixed m1, no window)
+M1_FIXED_COLOURS = ('C2', 'C1')                    # as M1_WINDOW_COLOURS['20'], ['60']
+Q_HI = A.SUMMARY_Q_RANGES[1]
+
+
+def p_q_at_m1(r, m1):
+    """p(q | m1) per draw at exactly ``m1`` (density in q on A.q_c): each ln m1 column normalized over q, then
+    interpolated linearly in ln m1 between the two neighbouring bin centres (no integral over an m1 window)."""
+    x = (np.log(m1) - A.lnm_c[0]) / A.dlnm
+    i = int(np.floor(x)); w = x - i
+    col = lambda j: r.p_mass[:, j].astype(float) / (r.p_mass[:, j].sum(1, keepdims=True) * A.dq)
+    return (1 - w) * col(i) + w * col(i + 1)
+
+
+def m2_fixed_m1_figure(R):
+    """Top: p(m2 | m1) at m1 = M1_FIXED, = p(q = m2 / m1 | m1) / m1. Bottom: p(m1 | Q_HI). Flexible: 90% band and
+    median; Gaussian: median (dashed). One column."""
+    fx = feature_masses()
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(ONE_COL, 4.2))
+    hi = 0
+    for m1, col in zip(M1_FIXED, M1_FIXED_COLOURS):
+        m2 = A.q_c * m1
+        s = m2 >= A.MIN_M
+        for run, r in R.items():
+            ls, band = ('-', True) if run == 'ppc_gwtc5_k10' else ('--', False)
+            p2 = p_q_at_m1(r, m1) / m1
+            lo_, med, hi_ = np.percentile(p2, [5, 50, 95], axis=0)
+            if band:
+                a1.fill_between(m2[s], lo_[s], hi_[s], color=col, alpha=0.3, lw=0)
+                hi = max(hi, hi_[s].max())
+            a1.plot(m2[s], med[s], color=col, lw=1.0, ls=ls)
+            mean = (p2 * m2).sum(1) / p2.sum(1)
+            print(f'{RUNS[run]}: <m2 | m1 = {m1:g}> = {np.median(mean):.1f} '
+                  f'({np.percentile(mean, 5):.1f}-{np.percentile(mean, 95):.1f}) Msun, '
+                  f'mode of the median {m2[s][np.argmax(med[s])]:.1f}')
+    a1.set_xscale('log'); a1.set_xlim(A.MIN_M, max(M1_FIXED))
+    ticks = [3., 5.] + [float(fx[k]) for k in ('10', '20', '35', '60')]
+    a1.set_xticks(ticks, [f'${t:g}$' for t in ticks]); a1.minorticks_off()
+    for k in ('10', '20', '35'):
+        a1.axvline(float(fx[k]), color='0.6', lw=0.5, alpha=0.7, zorder=3)
+    a1.set_yscale('log'); a1.set_ylim(hi * 1e-3, hi * 3)
+    a1.set_xlabel(r'$m_2\,[\textrm{M}_\odot]$'); a1.set_ylabel(r'$p(m_2 \mid m_1)\,[\textrm{M}_\odot^{-1}]$')
+    h = [(Patch(color=c, alpha=0.3, lw=0), Line2D([], [], color=c, lw=1.0)) for c in M1_FIXED_COLOURS]
+    h += [Line2D([], [], color='k', lw=1.0), Line2D([], [], color='k', lw=1.0, ls='--')]
+    fig.legend(h, [rf'$m_1 = {m:g}\,\textrm{{M}}_\odot$' for m in M1_FIXED] + ['Flexible (90\\%)', 'Gaussian (median)'],
+               loc='upper center', ncol=2, bbox_to_anchor=(0.5, 1.0), **LEG)
+    hi = 0
+    for run, r in R.items():
+        p1 = A.p_m1_given_q_range(r, Q_HI)
+        lo_, med, hi_ = ext(q5(p1))
+        if run == 'ppc_gwtc5_k10':
+            a2.fill_between(mx, lo_, hi_, color='C0', alpha=0.3, lw=0)
+            hi = np.nanmax(np.nanpercentile(p1, 95, 0)[vis])
+            a2.plot(mx, med, color='C0', lw=1.0)
+        else:
+            a2.plot(mx, med, color='C0', lw=1.0, ls='--')
+    m1_axis(a2)
+    a2.set_yscale('log'); a2.set_ylim(hi * 1e-4, hi * 3)
+    a2.set_ylabel(rf'$p(m_1 \mid {Q_HI[0]:g} < q < {Q_HI[1]:g})\,[\textrm{{M}}_\odot^{{-1}}]$')
+    fig.tight_layout(rect=(0, 0, 1, 1 - 0.32 / fig.get_figheight())); fig.subplots_adjust(hspace=0.35)
     return fig
 
 
@@ -989,13 +1054,13 @@ def corr_map_figure(R, core):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'chip', 'chiq', 'chiqm', 'corr', 'm2', 'spin', 'book', 'remnant', 'talk', 'all'))
+    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'chip', 'chiq', 'chiqm', 'corr', 'm2', 'm2fix', 'spin', 'book', 'remnant', 'talk', 'all'))
     ap.add_argument('--core', action='store_true')
     ap.add_argument('--prior', action='store_true', help='chi / chip: overlay the spin prior (macros/spin_prior.py)')
     ap.add_argument('--lvk', action='store_true', help='chiq: overlay the GWTC-5 chi_eff | q models (lvk_chi_q)')
     ap.add_argument('--mean-asinh', type=float, default=0.03)
     args = ap.parse_args()
-    need = {'mass': list(RUNS), 'chi': list(RUNS), 'chip': list(RUNS), 'chiq': list(RUNS), 'chiqm': list(RUNS), 'corr': list(RUNS), 'm2': list(RUNS), 'remnant': list(RUNS), 'talk': list(RUNS)[:1],
+    need = {'mass': list(RUNS), 'chi': list(RUNS), 'chip': list(RUNS), 'chiq': list(RUNS), 'chiqm': list(RUNS), 'corr': list(RUNS), 'm2': list(RUNS), 'm2fix': list(RUNS), 'remnant': list(RUNS), 'talk': list(RUNS)[:1],
             'all': list(RUNS)}.get(args.what, [])
     R = {run: A.load_light(run) for run in need}
     import pixelpop  # noqa: F401  (its import resets matplotlib's rcParams; import it before the style)
@@ -1049,6 +1114,8 @@ def main():
     if args.what in ('m2', 'all'):
         plot_style.save(m2_figure(R), 'm2_q_ranges')
         plot_style.save(m2_given_m1_figure(R), 'm2_m1_windows')
+    if args.what in ('m2fix', 'all'):
+        plot_style.save(m2_fixed_m1_figure(R), 'm2_fixed_m1_and_m1_q_hi')
     if args.what in ('chi', 'all'):
         D = {RUNS[run]: chi_data(r, args.core) for run, r in R.items()}
         Pr = {RUNS[run]: chi_prior_data(r, args.core) for run, r in R.items()} if args.prior else None
