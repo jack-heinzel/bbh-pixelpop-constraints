@@ -19,6 +19,7 @@ figure:
            plots/m2_fixed_m1_and_m1_q_hi.pdf   (m2fix) p(m2 | m1) at m1 = 21, 59 Msun (fixed m1, interpolated in
                                            ln m1) above p(m1 | 0.8 < q < 1); one column
            plots/m1_q_hi_vs_m2_q_lo.pdf    (m1m2) p(m1 | 0.8 < q < 1) against p(m2 | 0.3 < q < 0.65); one column
+           plots/m1_q_hi_vs_m2_q0p5.pdf    (m1m2) the same with p(m2 | q = 0.5), a slice at fixed q
            plots/spin_peak_regions.pdf     Fig. 2: p(chi_eff, chi_p) in the four peak regions, the flexible model's
                                            median (heatmap) and the Gaussian model's (contours); two columns
            plots/spin_peak_regions_slices.pdf   Fig. 2 with slice panels (median and 90% over draws)
@@ -314,16 +315,28 @@ def m2_fixed_m1_figure(R):
     return fig
 
 
-def m1_hi_vs_m2_lo_figure(R):
+def p_m2_at_q(r, q):
+    """p(m2 | q) per draw at exactly ``q`` (density per Msun on m2 = q A.m_c): p(ln m1 | q), interpolated linearly in
+    q between the two neighbouring bin centres and normalized over ln m1, is p(ln m2 | q) (ln m2 = ln m1 + ln q)."""
+    x = (q - A.q_c[0]) / A.dq
+    i = int(np.floor(x)); w = x - i
+    col = (1 - w) * r.p_mass[:, :, i].astype(float) + w * r.p_mass[:, :, i + 1].astype(float)
+    return col / (col.sum(1, keepdims=True) * A.dlnm) / (q * A.m_c)[None]
+
+
+def m1_hi_vs_m2_lo_figure(R, q_slice=None):
     """p(m1 | q in Q_HI) against p(m2 | q in Q_LO) on one mass axis (user, 2026-11-10): both normalized conditional
-    densities per Msun; q-range colours as Fig. 1. Flexible: 90% band and median; Gaussian: median (dashed)."""
+    densities per Msun; q-range colours as Fig. 1. Flexible: 90% band and median; Gaussian: median (dashed).
+    ``q_slice`` = q: p(m2 | q) at exactly that q (p_m2_at_q) instead of the q range, no average over q."""
     q_lo = A.SUMMARY_Q_RANGES[0]
     fig, ax = plt.subplots(figsize=(ONE_COL, 2.3))
     hi = 0
     for run, r in R.items():
         flex = run == 'ppc_gwtc5_k10'
         for x, y, col in ((mx, ext(q5(A.p_m1_given_q_range(r, Q_HI))), COLS[1]),
-                          (m2_c, np.nanpercentile(p_m2_given_q_range(r, q_lo), [5, 50, 95], axis=0), COLS[0])):
+                          ((q_slice * A.m_c, np.percentile(p_m2_at_q(r, q_slice), [5, 50, 95], axis=0), COLS[0])
+                           if q_slice else
+                           (m2_c, np.nanpercentile(p_m2_given_q_range(r, q_lo), [5, 50, 95], axis=0), COLS[0]))):
             if flex:
                 ax.fill_between(x, y[0], y[2], color=col, alpha=0.3, lw=0)
                 hi = max(hi, np.nanmax(y[2][x >= M_MIN]))
@@ -340,7 +353,7 @@ def m1_hi_vs_m2_lo_figure(R):
     h = [(Patch(color=COLS[1], alpha=0.3, lw=0), Line2D([], [], color=COLS[1], lw=1.0)),
          (Patch(color=COLS[0], alpha=0.3, lw=0), Line2D([], [], color=COLS[0], lw=1.0)),
          Line2D([], [], color='k', lw=1.0), Line2D([], [], color='k', lw=1.0, ls='--')]
-    lab = [rf'$p(m_1 \mid {Q_HI[0]:g} < q < {Q_HI[1]:g})$', rf'$p(m_2 \mid {q_lo[0]:g} < q < {q_lo[1]:g})$',
+    lab = [rf'$p(m_1 \mid {Q_HI[0]:g} < q < {Q_HI[1]:g})$', (rf'$p(m_2 \mid q = {q_slice:g})$' if q_slice else rf'$p(m_2 \mid {q_lo[0]:g} < q < {q_lo[1]:g})$'),
            r'Flexible (90\%)', 'Gaussian (median)']
     fig.legend(h, lab, loc='upper center', ncol=2, bbox_to_anchor=(0.5, 1.0), **LEG)
     fig.tight_layout(rect=(0, 0, 1, 1 - 0.32 / fig.get_figheight()))
@@ -1152,6 +1165,7 @@ def main():
         plot_style.save(m2_fixed_m1_figure(R), 'm2_fixed_m1_and_m1_q_hi')
     if args.what in ('m1m2', 'all'):
         plot_style.save(m1_hi_vs_m2_lo_figure(R), 'm1_q_hi_vs_m2_q_lo')
+        plot_style.save(m1_hi_vs_m2_lo_figure(R, q_slice=0.5), 'm1_q_hi_vs_m2_q0p5')
     if args.what in ('chi', 'all'):
         D = {RUNS[run]: chi_data(r, args.core) for run, r in R.items()}
         Pr = {RUNS[run]: chi_prior_data(r, args.core) for run, r in R.items()} if args.prior else None
