@@ -12,8 +12,9 @@ figure:
            plots/chi_p_{mean,sd,mean_sd}_m1.pdf   the same for chi_p (rows = spin models)
            --prior: the chi / chip figures with the empirical-Bayes spin prior (macros/spin_prior.py) overlaid,
            suffix _prior
-           plots/m2_q_ranges.pdf           p(m2 | q range) for the two q ranges, one row per spin model (user,
-                                           2026-10-26); one column
+           plots/m2_q_ranges.pdf           p(m2 | q range) for the two q ranges with the all-q 90% (black), and
+                                           p(m1 | q range) on the right; one row per spin model (user, 2026-10-26,
+                                           2026-11-13); two columns
            plots/m2_m1_windows.pdf         p(m2 | m1 in a window around each peak), one row per spin model; one
                                            column
            plots/m2_fixed_m1_and_m1_q_hi.pdf   (m2fix) p(m2 | m1) at m1 = 21, 59 Msun (fixed m1, interpolated in
@@ -21,6 +22,8 @@ figure:
            plots/m1_q_hi_vs_m2_q_lo.pdf    (m1m2) p(m1 | 0.8 < q < 1) against p(m2 | 0.3 < q < 0.65); one column
            plots/m1_q_hi_vs_m2_q0p5.pdf    (m1m2) the same with p(m2 | q = 0.5), a slice at fixed q
                                            (both: the flexible run; _gaussian: the Gaussian spin model's)
+           plots/m1_q_and_m2_q{,_gaussian}.pdf   (m2q) median p(ln m1, q) and p(ln m2, q) side by side, with lines of
+                                           constant m1 (21, 59) and constant m2 (10, 33) on both; two columns
            plots/spin_peak_regions.pdf     Fig. 2: p(chi_eff, chi_p) in the four peak regions, the flexible model's
                                            median (heatmap) and the Gaussian model's (contours); two columns
            plots/spin_peak_regions_slices.pdf   Fig. 2 with slice panels (median and 90% over draws)
@@ -133,7 +136,7 @@ def mass_figure(r, mode=False, hpd=None):
     lo = np.nanpercentile(np.nanpercentile(p_m, 5, 0)[vis], 2)
     hi = max(np.nanmax(np.nanpercentile(y, 95, 0)[vis]) for y in [p_m] + p_mq)
     a1.set_ylim(lo / 3, hi * 3)
-    a1.set_ylabel(r'$p(m_1)\,[\textrm{M}_\odot^{-1}]$')
+    a1.set_ylabel(r'$p(m_1 \mid q \in \textrm{range})\,[\textrm{M}_\odot^{-1}]$')
     fig.legend(*band_legend(), loc='upper center', ncol=3, bbox_to_anchor=(0.5, 1.0), **LEG)
     pc = a2.pcolormesh(m_edges, A.q_edges, img.T, cmap='viridis', shading='flat', rasterized=True, vmin=0,
                        vmax=np.nanpercentile(img[vis], 99.5))
@@ -192,11 +195,13 @@ def p_m2_given_q_range(r, q_range, m1_range=None):
 
 
 def m2_figure(R):
-    """p(m2 | q range) for each of SUMMARY_Q_RANGES (90% bands, medians; colours as in mass_figure), one row per spin
-    model, shared axes."""
-    fig, axes = plt.subplots(len(R), 1, figsize=(ONE_COL, 1.65 * len(R) + 0.45), sharex=True, sharey=True)
+    """Left: p(m2 | q range) for each of SUMMARY_Q_RANGES (90% bands, medians; colours as in mass_figure) and the
+    marginal p(m2) over all q (90%, black lines); right: p(m1) in the same q ranges (as Fig. 1's top panel). One row
+    per spin model, shared axes; two columns."""
+    fig, axes = plt.subplots(len(R), 2, figsize=(TWO_COL, 1.65 * len(R) + 0.45), sharex=True, sharey=True)
     hi = 0
-    for ax, (run, r) in zip(axes, R.items()):
+    for row, (run, r) in zip(axes, R.items()):
+        ax, ax1 = row
         for qr, col in zip(A.SUMMARY_Q_RANGES, COLS):
             p2 = p_m2_given_q_range(r, qr)
             lo_, med, hi_ = np.nanpercentile(p2, [5, 50, 95], axis=0)
@@ -207,15 +212,20 @@ def m2_figure(R):
             modes = m2_c[s][np.argmax(p2[:, s], 1)]
             print(f'{RUNS[run]}: mode of p(m2 | {qr[0]} < q < {qr[1]}) in 5-20 Msun: {np.median(modes):.1f} '
                   f'({np.percentile(modes, 5):.1f}-{np.percentile(modes, 95):.1f}) Msun')
-        m1_axis(ax, ax is axes[-1])
-        ax.set_ylabel(r'$p(m_2)\,[\textrm{M}_\odot^{-1}]$')
-        ax.text(0.03, 0.07, RUNS[run], transform=ax.transAxes, va='bottom', ha='left',
-                bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.5))
-    axes[-1].set_xlabel(r'$m_2\,[\textrm{M}_\odot]$')
-    axes[0].set_yscale('log'); axes[0].set_ylim(hi * 1e-5, hi * 3)
-    handles = [(Patch(color=c, alpha=0.3, lw=0), Line2D([], [], color=c, lw=1.0)) for c in COLS]
-    fig.legend(handles, Q_NAMES, loc='upper center', ncol=len(COLS), bbox_to_anchor=(0.5, 1.0), **LEG)
-    fig.tight_layout(rect=(0, 0, 1, 1 - 0.17 / fig.get_figheight())); fig.subplots_adjust(hspace=0.06)
+        lo_, hi_ = np.nanpercentile(p_m2_given_q_range(r, (0., 1.)), [5, 95], axis=0)
+        ax.plot(m2_c, lo_, color='k', lw=0.7); ax.plot(m2_c, hi_, color='k', lw=0.7)
+        bands(ax1, r.p_lnm / A.m_c[None], [A.p_m1_given_q_range(r, qr) for qr in A.SUMMARY_Q_RANGES])
+        hi = max(hi, max(np.nanmax(np.nanpercentile(A.p_m1_given_q_range(r, qr), 95, 0)[vis])
+                         for qr in A.SUMMARY_Q_RANGES))
+        for a in row:
+            m1_axis(a, False)
+            a.text(0.03, 0.07, RUNS[run], transform=a.transAxes, va='bottom', ha='left',
+                   bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.5))
+        ax.set_ylabel(r'$p(m)\,[\textrm{M}_\odot^{-1}]$')
+    axes[-1, 0].set_xlabel(r'$m_2\,[\textrm{M}_\odot]$'); axes[-1, 1].set_xlabel(r'$m_1\,[\textrm{M}_\odot]$')
+    axes[0, 0].set_yscale('log'); axes[0, 0].set_ylim(hi * 1e-5, hi * 3)
+    fig.legend(*band_legend(), loc='upper center', ncol=3, bbox_to_anchor=(0.5, 1.0), **LEG)
+    fig.tight_layout(rect=(0, 0, 1, 1 - 0.17 / fig.get_figheight())); fig.subplots_adjust(hspace=0.06, wspace=0.04)
     return fig
 
 
@@ -355,6 +365,68 @@ def m1_hi_vs_m2_lo_figure(r, label, q_slice=None):
            rf'$p(m_2 \mid q = {q_slice:g})$' if q_slice else rf'$p(m_2 \mid {q_lo[0]:g} < q < {q_lo[1]:g})$']
     fig.legend(h, lab, loc='upper center', ncol=2, bbox_to_anchor=(0.5, 1.0), **LEG)
     fig.tight_layout(rect=(0, 0, 1, 1 - 0.2 / fig.get_figheight()))
+    return fig
+
+
+def p_lnm2_q(r):
+    """Per draw, p(ln m2, q) on (A.lnm_c, A.q_c), density per d ln m2 dq: at fixed q, ln m2 = ln m1 + ln q is a shift
+    (unit Jacobian), so each q column of the windowed p(ln m1, q) is interpolated linearly in ln m1 at ln m2 - ln q
+    (zero off the m1 grid). float32, (draws, B, B)."""
+    P = r.p_mass.astype(np.float32)
+    out = np.zeros_like(P)
+    for j, q in enumerate(A.q_c):
+        x = (A.lnm_c - np.log(q) - A.lnm_c[0]) / A.dlnm
+        i = np.floor(x).astype(int); w = (x - i).astype(np.float32)
+        ok = (i >= 0) & (i + 1 < A.B)
+        out[:, ok, j] = (1 - w[ok]) * P[:, i[ok], j] + w[ok] * P[:, i[ok] + 1, j]
+    return out
+
+
+def m1q_m2q_figure(r, label):
+    """Median p(ln m1, q) (left) and p(ln m2, q) (right) for one run (user, 2026-11-10), log colour. Overlays (white):
+    solid, constant m1 at the unequal-mass features (21, 59 Msun: vertical on the left, m2 = m1 q on the right);
+    dashed, constant m2 at the near-equal-mass features (10, 33 Msun: m1 = m2 / q on the left, vertical on the right).
+    A feature at fixed m1 and spread in q runs along the solid lines, one at fixed m2 along the dashed ones."""
+    from matplotlib.colors import LogNorm
+    fx = feature_masses()
+    m1f = [float(fx[k]) for k in ('20', '60')]
+    m2f = [float(fx[k]) for k in ('10', '35')]
+    img1 = np.median(r.p_mass, 0).astype(float)
+    img2 = np.median(p_lnm2_q(r), 0).astype(float)
+    vmax = max(img1.max(), img2.max())
+    norm = LogNorm(vmin=vmax * 1e-3, vmax=vmax)
+    fig, axes = plt.subplots(1, 2, figsize=(TWO_COL, 2.7), sharey=True)
+    m = np.geomspace(A.MIN_M, A.MAX_M, 2000)
+    qq = np.linspace(1e-3, 1, 500)
+    for ax, img, which in zip(axes, (img1, img2), ('m_1', 'm_2')):
+        pc = ax.pcolormesh(m_edges, A.q_edges, np.where(img > 0, img, np.nan).T, norm=norm, cmap='viridis',
+                           shading='flat', rasterized=True)
+        if which == 'm_1':
+            ax.fill_between(m, 0., np.minimum(A.MIN_M / m, 1.), color=EXCLUDED_GREY, lw=0, zorder=1.5)
+            for f in m1f:
+                ax.axvline(f, color='w', lw=0.8)
+            for f in m2f:
+                ax.plot(f / qq, qq, color='w', lw=0.8, ls='--')
+        else:
+            ax.fill_between(m, 0., np.minimum(m / A.MAX_M, 1.), color=EXCLUDED_GREY, lw=0, zorder=1.5)
+            for f in m1f:
+                ax.plot(f * qq, qq, color='w', lw=0.8)
+            for f in m2f:
+                ax.axvline(f, color='w', lw=0.8, ls='--')
+        ticks = [3., 5.] + sorted(m1f + m2f) + [100.]
+        ax.set_xscale('log'); ax.set_xlim(A.MIN_M, 150.); ax.set_ylim(0, 1)
+        ax.set_xticks(ticks, [f'${t:g}$' for t in ticks]); ax.minorticks_off()
+        ax.tick_params(which='both', direction='out')
+        ax.set_xlabel(rf'${which}\,[\textrm{{M}}_\odot]$')
+    axes[0].set_ylabel(r'$q$')
+    axes[1].text(0.97, 0.05, label, transform=axes[1].transAxes, va='bottom', ha='right',
+                 bbox=dict(facecolor='w', alpha=0.8, edgecolor='none', pad=1.5))
+    h = [Line2D([], [], color='k', lw=0.8), Line2D([], [], color='k', lw=0.8, ls='--')]
+    lab = [rf'$m_1 = {m1f[0]:g}, {m1f[1]:g}\,\textrm{{M}}_\odot$', rf'$m_2 = {m2f[0]:g}, {m2f[1]:g}\,\textrm{{M}}_\odot$']
+    fig.legend(h, lab, loc='upper center', ncol=2, bbox_to_anchor=(0.5, 1.0), **LEG)
+    fig.tight_layout(rect=(0, 0, 0.92, 1 - 0.2 / fig.get_figheight()))
+    cb = fig.colorbar(pc, cax=fig.add_axes([0.93, axes[1].get_position().y0, 0.012, axes[1].get_position().height]))
+    cb.set_label(r'median $p(\ln m, q)$')
     return fig
 
 
@@ -1099,13 +1171,13 @@ def corr_map_figure(R, core):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'chip', 'chiq', 'chiqm', 'corr', 'm2', 'm2fix', 'm1m2', 'spin', 'book', 'remnant', 'talk', 'all'))
+    ap.add_argument('what', nargs='?', default='all', choices=('mass', 'chi', 'chip', 'chiq', 'chiqm', 'corr', 'm2', 'm2fix', 'm1m2', 'm2q', 'spin', 'book', 'remnant', 'talk', 'all'))
     ap.add_argument('--core', action='store_true')
     ap.add_argument('--prior', action='store_true', help='chi / chip: overlay the spin prior (macros/spin_prior.py)')
     ap.add_argument('--lvk', action='store_true', help='chiq: overlay the GWTC-5 chi_eff | q models (lvk_chi_q)')
     ap.add_argument('--mean-asinh', type=float, default=0.03)
     args = ap.parse_args()
-    need = {'mass': list(RUNS), 'chi': list(RUNS), 'chip': list(RUNS), 'chiq': list(RUNS), 'chiqm': list(RUNS), 'corr': list(RUNS), 'm2': list(RUNS), 'm2fix': list(RUNS), 'm1m2': list(RUNS), 'remnant': list(RUNS), 'talk': list(RUNS)[:1],
+    need = {'mass': list(RUNS), 'chi': list(RUNS), 'chip': list(RUNS), 'chiq': list(RUNS), 'chiqm': list(RUNS), 'corr': list(RUNS), 'm2': list(RUNS), 'm2fix': list(RUNS), 'm1m2': list(RUNS), 'm2q': list(RUNS), 'remnant': list(RUNS), 'talk': list(RUNS)[:1],
             'all': list(RUNS)}.get(args.what, [])
     R = {run: A.load_light(run) for run in need}
     import pixelpop  # noqa: F401  (its import resets matplotlib's rcParams; import it before the style)
@@ -1161,6 +1233,9 @@ def main():
         plot_style.save(m2_given_m1_figure(R), 'm2_m1_windows')
     if args.what in ('m2fix', 'all'):
         plot_style.save(m2_fixed_m1_figure(R), 'm2_fixed_m1_and_m1_q_hi')
+    if args.what in ('m2q', 'all'):
+        for run, r in R.items():
+            plot_style.save(m1q_m2q_figure(r, RUNS[run]), 'm1_q_and_m2_q' + ('' if run == 'ppc_gwtc5_k10' else '_gaussian'))
     if args.what in ('m1m2', 'all'):
         for run, r in R.items():
             sfx = '' if run == 'ppc_gwtc5_k10' else '_gaussian'
