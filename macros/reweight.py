@@ -25,9 +25,11 @@ The PE posterior is the unweighted usable samples (PE prior), as in the model.
 Feature counts. Feature k is the region peak_excess.EVENT_WINDOWS[k] in m1 x the feature's own q range
 (peak_fits.PEAKS). Per draw, P_nik = sum_j w~_nij [theta_ij in k] is event i's probability of lying in feature k,
 and N_nk = sum_i P_nik the expected number of events there; the macros give its median and 90% interval over draws
-(hyperposterior uncertainty; the Poisson-binomial scatter of which events are in, sum_i P (1 - P), is printed). Also
-the number of events with P_ik = mean_n P_nik > 0.5, and the same two numbers for the PE posteriors (as
-peak_excess's NEventsPE; the PE prior there, so not a population statement).
+(hyperposterior uncertainty; the Poisson-binomial scatter of which events are in, sum_i P (1 - P), is printed), and
+the same sum for the PE posteriors (as peak_excess's NEventsPE; the PE prior there, so not a population statement).
+Counts are always sums of probabilities, never the number of events with P > 0.5 (user, 2026-11-14): that can be small
+or zero even when the data say a lot about a region, if single events are broad compared with it. The figures weight
+events by P the same way.
 """
 import argparse
 import glob
@@ -49,7 +51,9 @@ PARAMS = ('mass_1', 'mass_ratio', 'chi_eff', 'chi_p', 'redshift')
 FEATURES = {'10': ((8., 12.), (0.8, 1.0), 'Ten'), '35': ((30., 40.), (0.8, 1.0), 'ThirtyFive'),
             '20': ((15., 25.), (0.3, 0.65), 'Twenty'), '60': ((50., 70.), (0.3, 0.65), 'Sixty')}
 FEATURE_COLOURS = {'10': 'C0', '35': 'C3', '20': 'C2', '60': 'C1'}
-MEMBER = 0.5                                       # P(event in feature) above which an event counts as a member
+GREY_BELOW = 0.1               # figures: an event is coloured by its most probable feature if that P exceeds this
+# (user, 2026-11-14) counts are sums of membership probabilities, never N(P > 0.5): with broad single-event
+# posteriors N(P > 0.5) can be small or zero even when the data say a lot about the region
 
 
 def out_path(run):
@@ -143,8 +147,7 @@ def counts_table(d):
     out = {}
     for k, name in enumerate(FEATURES):
         Nk = P[:, :, k].sum(1)
-        out[name] = dict(N=np.percentile(Nk, [5, 50, 95]), members=int((Pbar[:, k] > MEMBER).sum()),
-                         N_pe=Ppe[:, k].sum(), members_pe=int((Ppe[:, k] > MEMBER).sum()),
+        out[name] = dict(N=np.percentile(Nk, [5, 50, 95]), N_pe=Ppe[:, k].sum(),
                          scatter=np.sqrt((Pbar[:, k] * (1 - Pbar[:, k])).sum()),
                          top=sorted(zip(Pbar[:, k], Ppe[:, k], d['names']), reverse=True))
     return out, Pbar, Ppe
@@ -154,18 +157,15 @@ def write_tex(tables):
     from peak_fits import RUN_NAMES
     lines = ['% Population-reweighted event counts per feature (macros/reweight.py): m1 window x the feature\'s q range;',
              '% NRw: expected number of events (sum of membership probabilities), median and 90% over draws;',
-             f'% NRwMembers: events with mean membership probability > {MEMBER}; NPe, NPeMembers: the same for the PE '
-             'posteriors (PE prior)']
+             '% NPe: the sum of membership probabilities of the PE posteriors (PE prior)']
     for run, tab in tables.items():
         sfx = RUN_NAMES[run]
         for name, t in tab.items():
             tex = FEATURES[name][2]
             lo, med, hi = t['N']
-            lines += [rf'\newcommand{{\rw{tex}NRw{sfx}}}{{{med:.0f}^{{+{hi - med:.0f}}}_{{-{med - lo:.0f}}}}}',
-                      rf'\newcommand{{\rw{tex}NRwMembers{sfx}}}{{{t["members"]}}}']
+            lines += [rf'\newcommand{{\rw{tex}NRw{sfx}}}{{{med:.0f}^{{+{hi - med:.0f}}}_{{-{med - lo:.0f}}}}}']
             if sfx == 'Flex':
-                lines += [rf'\newcommand{{\rw{tex}NPe}}{{{t["N_pe"]:.0f}}}',
-                          rf'\newcommand{{\rw{tex}NPeMembers}}{{{t["members_pe"]}}}']
+                lines += [rf'\newcommand{{\rw{tex}NPe}}{{{t["N_pe"]:.0f}}}']
     text = '\n'.join(lines) + '\n'
     for path in (os.path.join(HERE, 'reweight.tex'), os.path.join(REPO, 'draft', 'macros', 'reweight.tex')):
         with open(path, 'w') as f:
@@ -173,32 +173,36 @@ def write_tex(tables):
         print(f'wrote {path}')
 
 
-def member_colours(Pbar):
-    """Per event, the colour of the feature it most likely belongs to (if > MEMBER), else grey."""
+def event_styles(Pbar):
+    """Per event: the colour of its most probable feature (grey if that probability is below GREY_BELOW), an opacity
+    growing with that probability, and the probability (to draw the most probable last)."""
     k = np.argmax(Pbar, 1)
-    cols = np.array([FEATURE_COLOURS[f] for f in FEATURES])[k]
-    return np.where(Pbar.max(1) > MEMBER, cols, '0.6'), Pbar.max(1) > MEMBER
+    p = Pbar.max(1)
+    cols = np.where(p > GREY_BELOW, np.array([FEATURE_COLOURS[f] for f in FEATURES])[k], '0.6')
+    alpha = np.where(p > GREY_BELOW, 0.2 + 0.75 * p, 0.3)
+    return cols, alpha, p
 
 
 def shift_figure(d, Pbar, label):
     """Each event's PE median (open) and reweighted median (filled), joined, in (m1, q) and (chi_eff, chi_p); colour:
-    the feature it belongs to (reweighted membership > MEMBER), grey otherwise. Feature regions as rectangles."""
+    its most probable feature (event_styles), opacity growing with that probability. Feature regions as rectangles."""
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
     from matplotlib.patches import Rectangle
     from paper_figs import LEG, TWO_COL, feature_masses
-    cols, member = member_colours(Pbar)
+    cols, alpha, pmax = event_styles(Pbar)
     med = {k: (weighted_quantiles(d[k], d['W_pe'], [0.5])[:, 0], weighted_quantiles(d[k], d['W'], [0.5])[:, 0])
            for k in PARAMS[:4]}
     fig, axes = plt.subplots(1, 2, figsize=(TWO_COL, 3.0))
-    order = np.argsort(member)                                 # members on top
+    order = np.argsort(pmax)                                   # most probable members on top
     for ax, (x, y) in zip(axes, (('mass_1', 'mass_ratio'), ('chi_eff', 'chi_p'))):
-        for i in order:
-            z = 3 if member[i] else 2
-            ax.plot([med[x][0][i], med[x][1][i]], [med[y][0][i], med[y][1][i]], color=cols[i], lw=0.5, alpha=0.7,
-                    zorder=z)
-            ax.scatter(med[x][0][i], med[y][0][i], s=7, facecolor='none', edgecolor=cols[i], lw=0.5, zorder=z)
-            ax.scatter(med[x][1][i], med[y][1][i], s=7, color=cols[i], lw=0, zorder=z + 0.5)
+        for z, i in enumerate(order):
+            z = 2 + z / len(order)
+            ax.plot([med[x][0][i], med[x][1][i]], [med[y][0][i], med[y][1][i]], color=cols[i], lw=0.5,
+                    alpha=alpha[i], zorder=z)
+            ax.scatter(med[x][0][i], med[y][0][i], s=7, facecolor='none', edgecolor=cols[i], lw=0.5, alpha=alpha[i],
+                       zorder=z)
+            ax.scatter(med[x][1][i], med[y][1][i], s=7, color=cols[i], lw=0, alpha=alpha[i], zorder=z)
     for name, ((a, b), (c, e), _) in FEATURES.items():
         axes[0].add_patch(Rectangle((a, c), b - a, e - c, fill=False, ec=FEATURE_COLOURS[name], lw=0.7, ls='--',
                                     zorder=1))
@@ -226,11 +230,11 @@ HIST = {'mass_1': (np.geomspace(3., 200., 81), r'$m_1\,[\textrm{M}_\odot]$', Tru
         'chi_p': (np.linspace(0., 1., 41), r'$\chi_\mathrm{p}$', False)}
 
 
-def stacked(ax, d, k, w, sel, **kw):
-    """Sum over the events ``sel`` of their posteriors in parameter k (weights w), as a step histogram (density per
-    unit of the axis: per ln m1 for m1)."""
+def stacked(ax, d, k, w, ev, **kw):
+    """Sum over events of their posteriors in parameter k (sample weights w), each event weighted by ``ev`` (bool or
+    membership probability), as a step histogram (density per unit of the axis: per ln m1 for m1)."""
     edges, _, logx = HIST[k]
-    x = d[k][sel].ravel(); ww = w[sel].ravel()
+    x = d[k].ravel(); ww = (w * np.asarray(ev, float)[:, None]).ravel()
     h, _ = np.histogram(x, edges, weights=ww)
     width = np.diff(np.log(edges)) if logx else np.diff(edges)
     ax.stairs(h / width, edges, **kw)
@@ -263,15 +267,16 @@ def stacked_figure(d, label):
 
 
 def features_figure(d, Pbar, label):
-    """Rows: features; columns: m1, q, chi_eff, chi_p. The summed posteriors of the feature's member events (reweighted
-    membership > MEMBER), PE (grey) against reweighted (feature colour); the feature region dashed."""
+    """Rows: features; columns: m1, q, chi_eff, chi_p. The posteriors of all events summed with weights P_ik, their
+    (reweighted) probability of lying in feature k: PE (grey) against reweighted (feature colour), the same events and
+    weights in both, so both integrate to sum_i P_ik; the feature region dashed."""
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
     from paper_figs import LEG, TWO_COL, feature_masses
     fx = feature_masses()
     fig, axes = plt.subplots(len(FEATURES), 4, figsize=(TWO_COL, 1.15 * len(FEATURES) + 0.5))
     for k, (row, (name, ((a, b), (c, e), _))) in enumerate(zip(axes, FEATURES.items())):
-        sel = Pbar[:, k] > MEMBER
+        sel = Pbar[:, k]
         col = FEATURE_COLOURS[name]
         for ax, p in zip(row, HIST):
             stacked(ax, d, p, d['W_pe'], sel, color='0.55', lw=0.9)
@@ -292,9 +297,10 @@ def features_figure(d, Pbar, label):
             row[0].axvline(v, color=col, lw=0.6, ls='--')
         for v in (c, e):
             row[1].axvline(v, color=col, lw=0.6, ls='--')
-        row[0].set_ylabel(rf'{fx[name]}$\,\textrm{{M}}_\odot$' + '\n' + rf'$N = {sel.sum()}$', fontsize=7)
+        row[0].set_ylabel(rf'{fx[name]}$\,\textrm{{M}}_\odot$' + '\n' + rf'$\sum P = {sel.sum():.1f}$', fontsize=7)
     fig.legend([Line2D([], [], color='0.55'), Line2D([], [], color='k')],
-               ['PE', f'population-reweighted ({label}); member events: P(in feature) $> {MEMBER:g}$'],
+               ['PE', f'population-reweighted ({label}); each event weighted by its probability of being in the '
+                'feature'],
                loc='upper center', ncol=2, bbox_to_anchor=(0.5, 1.0), **LEG)
     fig.tight_layout(rect=(0, 0, 1, 1 - 0.22 / fig.get_figheight())); fig.subplots_adjust(hspace=0.1, wspace=0.05)
     return fig
@@ -323,19 +329,20 @@ def event_contour(ax, d, i, w, space, **kw):
 
 def contour_figure(d, Pbar, label):
     """2 x 2: per-event CRED contours, PE (left) against population-reweighted (right), in (m1, q) (top) and
-    (chi_eff, chi_p) (bottom); colour: the feature the event belongs to (reweighted membership > MEMBER), else grey."""
+    (chi_eff, chi_p) (bottom); colour: the event's most probable feature, opacity growing with that probability
+    (event_styles)."""
     import matplotlib.pyplot as plt
     from matplotlib.lines import Line2D
     from paper_figs import LEG, TWO_COL, feature_masses
     fx = feature_masses()
-    cols, member = member_colours(Pbar)
+    cols, alpha, pmax = event_styles(Pbar)
     fig, axes = plt.subplots(2, 2, figsize=(TWO_COL, 5.6), sharex='row', sharey='row')
-    order = np.argsort(member)                                     # members drawn last (on top)
+    order = np.argsort(pmax)                                       # most probable members drawn last (on top)
     for row, space in zip(axes, ('mass', 'spin')):
         for ax, w, title in zip(row, (d['W_pe'], d['W']), ('PE', f'population-reweighted ({label})')):
             for i in order:
-                event_contour(ax, d, i, w, space, colors=[cols[i]], linewidths=0.6 if member[i] else 0.35,
-                              alpha=0.85 if member[i] else 0.35)
+                event_contour(ax, d, i, w, space, colors=[cols[i]], linewidths=0.35 + 0.35 * pmax[i],
+                              alpha=alpha[i])
     t = [5., 10., 20., 30., 50., 100.]
     axes[0, 0].set_xscale('log'); axes[0, 0].set_xlim(5., 150.); axes[0, 0].set_ylim(0., 1.)
     axes[0, 0].set_xticks(t, [f'${v:g}$' for v in t]); axes[0, 0].minorticks_off()
@@ -376,8 +383,7 @@ def report(runs):
         for name, t in tab.items():
             lo, med, hi = t['N']
             print(f'  {name:>2} Msun feature {FEATURES[name][:2]}: reweighted N = {med:.1f} ({lo:.1f}-{hi:.1f}), '
-                  f'membership scatter +-{t["scatter"]:.1f}, {t["members"]} with P > {MEMBER}; PE N = {t["N_pe"]:.1f}, '
-                  f'{t["members_pe"]} with P > {MEMBER}')
+                  f'membership scatter +-{t["scatter"]:.1f}; PE N = {t["N_pe"]:.1f}')
             for p, ppe, nm in t['top'][:12]:
                 if p < 0.1:
                     break
