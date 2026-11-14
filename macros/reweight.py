@@ -27,6 +27,9 @@ Feature counts. Feature k is the region peak_excess.EVENT_WINDOWS[k] in m1 x the
 and N_nk = sum_i P_nik the expected number of events there; the macros give its median and 90% interval over draws
 (hyperposterior uncertainty; the Poisson-binomial scatter of which events are in, sum_i P (1 - P), is printed), and
 the same sum for the PE posteriors (as peak_excess's NEventsPE; the PE prior there, so not a population statement).
+Also the effective number of contributing events, Neff_k = (sum_i P_ik)^2 / sum_i P_ik^2 (user, 2026-11-14): N_k
+when N_k events each have P = 1, larger when the count is spread thinly over many events (N_k / P for events of equal
+P), so Neff_k / N_k shows how localized the support is.
 Counts are always sums of probabilities, never the number of events with P > 0.5 (user, 2026-11-14): that can be small
 or zero even when the data say a lot about a region, if single events are broad compared with it. The figures weight
 events by P the same way.
@@ -147,7 +150,9 @@ def counts_table(d):
     out = {}
     for k, name in enumerate(FEATURES):
         Nk = P[:, :, k].sum(1)
+        neff = Nk ** 2 / (P[:, :, k] ** 2).sum(1)                              # per draw
         out[name] = dict(N=np.percentile(Nk, [5, 50, 95]), N_pe=Ppe[:, k].sum(),
+                         neff=np.percentile(neff, [5, 50, 95]), neff_pe=Ppe[:, k].sum() ** 2 / (Ppe[:, k] ** 2).sum(),
                          scatter=np.sqrt((Pbar[:, k] * (1 - Pbar[:, k])).sum()),
                          top=sorted(zip(Pbar[:, k], Ppe[:, k], d['names']), reverse=True))
     return out, Pbar, Ppe
@@ -157,15 +162,19 @@ def write_tex(tables):
     from peak_fits import RUN_NAMES
     lines = ['% Population-reweighted event counts per feature (macros/reweight.py): m1 window x the feature\'s q range;',
              '% NRw: expected number of events (sum of membership probabilities), median and 90% over draws;',
-             '% NPe: the sum of membership probabilities of the PE posteriors (PE prior)']
+             '% NPe: the sum of membership probabilities of the PE posteriors (PE prior);',
+             '% NeffRw, NeffPe: effective number of contributing events, (sum_i P_i)^2 / sum_i P_i^2 (per draw: median, 90%)']
     for run, tab in tables.items():
         sfx = RUN_NAMES[run]
         for name, t in tab.items():
             tex = FEATURES[name][2]
             lo, med, hi = t['N']
-            lines += [rf'\newcommand{{\rw{tex}NRw{sfx}}}{{{med:.0f}^{{+{hi - med:.0f}}}_{{-{med - lo:.0f}}}}}']
+            nlo, nmed, nhi = t['neff']
+            lines += [rf'\newcommand{{\rw{tex}NRw{sfx}}}{{{med:.0f}^{{+{hi - med:.0f}}}_{{-{med - lo:.0f}}}}}',
+                      rf'\newcommand{{\rw{tex}NeffRw{sfx}}}{{{nmed:.0f}^{{+{nhi - nmed:.0f}}}_{{-{nmed - nlo:.0f}}}}}']
             if sfx == 'Flex':
-                lines += [rf'\newcommand{{\rw{tex}NPe}}{{{t["N_pe"]:.0f}}}']
+                lines += [rf'\newcommand{{\rw{tex}NPe}}{{{t["N_pe"]:.0f}}}',
+                          rf'\newcommand{{\rw{tex}NeffPe}}{{{t["neff_pe"]:.0f}}}']
     text = '\n'.join(lines) + '\n'
     for path in (os.path.join(HERE, 'reweight.tex'), os.path.join(REPO, 'draft', 'macros', 'reweight.tex')):
         with open(path, 'w') as f:
@@ -383,7 +392,8 @@ def report(runs):
         for name, t in tab.items():
             lo, med, hi = t['N']
             print(f'  {name:>2} Msun feature {FEATURES[name][:2]}: reweighted N = {med:.1f} ({lo:.1f}-{hi:.1f}), '
-                  f'membership scatter +-{t["scatter"]:.1f}; PE N = {t["N_pe"]:.1f}')
+                  f'Neff {t["neff"][1]:.1f} ({t["neff"][0]:.1f}-{t["neff"][2]:.1f}), membership scatter '
+                  f'+-{t["scatter"]:.1f}; PE N = {t["N_pe"]:.1f}, Neff {t["neff_pe"]:.1f}')
             for p, ppe, nm in t['top'][:12]:
                 if p < 0.1:
                     break

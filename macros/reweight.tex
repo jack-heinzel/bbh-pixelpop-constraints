@@ -1,15 +1,28 @@
 % Population-reweighted event counts per feature (macros/reweight.py): m1 window x the feature's q range;
 % NRw: expected number of events (sum of membership probabilities), median and 90% over draws;
-% NPe: the sum of membership probabilities of the PE posteriors (PE prior)
+% NPe: the sum of membership probabilities of the PE posteriors (PE prior);
+% NeffRw, NeffPe: effective number of contributing events, (sum_i P_i)^2 / sum_i P_i^2 (per draw: median, 90%)
 \newcommand{\rwTenNRwFlex}{39^{+7}_{-34}}
+\newcommand{\rwTenNeffRwFlex}{48^{+1}_{-15}}
 \newcommand{\rwTenNPe}{13}
+\newcommand{\rwTenNeffPe}{43}
 \newcommand{\rwThirtyFiveNRwFlex}{79^{+12}_{-15}}
+\newcommand{\rwThirtyFiveNeffRwFlex}{118^{+5}_{-6}}
 \newcommand{\rwThirtyFiveNPe}{30}
+\newcommand{\rwThirtyFiveNeffPe}{83}
 \newcommand{\rwTwentyNRwFlex}{18^{+5}_{-6}}
+\newcommand{\rwTwentyNeffRwFlex}{25^{+3}_{-5}}
 \newcommand{\rwTwentyNPe}{14}
+\newcommand{\rwTwentyNeffPe}{41}
 \newcommand{\rwSixtyNRwFlex}{16^{+8}_{-9}}
+\newcommand{\rwSixtyNeffRwFlex}{35^{+8}_{-11}}
 \newcommand{\rwSixtyNPe}{19}
+\newcommand{\rwSixtyNeffPe}{65}
 \newcommand{\rwTenNRwGauss}{43^{+5}_{-30}}
+\newcommand{\rwTenNeffRwGauss}{49^{+0}_{-9}}
 \newcommand{\rwThirtyFiveNRwGauss}{80^{+11}_{-14}}
+\newcommand{\rwThirtyFiveNeffRwGauss}{117^{+6}_{-6}}
 \newcommand{\rwTwentyNRwGauss}{18^{+5}_{-6}}
+\newcommand{\rwTwentyNeffRwGauss}{25^{+3}_{-5}}
 \newcommand{\rwSixtyNRwGauss}{16^{+9}_{-8}}
+\newcommand{\rwSixtyNeffRwGauss}{36^{+7}_{-9}}
