@@ -42,7 +42,9 @@ belong in mass-gap-investigation. See README.md for the model.
 - Report times in US Eastern (the node clock is Pacific).
 - Plots: follow `~/public_html/mass-spin-correlations/plots/CLAUDE.md`; `plot_style.apply()`, no titles, PDF to `plots/`.
   PixelPop rates must be windowed (m2 > 3 M☉) before plotting; the saved `log_p_mass` is unwindowed.
-- Commit or push only when asked.
+- Add, commit and push each finished, verified change without being asked (user, 2026-11-14): `git pull --no-rebase
+  --no-edit` first, only the files the change touched (never `sub.sh`, `bench.py`, `bench.sbatch`, `submit.sbatch`).
+  Ask before anything destructive (force push, history rewrite, deleting tracked files).
 
 ## Runs
 
