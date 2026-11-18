@@ -40,6 +40,8 @@
 \inputmacros{peak_odds}
 \inputmacros{chi_q_broadening}
 \inputmacros{peak_spins}
+\inputmacros{reweight}
+\inputmacros{mc_syst}
 
 % math macros
 \newcommand{\Msun}{\ensuremath{\mathrm{M}_{\odot}}}
@@ -145,11 +147,25 @@ Following \citet{Heinzel:2025ogf}, we subtract $N_{\rm obs}(N_{\rm obs} + 1)\sig
 \begin{equation}
     \sigma^2_{\rm syst} = \frac{1}{N^2} \sum_{n, m} \delta f_n\, \delta f_m\, C(\Lambda_n, \Lambda_m), \qquad \delta f_n = f(\Lambda_n) - \overline{f},
 \end{equation}
-where $C$ is the covariance of the log-likelihood error between posterior samples $\Lambda_n$ and $\Lambda_m$~\cite{Heinzel:2025ogf}. Writing $C$ as a sum over \ac{PE} samples and injections of products of normalized weights reduces this to a single pass over the posterior samples, $\sigma^2_{\rm syst} = \sum_s c_s g_s^2$ with $g_s = N^{-1}\sum_n \delta f_n \tilde{w}_{n, s}$, where $c_s = 1/[M_i(M_i - 1)]$ for the samples of event $i$ and $N_{\rm obs}^2/[T(T - 1)]$ for the injections. We compare $\sigma_{\rm syst}$ with the posterior standard deviation $\sigma_{\rm stat}$. \todo{$\sigma_{\rm syst}/\sigma_{\rm stat}$ for the peak locations, $f_{\rm ret}$ and $\sigma_{\chieff}(q)$}
+where $C$ is the covariance of the log-likelihood error between posterior samples $\Lambda_n$ and $\Lambda_m$~\cite{Heinzel:2025ogf}. Writing $C$ as a sum over \ac{PE} samples and injections of products of normalized weights reduces this to a single pass over the posterior samples, $\sigma^2_{\rm syst} = \sum_s c_s g_s^2$ with $g_s = N^{-1}\sum_n \delta f_n \tilde{w}_{n, s}$, where $c_s = 1/[M_i(M_i - 1)]$ for the samples of event $i$ and $N_{\rm obs}^2/[T(T - 1)]$ for the injections. We compare $\sigma_{\rm syst}$ with the posterior standard deviation $\sigma_{\rm stat}$. 
 
 
 
-We compute $\sigma_{\rm syst}$, and the precision statistic $\hat{E}$ (the information in the posterior, in bits, lost to Monte Carlo uncertainty), with \textsc{population-error}~\cite{Heinzel:2025ogf}, from the same importance weights that enter the likelihood, recomputed at every posterior sample. A quantity is robust to Monte Carlo systematics if $\sigma_{\rm syst} \ll \sigma_{\rm stat}$: the shift of its posterior mean over Monte Carlo realizations of the \ac{PE} samples and injections is then small compared with its posterior width. We evaluate this for every quantity reported in the main text: $\ln p(m_1, q)$ in each cell and the slices $p(m_1 \mid q \in Q)$, the spin moments in each $(m_1, q)$ cell and averaged over $q$ or $m_1$, the peak locations and the retained fractions. \todo{table of $\sigma_{\rm syst}/\sigma_{\rm stat}$ for these quantities and $\hat{E}$, for both spin models; state the threshold, e.g.\ $\sigma_{\rm syst}/\sigma_{\rm stat} < 0.3$}
+We compute $\sigma_{\rm syst}$, and the precision statistic $\hat{E}$ (the information in the posterior, in bits, lost to Monte Carlo uncertainty), with \textsc{population-error}~\cite{Heinzel:2025ogf}, from the same importance weights that enter the likelihood, recomputed at every posterior sample. A quantity is robust to Monte Carlo systematics if $\sigma_{\rm syst} \ll \sigma_{\rm stat}$: the shift of its posterior mean over Monte Carlo realizations of the \ac{PE} samples and injections is then small compared with its posterior width. We evaluate this for every quantity reported in the main text: $\ln p(m_1, q)$ in each cell and the slices $p(m_1 \mid q \in Q)$, the spin moments in each $(m_1, q)$ cell and averaged over $q$ or $m_1$, the peak locations and the retained fractions. \red{Figures~\ref{fig: mc maps} and~\ref{fig: mc curves} show $\sigma_{\rm syst}/\sigma_{\rm stat}$ for both spin models. It is below $\mcMaxMapFlex$ ($\mcMaxMapGauss$) for the \flexiblespins (\gaussianspins) model for every quantity, and below $\sim 0.2$ for every spin moment except the $m_1$-averaged $\chip$ moments at $q \gtrsim 0.6$ ($\lesssim 0.25$). The largest values are in the merger rate at the \featTen $\Msun$ feature and in $p(m_1 \mid q \in [0.8, 1])$ at the \featThirtyFive $\Msun$ feature, where the rate is best measured and so $\sigma_{\rm stat}$ is smallest. For the peak fits of Table~I of the main text, $\sigma_{\rm syst}/\sigma_{\rm stat}$ of the location is $\mcTenMuFlex$, $\mcTwentyMuFlex$, $\mcThirtyFiveMuFlex$ and $\mcSixtyMuFlex$ for the \featTen, \featTwenty, \featThirtyFive and \featSixty $\Msun$ features ($\mcTenMuGauss$, $\mcTwentyMuGauss$, $\mcThirtyFiveMuGauss$, $\mcSixtyMuGauss$), and of the width $\mcTenSigmaFlex$, $\mcTwentySigmaFlex$, $\mcThirtyFiveSigmaFlex$ and $\mcSixtySigmaFlex$ ($\mcTenSigmaGauss$, $\mcTwentySigmaGauss$, $\mcThirtyFiveSigmaGauss$, $\mcSixtySigmaGauss$). The precision statistic is $\hat{E} = \mcPrecisionFlex$ ($\mcPrecisionGauss$) bits.} \todo{$f_{\rm ret}$ not yet included; state the threshold}
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/mc_systematics_maps.pdf}
+    \caption{\red{Monte Carlo systematics across the mass plane: $\sigma_{\rm syst}/\sigma_{\rm stat}$ of $\ln p(m_1, q)$ (left), and of the mean (middle) and standard deviation (right) of $\chieff$ in each $(m_1, q)$ cell, for the \flexiblespins (top) and \gaussianspins (bottom) models. Blank: $m_2 < 3\,\Msun$, outside the model. Dashed boxes: the four feature regions of Sec.~\ref{sm: reweight}.}}
+    \label{fig: mc maps}
+\end{figure*}
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/mc_systematics_curves.pdf}
+    \caption{\red{Monte Carlo systematics of the one-dimensional quantities: $\sigma_{\rm syst}/\sigma_{\rm stat}$ of $\ln p(m_1 \mid q \in \textrm{range})$ (left), of the $q$-averaged mean (dashed) and standard deviation (solid) of $\chieff$ against $m_1$ (middle), for all $q$ (black) and the two mass ratio ranges (colours), and of the $m_1$-averaged moments of $\chieff$ (black) and $\chip$ (purple) against $q$ (right). Shaded: the $m_1$ windows of the four features.}}
+    \label{fig: mc curves}
+\end{figure*}
 
 \todo{
 \begin{itemize}
@@ -368,6 +384,52 @@ Similar to the \featTwenty $\Msun$ feature, the effective spin distribution is b
 Weakly parameterized analyses of \ac{GWTC-3} and \ac{GWTC-4} showed hints of a rise in the merger rate near $60\,\Msun$~\cite{MaganaHernandez:2024uty, LIGOScientific:2025pvj}, but \citet{LIGOScientific:2026ctl} found no evidence for a peak there in the \ac{GWTC-5} primary mass distribution. They did find a flatter mass ratio distribution above $m_1 \sim 40\,\Msun$, together with the change in spin properties, and noted that this is consistent with hierarchical mergers of a second-generation and a first-generation black hole, which would have $q \approx 0.5$. Our result is in line with this, and resolves it further: the unequal-mass binaries above $\sim 40\,\Msun$ are concentrated around \featSixty $\Msun$ rather than spread across the high-mass tail. \red{Over all mass ratios, the excess at the \featSixty $\Msun$ feature has $P_{\rm loc} = \peakSixtyExcessPLocAllQFlex\%$, against $\peakSixtyExcessPLocFlex\%$ within $q \in [0.3, 0.65]$.}
 
 A primary mass of $\sim$ \featSixty $\Msun$ lies in the pair-instability mass gap, whose lower edge has been placed near $\sim 45\,\Msun$ using the secondary masses and spins of \ac{GWTC-4} binaries~\cite{Tong:2025wpz, Antonini:2025ilj}, though see~\cite{Ray:2025xti} \todo{check these three on the location and significance of the lower edge}. Such black holes cannot form directly from stellar collapse, but can be the remnants of earlier mergers. Two $\sim$ \featThirtyFive $\Msun$ black holes merge into a remnant of $\sim 60\,\Msun$ with spin $\chi \approx 0.7$, and if this remnant merges again with a first-generation black hole from the \featThirtyFive $\Msun$ feature, the binary has $q \approx 0.5$ and, if assembled dynamically, a broad, symmetric $\chieff$ distribution~\cite{Rodriguez:2019huv, Kimball:2020opk, Gerosa:2021mno, Antonini:2024het}. Hierarchical subpopulations at high mass have also been argued for in \ac{GWTC-4}~\cite{Plunkett:2026pxt, Li:2025iux}. In the main text, we find that the location of the \featSixty $\Msun$ feature matches the remnant of the \featThirtyFive $\Msun$ feature, with $\sim 5\%$ of the mass radiated. As with the \featTwenty $\Msun$ feature, we regard the peak itself as tentative.
+
+\section{Population-reweighted event posteriors}
+\label{sm: reweight}
+
+\red{To see which events inform each feature, we reweight every event's \ac{PE} samples to the population. For each posterior draw $\Lambda_n$, sample $s$ of event $i$ gets the weight $p(\theta_s \mid \Lambda_n)/\pi_{\rm PE}(\theta_s)$, normalized over the event's samples, and we average these normalized weights over all draws. Normalizing within each draw divides by the event's own marginal likelihood $\mathcal{L}(d_i \mid \Lambda_n)$, so the average is the leave-one-out posterior, $p(\theta \mid d_i, \{d_{j \neq i}\}) \propto \mathcal{L}(d_i \mid \theta) \int p(\theta \mid \Lambda)\, \xi(\Lambda)^{-1}\, p(\Lambda \mid \{d_{j \neq i}\})\, d\Lambda$, and does not use event $i$'s data twice.}
+
+\red{We define each feature by a region of the mass plane: $m_1 \in [8, 12]\,\Msun$ and $[30, 40]\,\Msun$ with $q \in [0.8, 1]$ for the \featTen and \featThirtyFive $\Msun$ features, and $m_1 \in [15, 25]\,\Msun$ and $[50, 70]\,\Msun$ with $q \in [0.3, 0.65]$ for the \featTwenty and \featSixty $\Msun$ features. For each draw, $P_{ik}$ is the probability that event $i$ lies in region $k$. We report the expected number of events in the feature, $N_k = \sum_i P_{ik}$, and the effective number of events contributing to it, $N_{{\rm eff}, k} = (\sum_i P_{ik})^2/\sum_i P_{ik}^2$, each with its median and 90\% interval over draws (Table~\ref{tab: reweight}). $N_{{\rm eff}, k} \geq N_k$, with equality when every contributing event is certainly in the feature, so $N_k/N_{{\rm eff}, k}$ is roughly the typical membership probability. Counting events with $P_{ik} > 0.5$ instead would undercount a feature whose events individually straddle the region's edges.}
+
+\begin{table}
+    \caption{\red{Expected number of events $N$ and effective number of contributing events $N_{\rm eff}$ in each feature region, from the population-reweighted posteriors (median and 90\% interval over draws) and from the \ac{PE} posteriors (with the \ac{PE} prior).}}
+    \label{tab: reweight}
+    \begin{ruledtabular}
+    \begin{tabular}{lcccccc}
+        & \multicolumn{2}{c}{\flexiblespins} & \multicolumn{2}{c}{\gaussianspins} & \multicolumn{2}{c}{\ac{PE}} \\
+        Feature [$\Msun$] & $N$ & $N_{\rm eff}$ & $N$ & $N_{\rm eff}$ & $N$ & $N_{\rm eff}$ \\
+        \hline
+        \featTen & $\rwTenNRwFlex$ & $\rwTenNeffRwFlex$ & $\rwTenNRwGauss$ & $\rwTenNeffRwGauss$ & $\rwTenNPe$ & $\rwTenNeffPe$ \\
+        \featTwenty & $\rwTwentyNRwFlex$ & $\rwTwentyNeffRwFlex$ & $\rwTwentyNRwGauss$ & $\rwTwentyNeffRwGauss$ & $\rwTwentyNPe$ & $\rwTwentyNeffPe$ \\
+        \featThirtyFive & $\rwThirtyFiveNRwFlex$ & $\rwThirtyFiveNeffRwFlex$ & $\rwThirtyFiveNRwGauss$ & $\rwThirtyFiveNeffRwGauss$ & $\rwThirtyFiveNPe$ & $\rwThirtyFiveNeffPe$ \\
+        \featSixty & $\rwSixtyNRwFlex$ & $\rwSixtyNeffRwFlex$ & $\rwSixtyNRwGauss$ & $\rwSixtyNeffRwGauss$ & $\rwSixtyNPe$ & $\rwSixtyNeffPe$ \\
+    \end{tabular}
+    \end{ruledtabular}
+\end{table}
+
+\red{Reweighting pulls events into the features (Figs.~\ref{fig: rw shift} and~\ref{fig: rw features}): the \ac{PE} prior spreads the mass ratio of most events toward low $q$, and the population moves near-equal-mass events up to $q \sim 1$, so the \featTen and \featThirtyFive $\Msun$ features gain many events. The \featTen $\Msun$ count has a long lower tail because in $\sim 8\%$ of draws the rate at $8$--$12\,\Msun$ moves below $q = 0.8$. The \featTwenty $\Msun$ feature is the most sharply defined of the unequal-mass features, about $\rwTwentyNRwFlex$ events' worth spread over $\rwTwentyNeffRwFlex$ events. The \featSixty $\Msun$ feature is supported by about $\rwSixtyNRwFlex$ events' worth spread over $\rwSixtyNeffRwFlex$ events, each with membership probability $\sim 0.4$: its events lie in the mass window but straddle the $q = 0.65$ edge. The spin posteriors narrow toward the population (Fig.~\ref{fig: rw contours}), the more so for the near-equal-mass features, whose $\chieff$ distributions are narrow. The \gaussianspins model gives the same counts to within one event, except at the \featTen $\Msun$ feature ($\rwTenNRwGauss$).}
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/reweighted_vs_pe.pdf}
+    \caption{\red{Median of each event's \ac{PE} posterior (open) and population-reweighted posterior (filled; \flexiblespins model), joined by a line, in $(m_1, q)$ (left) and $(\chieff, \chip)$ (right). Colour: the feature in which the event is most likely to lie, with opacity growing with its membership probability; grey: $P_{ik} < 0.1$ for every feature. Dashed boxes: the feature regions.}}
+    \label{fig: rw shift}
+\end{figure*}
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/reweighted_vs_pe_features.pdf}
+    \caption{\red{Stacked one-dimensional posteriors of the events in each feature (rows), each event weighted by its probability of lying in the feature: \ac{PE} (grey) and population-reweighted (colour; \flexiblespins model), in $m_1$, $q$, $\chieff$ and $\chip$ (columns). Vertical lines: the feature region. The row labels give $\sum_i P_{ik}$.}}
+    \label{fig: rw features}
+\end{figure*}
+
+\begin{figure*}
+    \centering
+    \includegraphics[width=\linewidth]{draft/plots/reweighted_vs_pe_contours.pdf}
+    \caption{\red{90\% credible contours of every event's \ac{PE} (left) and population-reweighted (right; \flexiblespins model) posterior in $(m_1, q)$ (top) and $(\chieff, \chip)$ (bottom), coloured as in Fig.~\ref{fig: rw shift}.}}
+    \label{fig: rw contours}
+\end{figure*}
 
 \section{Significance of the peaks}
 \label{sm: significance}
