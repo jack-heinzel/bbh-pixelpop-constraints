@@ -557,7 +557,7 @@ GRID = dict(color='0.6', lw=0.5, alpha=0.7, zorder=3)   # Fig. 1's reference lin
 FLEX_COLOUR, GAUSS_COLOUR = 'C1', 'k'             # marginal figure: flexible as Fig. 1's q ~ 1 colour; Gaussian 90% only
 
 
-def marginal_block(fig, spec, Df, Dg, mr, qr, norm, ylabel=True, fontsize=6):
+def marginal_block(fig, spec, Df, Dg, mr, qr, norm, ylabel=True, fontsize=6, xlabel=True, prefix=''):
     """The flexible model's median heatmap and the Gaussian model's contours (spin_heatmap), with the 1D marginals
     p(chi_eff | region) above and p(chi_p | region) to the right (Df, Dg: draws, Be, Bp densities): the flexible
     model's median and 90% band, the Gaussian model's 90% interval only (lines; its 90% region on the heatmap). Each
@@ -597,12 +597,15 @@ def marginal_block(fig, spec, Df, Dg, mr, qr, norm, ylabel=True, fontsize=6):
         ax.grid(True, which='major', axis=axis, **GRID)
     ax_t.tick_params(labelbottom=False, labelleft=False, which='both', direction='out')
     ax_r.tick_params(labelleft=False, labelbottom=False, which='both', direction='out')
-    ax_m.set_xlabel(r'$\chi_\mathrm{eff}$')
+    if xlabel:
+        ax_m.set_xlabel(r'$\chi_\mathrm{eff}$')
+    else:
+        ax_m.tick_params(labelbottom=False)
     if ylabel:
         ax_m.set_ylabel(r'$\chi_p$')
     else:
         ax_m.tick_params(labelleft=False)
-    ax_m.text(0.04, 0.96, region_label(mr, qr), transform=ax_m.transAxes, va='top', ha='left', fontsize=fontsize,
+    ax_m.text(0.04, 0.96, prefix + region_label(mr, qr), transform=ax_m.transAxes, va='top', ha='left', fontsize=fontsize,
               bbox=LABEL_BOX)
     return ax_m, pcm
 
@@ -671,46 +674,38 @@ TALK_REGIONS = SPIN_PEAK_REGIONS                 # Fig. 2's regions (user, 2026-
 def talk_figure(r):
     """For talks (user, 2026-11-18): Fig. 1 (p(m1 | q range) above p(q | m1), the flexible run) on the left, with the
     peak regions boxed and numbered on the p(q | m1) panel, and a 2 x 2 grid of their spin distributions on the right
-    as Fig. 2 (flexible median heatmap, Gaussian 50% / 90% contours): near-equal-mass features on top, unequal-mass
-    below, as on the q axis."""
+    as Fig. 2 (marginal_block: flexible median heatmap, Gaussian 90% contour, the marginals p(chi_eff | region) above
+    and p(chi_p | region) to the right); near-equal-mass features on top, unequal-mass below, as on the q axis."""
     from matplotlib.colors import LogNorm
-    from matplotlib.patches import Rectangle
+    from matplotlib.patches import Patch, Rectangle
     plt.rcParams.update({'font.size': 11, 'axes.labelsize': 12, 'xtick.labelsize': 10, 'ytick.labelsize': 10,
                          'legend.fontsize': 10, 'lines.linewidth': 1.4})
     order = sorted(range(len(TALK_REGIONS)), key=lambda k: (-TALK_REGIONS[k][1][0], TALK_REGIONS[k][0][0]))
     regions = [TALK_REGIONS[k] for k in order]
     Df = region_draws('ppc_gwtc5_k10', regions)
-    Mf = np.median(Df, 0); del Df
-    Mg = region_medians('ppc_gwtc5_k100_gauss', regions)
-    snorm = LogNorm(vmin=A.REGION_DENSITY_MIN, vmax=np.nanmax(Mf))
-    fig = plt.figure(figsize=(13.33, 6.2))
-    gl = fig.add_gridspec(2, 1, left=0.065, right=0.45, bottom=0.11, top=0.9, hspace=0.06)
+    Dg = region_draws('ppc_gwtc5_k100_gauss', regions)
+    snorm = LogNorm(vmin=A.REGION_DENSITY_MIN, vmax=np.nanmax(np.median(Df, 0)))
+    fig = plt.figure(figsize=(13.33, 6.6))
+    gl = fig.add_gridspec(2, 1, left=0.065, right=0.45, bottom=0.1, top=0.9, hspace=0.06)
     a1 = fig.add_subplot(gl[0]); a2 = fig.add_subplot(gl[1], sharex=a1)
     pc = mass_panels(fig, a1, a2, r)
     a1.legend(*band_legend(), loc='lower left', ncol=3, bbox_to_anchor=(0., 1.0), **LEG)
     cb = fig.colorbar(pc, cax=a2.inset_axes([1.015, 0, 0.025, 1])); cb.set_label(r'$p(q \mid m_1)$')
     cb.ax.tick_params(direction='out')
-    gr = fig.add_gridspec(2, 2, left=0.565, right=0.905, bottom=0.11, top=0.9, hspace=0.08, wspace=0.08)
-    for k, ((mr, qr), f, g) in enumerate(zip(regions, Mf, Mg)):
+    gr = fig.add_gridspec(2, 2, left=0.545, right=0.905, bottom=0.1, top=0.93, hspace=0.1, wspace=0.1)
+    mains = []
+    for k, ((mr, qr), f, g) in enumerate(zip(regions, np.moveaxis(Df, 1, 0), np.moveaxis(Dg, 1, 0))):
         a2.add_patch(Rectangle((mr[0], qr[0]), mr[1] - mr[0], qr[1] - qr[0], fill=False, ec='w', lw=1.4, zorder=4))
         above = qr[1] < 0.95                                     # number above the box, or below it at q = 1
         a2.text(np.sqrt(mr[0] * mr[1]), qr[1] + 0.015 if above else qr[0] - 0.015, f'{k + 1}', color='w',
                 ha='center', va='bottom' if above else 'top', fontsize=11, zorder=4)
-        ax = fig.add_subplot(gr[k // 2, k % 2])
-        pcs = spin_heatmap(ax, f, g, snorm)
-        ax.text(0.04, 0.96, f'{k + 1}: ' + region_label(mr, qr).replace('\n', ', '), transform=ax.transAxes,
-                va='top', ha='left', fontsize=9, bbox=LABEL_BOX)
-        if k // 2:
-            ax.set_xlabel(r'$\chi_\mathrm{eff}$')
-        else:
-            ax.tick_params(labelbottom=False)
-        if k % 2:
-            ax.tick_params(labelleft=False)
-        else:
-            ax.set_ylabel(r'$\chi_p$')
-    ax.legend([Line2D([], [], color='c', lw=1.2), Line2D([], [], color='c', lw=0.9, ls='--')],
-              ['Gaussian, 50\\%', 'Gaussian, 90\\%'], loc='lower right', labelcolor='w', **LEG)
-    top, bot = fig.axes[-4].get_position(), fig.axes[-1].get_position()
+        ax_m, pcs = marginal_block(fig, gr[k // 2, k % 2], f, g, mr, qr, snorm, ylabel=k % 2 == 0, fontsize=8,
+                                   xlabel=k // 2 == 1, prefix=f'{k + 1}: ')
+        mains.append(ax_m)
+    fig.legend([(Patch(color=FLEX_COLOUR, alpha=0.3, lw=0), Line2D([], [], color=FLEX_COLOUR, lw=0.8)),
+                Line2D([], [], color=GAUSS_COLOUR, lw=0.8)], ['Flexible, median and 90\\%', 'Gaussian, 90\\%'],
+               loc='upper center', ncol=2, bbox_to_anchor=(0.725, 1.0), **LEG)
+    top, bot = mains[1].get_position(), mains[3].get_position()
     cb2 = fig.colorbar(pcs, cax=fig.add_axes([0.92, bot.y0, 0.012, top.y1 - bot.y0]))
     cb2.set_label(r'$p(\chi_\mathrm{eff}, \chi_p \mid m_1, q)$, flexible median'); cb2.ax.tick_params(direction='out')
     return fig
