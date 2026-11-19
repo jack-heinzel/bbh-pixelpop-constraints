@@ -29,7 +29,8 @@ figure:
            plots/spin_peak_regions_slices.pdf   Fig. 2 with slice panels (median and 90% over draws)
            plots/spin_peak_regions_marginals.pdf   Fig. 2 with 1D marginal panels of both models (median and 90%)
            plots/mass_spin_zoom_talk.pdf   for talks: Fig. 1 with the peak regions boxed, their spin panels (as Fig. 2) in a
-                                           2 x 2 grid to the right
+                                           2 x 2 grid to the right; _1 ... _4: one region each (10, 20, 35, 60 Msun),
+                                           its spin panel filling the right side, joined to its box
            plots/peak_bookkeeping.pdf      Fig. 3: (a) peak location against mean q (joint fits, Gaussian KDE);
                                            (b) mean retained fraction for both pairs; one column
 
@@ -671,44 +672,72 @@ def spin_peaks_figure(slices=False, marginals=False):
 TALK_REGIONS = SPIN_PEAK_REGIONS                 # Fig. 2's regions (user, 2026-11-18)
 
 
-def talk_figure(r):
-    """For talks (user, 2026-11-18): Fig. 1 (p(m1 | q range) above p(q | m1), the flexible run) on the left, with the
-    peak regions boxed and numbered on the p(q | m1) panel, and a 2 x 2 grid of their spin distributions on the right
-    as Fig. 2 (marginal_block: flexible median heatmap, Gaussian 90% contour, the marginals p(chi_eff | region) above
-    and p(chi_p | region) to the right); near-equal-mass features on top, unequal-mass below, as on the q axis."""
+def talk_figures(r):
+    """For talks (user, 2026-11-18): Fig. 1 (p(m1 | q range) above p(q | m1), the flexible run) on the left, the peak
+    regions boxed on the p(q | m1) panel and numbered by mass (10, 20, 35, 60 Msun -> 1-4), and on the right their
+    spin distributions as Fig. 2 (marginal_block: flexible median heatmap, Gaussian 90% contour, the marginals
+    p(chi_eff | region) above and p(chi_p | region) to the right). Returns {suffix: figure}: '_1' ... '_4', one region
+    each, its spin block filling the right side, joined to its box by two lines; '' all four in a 2 x 2 grid
+    (near-equal-mass features on top, unequal-mass below, as on the q axis). One colour scale for all five."""
     from matplotlib.colors import LogNorm
-    from matplotlib.patches import Patch, Rectangle
+    from matplotlib.patches import ConnectionPatch, Patch, Rectangle
+    import matplotlib.patheffects as pe
     plt.rcParams.update({'font.size': 11, 'axes.labelsize': 12, 'xtick.labelsize': 10, 'ytick.labelsize': 10,
                          'legend.fontsize': 10, 'lines.linewidth': 1.4})
-    order = sorted(range(len(TALK_REGIONS)), key=lambda k: (-TALK_REGIONS[k][1][0], TALK_REGIONS[k][0][0]))
-    regions = [TALK_REGIONS[k] for k in order]
+    regions = sorted(TALK_REGIONS, key=lambda reg: reg[0][0])                     # numbered by mass
     Df = region_draws('ppc_gwtc5_k10', regions)
     Dg = region_draws('ppc_gwtc5_k100_gauss', regions)
     snorm = LogNorm(vmin=A.REGION_DENSITY_MIN, vmax=np.nanmax(np.median(Df, 0)))
-    fig = plt.figure(figsize=(13.33, 6.6))
-    gl = fig.add_gridspec(2, 1, left=0.065, right=0.45, bottom=0.1, top=0.9, hspace=0.06)
-    a1 = fig.add_subplot(gl[0]); a2 = fig.add_subplot(gl[1], sharex=a1)
-    pc = mass_panels(fig, a1, a2, r)
-    a1.legend(*band_legend(), loc='lower left', ncol=3, bbox_to_anchor=(0., 1.0), **LEG)
-    cb = fig.colorbar(pc, cax=a2.inset_axes([1.015, 0, 0.025, 1])); cb.set_label(r'$p(q \mid m_1)$')
-    cb.ax.tick_params(direction='out')
-    gr = fig.add_gridspec(2, 2, left=0.545, right=0.905, bottom=0.1, top=0.93, hspace=0.1, wspace=0.1)
-    mains = []
+    right = dict(left=0.545, right=0.905, bottom=0.1, top=0.93)
+    halo = [pe.Stroke(linewidth=2.6, foreground='k'), pe.Normal()]
+
+    def base(selected=None):
+        fig = plt.figure(figsize=(13.33, 6.6))
+        gl = fig.add_gridspec(2, 1, left=0.065, right=0.45, bottom=0.1, top=0.9, hspace=0.06)
+        a1 = fig.add_subplot(gl[0]); a2 = fig.add_subplot(gl[1], sharex=a1)
+        pc = mass_panels(fig, a1, a2, r)
+        a1.legend(*band_legend(), loc='lower left', ncol=3, bbox_to_anchor=(0., 1.0), **LEG)
+        cb = fig.colorbar(pc, cax=a2.inset_axes([1.015, 0, 0.025, 1])); cb.set_label(r'$p(q \mid m_1)$')
+        cb.ax.tick_params(direction='out')
+        for k, (mr, qr) in enumerate(regions):
+            on = selected is None or k == selected
+            a2.add_patch(Rectangle((mr[0], qr[0]), mr[1] - mr[0], qr[1] - qr[0], fill=False, ec='w',
+                                   lw=2.2 if selected == k else 1.4, alpha=1. if on else 0.45, zorder=4))
+            above = qr[1] < 0.95                                 # number above the box, or below it at q = 1
+            a2.text(np.sqrt(mr[0] * mr[1]), qr[1] + 0.015 if above else qr[0] - 0.015, f'{k + 1}', color='w',
+                    ha='center', va='bottom' if above else 'top', fontsize=11, zorder=4, alpha=1. if on else 0.45)
+        fig.legend([(Patch(color=FLEX_COLOUR, alpha=0.3, lw=0), Line2D([], [], color=FLEX_COLOUR, lw=0.8)),
+                    Line2D([], [], color=GAUSS_COLOUR, lw=0.8)], ['Flexible, median and 90\\%', 'Gaussian, 90\\%'],
+                   loc='upper center', ncol=2, bbox_to_anchor=(0.725, 1.0), **LEG)
+        return fig, a2
+
+    def colourbar(fig, ax_top, ax_bot, pcs):
+        top, bot = ax_top.get_position(), ax_bot.get_position()
+        cb2 = fig.colorbar(pcs, cax=fig.add_axes([0.92, bot.y0, 0.012, top.y1 - bot.y0]))
+        cb2.set_label(r'$p(\chi_\mathrm{eff}, \chi_p \mid m_1, q)$, flexible median')
+        cb2.ax.tick_params(direction='out')
+
+    figs = {}
     for k, ((mr, qr), f, g) in enumerate(zip(regions, np.moveaxis(Df, 1, 0), np.moveaxis(Dg, 1, 0))):
-        a2.add_patch(Rectangle((mr[0], qr[0]), mr[1] - mr[0], qr[1] - qr[0], fill=False, ec='w', lw=1.4, zorder=4))
-        above = qr[1] < 0.95                                     # number above the box, or below it at q = 1
-        a2.text(np.sqrt(mr[0] * mr[1]), qr[1] + 0.015 if above else qr[0] - 0.015, f'{k + 1}', color='w',
-                ha='center', va='bottom' if above else 'top', fontsize=11, zorder=4)
-        ax_m, pcs = marginal_block(fig, gr[k // 2, k % 2], f, g, mr, qr, snorm, ylabel=k % 2 == 0, fontsize=8,
-                                   xlabel=k // 2 == 1, prefix=f'{k + 1}: ')
-        mains.append(ax_m)
-    fig.legend([(Patch(color=FLEX_COLOUR, alpha=0.3, lw=0), Line2D([], [], color=FLEX_COLOUR, lw=0.8)),
-                Line2D([], [], color=GAUSS_COLOUR, lw=0.8)], ['Flexible, median and 90\\%', 'Gaussian, 90\\%'],
-               loc='upper center', ncol=2, bbox_to_anchor=(0.725, 1.0), **LEG)
-    top, bot = mains[1].get_position(), mains[3].get_position()
-    cb2 = fig.colorbar(pcs, cax=fig.add_axes([0.92, bot.y0, 0.012, top.y1 - bot.y0]))
-    cb2.set_label(r'$p(\chi_\mathrm{eff}, \chi_p \mid m_1, q)$, flexible median'); cb2.ax.tick_params(direction='out')
-    return fig
+        fig, a2 = base(k)
+        spec = fig.add_gridspec(1, 1, **right)[0, 0]
+        ax_m, pcs = marginal_block(fig, spec, f, g, mr, qr, snorm, fontsize=11, prefix=f'{k + 1}: ')
+        for (m, q), y in (((mr[1], qr[1]), 1.), ((mr[1], qr[0]), 0.)):   # the box's right corners to the panel's left
+            fig.add_artist(ConnectionPatch((m, q), (0., y), coordsA='data', coordsB='axes fraction', axesA=a2,
+                                           axesB=ax_m, color='w', lw=1.2, zorder=5, path_effects=halo))
+        colourbar(fig, ax_m, ax_m, pcs)
+        figs[f'_{k + 1}'] = fig
+    fig, _ = base()
+    gr = fig.add_gridspec(2, 2, hspace=0.1, wspace=0.1, **right)
+    slots = sorted(range(len(regions)), key=lambda k: (-regions[k][1][0], regions[k][0][0]))   # q ~ 1 on top
+    mains = {}
+    for slot, k in enumerate(slots):
+        (mr, qr), f, g = regions[k], Df[:, k], Dg[:, k]
+        mains[slot], pcs = marginal_block(fig, gr[slot // 2, slot % 2], f, g, mr, qr, snorm, ylabel=slot % 2 == 0,
+                                          fontsize=8, xlabel=slot // 2 == 1, prefix=f'{k + 1}: ')
+    colourbar(fig, mains[1], mains[3], pcs)
+    figs[''] = fig
+    return figs
 
 
 def feature_masses():
@@ -1190,7 +1219,8 @@ def main():
         plot_style.save(spin_peaks_figure(slices=True), 'spin_peak_regions_slices')
         plot_style.save(spin_peaks_figure(marginals=True), 'spin_peak_regions_marginals')
     if args.what in ('talk', 'all'):
-        plot_style.save(talk_figure(R['ppc_gwtc5_k10']), 'mass_spin_zoom_talk')
+        for sfx, fig in talk_figures(R['ppc_gwtc5_k10']).items():
+            plot_style.save(fig, f'mass_spin_zoom_talk{sfx}')
         plt.rcParams.update(SMALL_RC)
     if args.what in ('book', 'all'):
         plot_style.save(bookkeeping_figure(), 'peak_bookkeeping')
