@@ -9,7 +9,8 @@ population, the number of events in each mass feature, and PE against reweighted
            plots/reweighted_vs_pe_stacked{,_gaussian}.pdf, plots/reweighted_vs_pe_features{,_gaussian}.pdf,
            plots/reweighted_vs_pe_contours{,_gaussian}.pdf (per-event 90% contours, PE | reweighted),
            plots/reweighted_membership{,_gaussian}.pdf (how feature membership P_ik is determined, per feature),
-           plots/reweighted_membership_contours{,_gaussian}.pdf (the same with per-event contours)
+           plots/reweighted_membership_contours{,_gaussian}.pdf (the same with per-event contours),
+           plots/reweighted_membership_gauss{,_gaussian}.pdf (membership by the global fit's Gaussians, gauss_kernel)
     python macros/reweight.py membership [<run> ...] (the last figure only)
 
 Weights. For posterior draw Lambda_n, the model's own per-sample event weights (model.setup_model(record_weights=True),
@@ -336,7 +337,7 @@ def short_name(n):
     return m.group(0) if m else str(n)
 
 
-def membership_figure(d, Pbar, label, contours=False):
+def membership_figure(d, Pbar, label, contours=False, kernel=None, fits=None):
     """How feature membership is determined (user, 2026-11-19). Columns: features (by mass). Top: the reweighted
     posterior samples (one per hyperposterior draw, resample_index) of every event with mean P_ik > MEMBER_MIN in
     (m1, q); samples inside the feature box in the feature's colour, outside it grey; P_ik is the fraction inside.
@@ -345,7 +346,10 @@ def membership_figure(d, Pbar, label, contours=False):
     (chi_eff, chi_p), so the spins the feature's events carry. With ``contours`` (user, 2026-11-19), each event's
     reweighted 90% contour instead of its samples, coloured by P_ik (MEMBER_CMAP, colour bar; the bars too), and in the
     bottom row its reweighted spin 90% contour (<chi_p> is still over the in-box samples). Last column (user,
-    2026-11-19): the "odd balls", membership 1 - sum_k P_ik of lying outside every feature box."""
+    2026-11-19): the "odd balls", membership 1 - sum_k P_ik of lying outside every feature box.
+    With ``kernel`` (draws, events, K) and ``fits`` (gauss_kernel), membership is the fitted Gaussian's overlap instead
+    of the box (user, 2026-11-19): P_ik = mean over draws of K_nk at the event's sample for that draw; the odd balls
+    prod_k (1 - K_nk); the fitted Gaussians' 1 and 2 sigma ellipses (median parameters) replace the boxes."""
     import matplotlib
     import matplotlib.pyplot as plt
     from matplotlib.patches import Rectangle
@@ -357,14 +361,20 @@ def membership_figure(d, Pbar, label, contours=False):
     S = {k: d[k][ev[None], idx] for k in PARAMS[:4]}                              # (draws, events)
     inbox = feature_masks(S['mass_1'], S['mass_ratio'])                           # (draws, events, K)
     Pd = d['P_feature']
+    if kernel is not None:
+        Pd, Pbar = kernel, kernel.mean(0)
     cmap = matplotlib.colors.LinearSegmentedColormap.from_list('member', plt.get_cmap(MEMBER_CMAP)(np.linspace(0.1, 0.95, 256)))
     pcol = lambda p: cmap(np.clip(p, 0., 1.))
     box = feature_masks(d['mass_1'], d['mass_ratio'])                             # (events, samples, K)
     K = len(FEATURES)                                                             # column K: outside every feature
-    Pbar = np.concatenate([Pbar, 1. - Pbar.sum(1, keepdims=True)], 1)
-    Pd = np.concatenate([Pd, 1. - Pd.sum(2, keepdims=True)], 2)
-    box = np.concatenate([box, ~box.any(-1, keepdims=True)], -1)
-    inbox = np.concatenate([inbox, ~inbox.any(-1, keepdims=True)], -1)
+    if kernel is None:
+        Pbar = np.concatenate([Pbar, 1. - Pbar.sum(1, keepdims=True)], 1)
+        Pd = np.concatenate([Pd, 1. - Pd.sum(2, keepdims=True)], 2)
+        inbox = np.concatenate([inbox, ~inbox.any(-1, keepdims=True)], -1)
+    else:
+        Pd = np.concatenate([Pd, np.prod(1. - Pd, 2, keepdims=True)], 2)
+        Pbar = Pd.mean(0)
+        inbox = Pd                                                                # sample weights
     fig, axes = plt.subplots(3, len(order) + 1, figsize=(1.25 * TWO_COL, 6.3),
                              gridspec_kw=dict(height_ratios=(1.25, 0.8, 1.)))
     for col, name in zip(axes.T, order + [ODD]):
@@ -389,8 +399,15 @@ def membership_figure(d, Pbar, label, contours=False):
             x, y, inn = S['mass_1'][:, i], S['mass_ratio'][:, i], inbox[:, i, k]
             ax.scatter(x[~inn], y[~inn], s=0.4, color='0.7', lw=0, alpha=0.25, rasterized=True, zorder=1)
             ax.scatter(x[inn], y[inn], s=0.4, color=c, lw=0, alpha=0.25, rasterized=True, zorder=2)
-        for (a, b), (qa, qb) in boxes:
-            ax.add_patch(Rectangle((a, qa), b - a, qb - qa, fill=False, ec='k', lw=1.0, zorder=4))
+        if kernel is None:
+            for (a, b), (qa, qb) in boxes:
+                ax.add_patch(Rectangle((a, qa), b - a, qb - qa, fill=False, ec='k', lw=1.0, zorder=4))
+        else:
+            for f in (order if name == ODD else [name]):
+                mu, sg, mq, sq = (np.nanmedian(fits[f][:, j]) for j in range(4))
+                tt = np.linspace(0, 2 * np.pi, 200)
+                for ns, ls in ((1, '-'), (2, '--')):
+                    ax.plot(mu + ns * sg * np.cos(tt), mq + ns * sq * np.sin(tt), color='k', lw=1.0, ls=ls, zorder=4)
         for j, mk, ls in zip(ex, EXAMPLE_MARKERS, EXAMPLE_LS):
             event_contour(ax, d, j, d['W'], 'mass', colors=['k'], linewidths=0.7, linestyles=[ls], zorder=5)
             mx = weighted_quantiles(d['mass_1'][j:j + 1], d['W'][j:j + 1], [0.5])[0, 0]
@@ -414,9 +431,12 @@ def membership_figure(d, Pbar, label, contours=False):
             ax.text(0.08, y, short_name(d['names'][j]).split('_')[0] + rf': ${Pbar[j, k]:.2f}$', fontsize=6,
                     va='center', ha='left', transform=ax.transAxes)
         Nk = Pd[:, :, k].sum(1)
-        neff = np.median(Nk ** 2 / (Pd[:, :, k] ** 2).sum(1))
+        has = Nk > 0                                          # draws with the peak (the global fit can lose one)
+        neff = np.median(Nk[has] ** 2 / (Pd[has][:, :, k] ** 2).sum(1))
+        frac = '' if has.all() else '\n' + rf'(peak in {has.mean():.0%} of draws)'.replace('%', r'\%')
         col[0].set_title((r'outside every feature' if name == ODD else rf'${fx[name]}\,\textrm{{M}}_\odot$ feature') + '\n'
-                         + rf'$\sum_i P_{{ik}} = {np.median(Nk):.1f}$, $N_{{\rm eff}} = {neff:.0f}$', fontsize=7, pad=3)
+                         + rf'$\sum_i P_{{ik}} = {np.median(Nk[has]):.1f}$, $N_{{\rm eff}} = {neff:.0f}${frac}',
+                         fontsize=7, pad=3)
         ax.set_xlim(-0.5, max(len(mem), 10)); ax.set_ylim(0, 1.45); ax.set_yticks([0, 0.5, 1])
         ax.set_xlabel(r'event (sorted by $P_{ik}$)', labelpad=1)
         # spins of the in-box samples
@@ -433,8 +453,8 @@ def membership_figure(d, Pbar, label, contours=False):
         for i in ([] if contours else mem):
             inn = inbox[:, i, k]
             ax.scatter(S['chi_eff'][inn, i], S['chi_p'][inn, i], s=0.4, color=c, lw=0, alpha=0.2, rasterized=True)
-        w = inbox[:, :, k]
-        me, mp = S['chi_eff'][w].mean(), S['chi_p'][w].mean()                   # the in-box samples
+        w = inbox[:, :, k].astype(float)                                          # the in-box (kernel-weighted) samples
+        me, mp = (S['chi_eff'] * w).sum() / w.sum(), (S['chi_p'] * w).sum() / w.sum()
         ax.plot(me, mp, '+', color='k', ms=6, mew=1.0)
         ax.text(0.97, 0.95, rf'$\langle\chi_\mathrm{{p}}\rangle = {mp:.2f}$', transform=ax.transAxes, ha='right',
                 va='top', fontsize=7)
@@ -511,6 +531,29 @@ def contour_figure(d, Pbar, label):
     return fig
 
 
+def gauss_kernel(d, run):
+    """Membership by the fitted Gaussians of macros/global_fit.py (user, 2026-11-19): per draw n and feature k,
+    K_nk(m1, q) = exp(-[(m1 - mu)^2 / sigma^2 + (q - mu_q)^2 / sigma_q^2] / 2), the draw's peak Gaussian scaled to 1 at
+    its centre (no mixture weights: 1 at the centre, 0.61 at 1 sigma, 0.14 at 2 sigma; 0 in draws without the peak),
+    at event i's reweighted sample for that draw (resample_index). Returns K (draws, events, features) and
+    {feature: (draws, 4) mu, sigma, mu_q, sigma_q}."""
+    g = np.load(os.path.join(REPO, 'results', 'post_processing', f'{run}_global_fit.npz'))
+    cols = list(g['columns'])
+    idx = d['resample_index']
+    n = len(idx)
+    assert len(g['P']) == n, (len(g['P']), n)
+    ev = np.arange(idx.shape[1])
+    m1, q = d['mass_1'][ev[None], idx], d['mass_ratio'][ev[None], idx]
+    fits, K = {}, []
+    for f in FEATURES:
+        par = np.stack([g['P'][:, cols.index(f'{c}_{f}')] for c in ('mu', 'sigma', 'mu_q', 'sigma_q')], 1)
+        fits[f] = par
+        mu, sg, mq, sq = (par[:, j:j + 1] for j in range(4))
+        z2 = ((m1 - mu) / sg) ** 2 + ((q - mq) / sq) ** 2
+        K.append(np.nan_to_num(np.exp(-0.5 * z2), nan=0.))
+    return np.stack(K, -1).astype(np.float32), fits
+
+
 def membership(runs):
     """Only membership_figure -> plots/reweighted_membership{,_gaussian}.pdf."""
     os.environ.setdefault('JAX_PLATFORMS', 'cpu')
@@ -527,6 +570,14 @@ def membership(runs):
         plot_style.save(membership_figure(d, Pbar, MODEL_LABELS[run]), f'reweighted_membership{sfx}')
         plot_style.save(membership_figure(d, Pbar, MODEL_LABELS[run], contours=True),
                         f'reweighted_membership_contours{sfx}')
+        if os.path.exists(os.path.join(REPO, 'results', 'post_processing', f'{run}_global_fit.npz')):
+            try:
+                K, fits = gauss_kernel(d, run)
+            except AssertionError as e:
+                print(f'{run}: global fit does not cover every draw {e}; no Gaussian-membership figure')
+                continue
+            plot_style.save(membership_figure(d, Pbar, MODEL_LABELS[run], contours=True, kernel=K, fits=fits),
+                            f'reweighted_membership_gauss{sfx}')
 
 
 def report(runs):
