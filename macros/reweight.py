@@ -50,9 +50,10 @@ sys.path.insert(0, REPO); sys.path.insert(0, os.path.join(REPO, 'notebooks')); s
 RUNS = ('ppc_gwtc5_k10', 'ppc_gwtc5_k100_gauss')
 MODEL_LABELS = {'ppc_gwtc5_k10': 'Flexible', 'ppc_gwtc5_k100_gauss': 'Gaussian'}
 PARAMS = ('mass_1', 'mass_ratio', 'chi_eff', 'chi_p', 'redshift')
-# feature regions: m1 window (peak_excess.EVENT_WINDOWS) x the feature's q range (peak_fits.PEAKS)
+# feature regions: Fig. 2's (paper_figs.SPIN_PEAK_REGIONS; user, 2026-11-18: 15-30 and 45-75 Msun for the ~20 and
+# ~60 Msun features, were peak_excess.EVENT_WINDOWS' 15-25 and 50-70)
 FEATURES = {'10': ((8., 12.), (0.8, 1.0), 'Ten'), '35': ((30., 40.), (0.8, 1.0), 'ThirtyFive'),
-            '20': ((15., 25.), (0.3, 0.65), 'Twenty'), '60': ((50., 70.), (0.3, 0.65), 'Sixty')}
+            '20': ((15., 30.), (0.3, 0.65), 'Twenty'), '60': ((45., 75.), (0.3, 0.65), 'Sixty')}
 FEATURE_COLOURS = {'10': 'C0', '35': 'C3', '20': 'C2', '60': 'C1'}
 GREY_BELOW = 0.1               # figures: an event is coloured by its most probable feature if that P exceeds this
 # (user, 2026-11-14) counts are sums of membership probabilities, never N(P > 0.5): with broad single-event

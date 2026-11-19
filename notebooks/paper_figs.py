@@ -438,21 +438,39 @@ def m1q_m2q_figure(r, label):
     return fig
 
 
-# Fig. 2: the four peak regions (m1 range, q range, label), in the plan's order (draft/main.tex)
-SPIN_PEAK_REGIONS = (((8., 12.), (0.8, 1.0)), ((30., 40.), (0.8, 1.0)), ((16., 22.), (0.3, 0.65)),
-                     ((55., 65.), (0.3, 0.65)))
+# Fig. 2: the four peak regions (m1 range, q range), in the plan's order (draft/main.tex); the ~20 and ~60 Msun ones
+# widened to 15-30 and 45-75 Msun (user, 2026-11-18; were 16-22, 55-65), held in the extra-regions cache
+SPIN_PEAK_REGIONS = (((8., 12.), (0.8, 1.0)), ((30., 40.), (0.8, 1.0)), ((15., 30.), (0.3, 0.65)),
+                     ((45., 75.), (0.3, 0.65)))
+EXTRA_REGIONS = tuple(reg for reg in SPIN_PEAK_REGIONS if reg not in A.REGION_LIST)   # analysis.rebuild_regions
+
+
+def _region_block(path, regions, n):
+    """REGION[:n] of the regions in ``regions`` from the cache file at ``path`` (its attrs['regions'] order)."""
+    import h5py
+    with h5py.File(path, 'r') as g:
+        stored = [((a, b), (c, d)) for a, b, c, d in g.attrs['regions']] if 'regions' in g.attrs else None
+        idx = [stored.index(reg) for reg in regions]
+        P = g['REGION'][:n, sorted(idx)]
+    return P[:, np.argsort(np.argsort(idx))]                                  # back to the order of ``regions``
 
 
 def region_draws(run, regions):
-    """p(chi_eff, chi_p | region) per draw (density, float32, (draws, n_regions, Be, Bp)) for each of ``regions``
-    (members of analysis.REGION_LIST), reading only those regions from the spin cache."""
+    """p(chi_eff, chi_p | region) per draw (density, float32, (draws, n_regions, Be, Bp)) for each of ``regions``:
+    members of analysis.REGION_LIST from the spin cache, the others from the extra-regions cache
+    (analysis.rebuild_regions; notebooks/regions.sbatch), reading only those regions."""
     import glob
     import h5py
     files = sorted(glob.glob(os.path.join(A.REPO, 'results', run, 'chain_*_samples.h5')))
     n = min(len(h5py.File(f, 'r')['log_likelihood']) for f in files)
-    idx = [A.REGION_LIST.index(reg) for reg in regions]
-    P = np.concatenate([h5py.File(A.post_path(run, f), 'r')['REGION'][:n, sorted(idx)] for f in files])
-    P = P[:, np.argsort(np.argsort(idx))].astype(np.float32)               # back to the order of ``regions``
+    main = [reg for reg in regions if reg in A.REGION_LIST]
+    extra = [reg for reg in regions if reg not in A.REGION_LIST]
+    parts = {}
+    for regs, path in ((main, A.post_path), (extra, A.regions_path)):
+        if regs:
+            P = np.concatenate([_region_block(path(run, f), regs, n) for f in files])
+            parts.update({reg: P[:, k] for k, reg in enumerate(regs)})
+    P = np.stack([parts[reg] for reg in regions], 1).astype(np.float32)
     P /= P.sum((2, 3), keepdims=True)
     return P / np.float32(A.de * A.dp)
 

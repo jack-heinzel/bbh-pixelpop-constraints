@@ -96,10 +96,11 @@ M_ALL, Q_ALL = (0., 1e4), (0., 1.)        # 'all m1' / 'all q': the totals rows 
 REGION_LIST = [(mr, qr) for mr in REGION_M + (M_ALL,) for qr in REGION_Q + (Q_ALL,)]
 
 
-def region_weights():
-    """(Bm, n_regions, Bq) 0/1: which (m1, q) bins (by centre) belong to each of REGION_LIST."""
-    W = np.zeros((B, len(REGION_LIST), B))
-    for r, ((m0, m1), (q0, q1)) in enumerate(REGION_LIST):
+def region_weights(regions=None):
+    """(Bm, n_regions, Bq) 0/1: which (m1, q) bins (by centre) belong to each of ``regions`` (REGION_LIST)."""
+    regions = REGION_LIST if regions is None else regions
+    W = np.zeros((B, len(regions), B))
+    for r, ((m0, m1), (q0, q1)) in enumerate(regions):
         W[(m_c >= m0) & (m_c <= m1), r] = ((q_c >= q0) & (q_c <= q1))[None]
     return W
 
@@ -117,7 +118,7 @@ def gauss_sd_floor(run):
     return float(m.group(1)) if m else GAUSS_SD_FLOOR
 
 
-def _spin_fns(km, logW, spin_model, sd_floor=None, cross=False):
+def _spin_fns(km, logW, spin_model, sd_floor=None, cross=False, regions=None):
     """Jitted spin rebuild for one draw of the given spin model; returns P_raw, P_win (population marginal,
     unwindowed / windowed mass weights, unnormalized), MOM (per-cell moments), PE_M, PP_M (p(chi_eff | m1),
     p(chi_p | m1): per-bin probabilities, averaged over the windowed p(q | m1)) and SLICE (per-cell
@@ -141,7 +142,7 @@ def _spin_fns(km, logW, spin_model, sd_floor=None, cross=False):
     ec, pc, lW, logdV = jnp.asarray(e_c), jnp.asarray(p_c), jnp.asarray(logW), np.log(dlnm * dq)
     masks = jnp.asarray(np.stack([f(e_c) for f in CHI_EFF_SLICES.values()], -1).astype(float))    # (Be, n_slices)
     core = jnp.asarray((np.abs(e_c) < CHI_CORE).astype(float))                                    # (Be,)
-    RW = jnp.asarray(region_weights())                                                            # (Bm, n_reg, Bq)
+    RW = jnp.asarray(region_weights(regions))                                                          # (Bm, n_reg, Bq)
 
     def stats(slab_T, log_p_mass):
         lw = log_p_mass + logdV
@@ -253,6 +254,42 @@ def rebuild_chain(run, chain_file, n_draws=None, log_every=100, block=25):
                 if log_every and (i + 1) % log_every == 0:
                     print(f'{run} {os.path.basename(chain_file)}: {i + 1}/{n} draws, '
                           f'{(time.time() - t0) / (i + 1):.2f} s each', flush=True)
+    os.replace(tmp, path)
+    return path
+
+
+def regions_path(run, chain_file):
+    """The extra-regions cache (rebuild_regions) next to post_path(run, chain_file)."""
+    return post_path(run, chain_file).replace('.h5', '_regions.h5')
+
+
+def rebuild_regions(run, chain_file, regions, log_every=500, block=25, n_draws=None, path=None):
+    """REGION (as rebuild_chain) for ``regions`` only, (m1 range, q range) pairs not in REGION_LIST, into
+    regions_path(run, chain_file), attrs ``regions``: new regions without changing REGION_LIST, which would make every
+    run's main cache incomplete (user, 2026-11-18: 15-30 and 45-75 Msun for the ~20 and ~60 Msun features)."""
+    import time
+    import jax.numpy as jnp
+    path = regions_path(run, chain_file) if path is None else path
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = path + '.partial'
+    t0 = time.time()
+    with h5py.File(chain_file, 'r') as h, h5py.File(tmp, 'w') as g:
+        spin_model = spin_model_of(h)
+        km = (h['_spin_sites'].shape[1] if spin_model == 'field' else h['_spin1_sites'].shape[1] if spin_model == 'split'
+              else 1)
+        n = len(h['log_likelihood']) if n_draws is None else n_draws
+        fn, keys = _spin_fns(km, mass_window(), spin_model, gauss_sd_floor(run), regions=regions)
+        g.attrs.update(n_draws=n, spin_model=spin_model, k=km, source=chain_file,
+                       regions=np.array([[*mr, *qr] for mr, qr in regions]))
+        out = g.create_dataset('REGION', (n, len(regions), len(e_c), len(p_c)), 'f4',
+                               chunks=(1, len(regions), len(e_c), len(p_c)), compression='gzip', compression_opts=1)
+        for b in range(0, n, block):
+            data = {k: h[k][b:min(b + block, n)] for k in keys}
+            for j in range(len(data['log_p_mass'])):
+                out[b + j] = np.asarray(fn(*(jnp.asarray(data[k][j], dtype=float) for k in keys))[-1])
+                if log_every and (b + j + 1) % log_every == 0:
+                    print(f'{run} {os.path.basename(chain_file)}: {b + j + 1}/{n} draws, '
+                          f'{(time.time() - t0) / (b + j + 1):.2f} s each', flush=True)
     os.replace(tmp, path)
     return path
 
