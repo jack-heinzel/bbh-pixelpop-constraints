@@ -647,8 +647,7 @@ def spin_peaks_figure(slices=False, marginals=False):
     return fig
 
 
-# the talk figure's regions: Fig. 2's, but the ~60 Msun one widened to the cached 50-75 Msun (55-65 holds few events)
-TALK_REGIONS = SPIN_PEAK_REGIONS[:3] + (((50., 75.), (0.3, 0.65)),)
+TALK_REGIONS = SPIN_PEAK_REGIONS                 # Fig. 2's regions (user, 2026-11-18)
 
 
 def talk_figure(r):
