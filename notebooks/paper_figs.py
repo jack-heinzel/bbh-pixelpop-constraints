@@ -28,7 +28,9 @@ figure:
                                            median (heatmap) and the Gaussian model's (contours); two columns
            plots/spin_peak_regions_slices.pdf   Fig. 2 with slice panels (median and 90% over draws)
            plots/spin_peak_regions_marginals.pdf   Fig. 2 with 1D marginal panels of both models (median and 90%)
-           plots/mass_spin_zoom_talk.pdf   for talks: median p(m1, q), zooms on the peak regions, their spin blocks
+           plots/mass_spin_zoom_talk.pdf   for talks: Fig. 1 with the peak regions boxed, their spin panels (as Fig. 2) in a
+                                           2 x 2 grid to the right; _1 ... _4: one region each (10, 20, 35, 60 Msun),
+                                           its spin panel filling the right side, joined to its box
            plots/peak_bookkeeping.pdf      Fig. 3: (a) peak location against mean q (joint fits, Gaussian KDE);
                                            (b) mean retained fraction for both pairs; one column
 
@@ -113,6 +115,17 @@ def hpd_membership(pq, frac):
 
 
 def mass_figure(r, mode=False, hpd=None):
+    """Fig. 1 (see mass_panels), one column."""
+    fig, (a1, a2) = plt.subplots(2, 1, figsize=(ONE_COL, 3.9), sharex=True)
+    pc = mass_panels(fig, a1, a2, r, mode, hpd)
+    fig.legend(*band_legend(), loc='upper center', ncol=3, bbox_to_anchor=(0.5, 1.0), **LEG)
+    cb = fig.colorbar(pc, cax=a2.inset_axes([1.02, 0, 0.03, 1])); cb.set_label(r'$p(q \mid m_1)$')
+    cb.ax.tick_params(direction='out')
+    fig.tight_layout(rect=(0, 0, 1, 0.955)); fig.subplots_adjust(hspace=0.05)
+    return fig
+
+
+def mass_panels(fig, a1, a2, r, mode=False, hpd=None):
     """Fig. 1: p(m1) for all q and each q range (top) and p(q | m1) (bottom), one column. ``mode`` (user,
     2026-10-30): the intervals over draws of the mode of p(q | m1) instead of <q>; the mode
     ignores the tails that broaden where the data run out, which pull <q> towards the middle of the window.
@@ -130,14 +143,12 @@ def mass_figure(r, mode=False, hpd=None):
         P_in = hpd_membership(pq, hpd).mean(0)
     del pq
     p_m, p_mq = r.p_lnm / A.m_c[None], [A.p_m1_given_q_range(r, qr) for qr in A.SUMMARY_Q_RANGES]
-    fig, (a1, a2) = plt.subplots(2, 1, figsize=(ONE_COL, 3.9), sharex=True)
     bands(a1, p_m, p_mq)
     a1.set_yscale('log')
     lo = np.nanpercentile(np.nanpercentile(p_m, 5, 0)[vis], 2)
     hi = max(np.nanmax(np.nanpercentile(y, 95, 0)[vis]) for y in [p_m] + p_mq)
     a1.set_ylim(lo / 3, hi * 3)
     a1.set_ylabel(r'$p(m_1 \mid q \in \textrm{range})\,[\textrm{M}_\odot^{-1}]$')
-    fig.legend(*band_legend(), loc='upper center', ncol=3, bbox_to_anchor=(0.5, 1.0), **LEG)
     pc = a2.pcolormesh(m_edges, A.q_edges, img.T, cmap='viridis', shading='flat', rasterized=True, vmin=0,
                        vmax=np.nanpercentile(img[vis], 99.5))
     m = np.geomspace(m_edges[0], m_edges[-1], 2000)
@@ -164,10 +175,8 @@ def mass_figure(r, mode=False, hpd=None):
                   **dict(LEG, frameon=True, framealpha=0.85, edgecolor='none'))
     for ax in (a1, a2):
         m1_axis(ax, ax is a2)
-    cb = fig.colorbar(pc, cax=a2.inset_axes([1.02, 0, 0.03, 1])); cb.set_label(r'$p(q \mid m_1)$')
-    cb.ax.tick_params(direction='out')
-    fig.tight_layout(rect=(0, 0, 1, 0.955)); fig.subplots_adjust(hspace=0.05)
-    return fig
+    a1.tick_params(labelbottom=False)
+    return pc
 
 
 NS = 4                                                          # sub-cells per axis for the m2 transform
@@ -430,21 +439,39 @@ def m1q_m2q_figure(r, label):
     return fig
 
 
-# Fig. 2: the four peak regions (m1 range, q range, label), in the plan's order (draft/main.tex)
-SPIN_PEAK_REGIONS = (((8., 12.), (0.8, 1.0)), ((30., 40.), (0.8, 1.0)), ((16., 22.), (0.3, 0.65)),
-                     ((55., 65.), (0.3, 0.65)))
+# Fig. 2: the four peak regions (m1 range, q range), in the plan's order (draft/main.tex); the ~20 and ~60 Msun ones
+# widened to 15-30 and 45-75 Msun (user, 2026-11-18; were 16-22, 55-65), held in the extra-regions cache
+SPIN_PEAK_REGIONS = (((8., 12.), (0.8, 1.0)), ((30., 40.), (0.8, 1.0)), ((15., 30.), (0.3, 0.65)),
+                     ((45., 75.), (0.3, 0.65)))
+EXTRA_REGIONS = tuple(reg for reg in SPIN_PEAK_REGIONS if reg not in A.REGION_LIST)   # analysis.rebuild_regions
+
+
+def _region_block(path, regions, n):
+    """REGION[:n] of the regions in ``regions`` from the cache file at ``path`` (its attrs['regions'] order)."""
+    import h5py
+    with h5py.File(path, 'r') as g:
+        stored = [((a, b), (c, d)) for a, b, c, d in g.attrs['regions']] if 'regions' in g.attrs else None
+        idx = [stored.index(reg) for reg in regions]
+        P = g['REGION'][:n, sorted(idx)]
+    return P[:, np.argsort(np.argsort(idx))]                                  # back to the order of ``regions``
 
 
 def region_draws(run, regions):
-    """p(chi_eff, chi_p | region) per draw (density, float32, (draws, n_regions, Be, Bp)) for each of ``regions``
-    (members of analysis.REGION_LIST), reading only those regions from the spin cache."""
+    """p(chi_eff, chi_p | region) per draw (density, float32, (draws, n_regions, Be, Bp)) for each of ``regions``:
+    members of analysis.REGION_LIST from the spin cache, the others from the extra-regions cache
+    (analysis.rebuild_regions; notebooks/regions.sbatch), reading only those regions."""
     import glob
     import h5py
     files = sorted(glob.glob(os.path.join(A.REPO, 'results', run, 'chain_*_samples.h5')))
     n = min(len(h5py.File(f, 'r')['log_likelihood']) for f in files)
-    idx = [A.REGION_LIST.index(reg) for reg in regions]
-    P = np.concatenate([h5py.File(A.post_path(run, f), 'r')['REGION'][:n, sorted(idx)] for f in files])
-    P = P[:, np.argsort(np.argsort(idx))].astype(np.float32)               # back to the order of ``regions``
+    main = [reg for reg in regions if reg in A.REGION_LIST]
+    extra = [reg for reg in regions if reg not in A.REGION_LIST]
+    parts = {}
+    for regs, path in ((main, A.post_path), (extra, A.regions_path)):
+        if regs:
+            P = np.concatenate([_region_block(path(run, f), regs, n) for f in files])
+            parts.update({reg: P[:, k] for k, reg in enumerate(regs)})
+    P = np.stack([parts[reg] for reg in regions], 1).astype(np.float32)
     P /= P.sum((2, 3), keepdims=True)
     return P / np.float32(A.de * A.dp)
 
@@ -531,7 +558,7 @@ GRID = dict(color='0.6', lw=0.5, alpha=0.7, zorder=3)   # Fig. 1's reference lin
 FLEX_COLOUR, GAUSS_COLOUR = 'C1', 'k'             # marginal figure: flexible as Fig. 1's q ~ 1 colour; Gaussian 90% only
 
 
-def marginal_block(fig, spec, Df, Dg, mr, qr, norm, ylabel=True, fontsize=6):
+def marginal_block(fig, spec, Df, Dg, mr, qr, norm, ylabel=True, fontsize=6, xlabel=True, prefix=''):
     """The flexible model's median heatmap and the Gaussian model's contours (spin_heatmap), with the 1D marginals
     p(chi_eff | region) above and p(chi_p | region) to the right (Df, Dg: draws, Be, Bp densities): the flexible
     model's median and 90% band, the Gaussian model's 90% interval only (lines; its 90% region on the heatmap). Each
@@ -571,12 +598,15 @@ def marginal_block(fig, spec, Df, Dg, mr, qr, norm, ylabel=True, fontsize=6):
         ax.grid(True, which='major', axis=axis, **GRID)
     ax_t.tick_params(labelbottom=False, labelleft=False, which='both', direction='out')
     ax_r.tick_params(labelleft=False, labelbottom=False, which='both', direction='out')
-    ax_m.set_xlabel(r'$\chi_\mathrm{eff}$')
+    if xlabel:
+        ax_m.set_xlabel(r'$\chi_\mathrm{eff}$')
+    else:
+        ax_m.tick_params(labelbottom=False)
     if ylabel:
         ax_m.set_ylabel(r'$\chi_p$')
     else:
         ax_m.tick_params(labelleft=False)
-    ax_m.text(0.04, 0.96, region_label(mr, qr), transform=ax_m.transAxes, va='top', ha='left', fontsize=fontsize,
+    ax_m.text(0.04, 0.96, prefix + region_label(mr, qr), transform=ax_m.transAxes, va='top', ha='left', fontsize=fontsize,
               bbox=LABEL_BOX)
     return ax_m, pcm
 
@@ -639,79 +669,74 @@ def spin_peaks_figure(slices=False, marginals=False):
     return fig
 
 
-# the talk figure's regions: Fig. 2's, but the ~60 Msun one widened to the cached 50-75 Msun (55-65 holds few events)
-TALK_REGIONS = SPIN_PEAK_REGIONS[:3] + (((50., 75.), (0.3, 0.65)),)
-# where each region's spin block sits on the mass map, in axes fraction (x0, y0, width, height), chosen to cover dark or
-# empty parts of the map (user, 2026-10-26: insets over the mass panel)
-TALK_INSETS = ((0.005, 0.03, 0.175, 0.40), (0.80, 0.57, 0.175, 0.40), (0.44, 0.25, 0.175, 0.40),
-               (0.835, 0.03, 0.16, 0.40))
+TALK_REGIONS = SPIN_PEAK_REGIONS                 # Fig. 2's regions (user, 2026-11-18)
 
 
-def talk_figure(r):
-    """For talks: the flexible run's median p(ln m1, q) (wide, 2:1, mako colour map) with each peak region boxed and
-    its spin block (flexible median heatmap, Gaussian contours, slices) as an inset over the map, joined to the box by
-    two lines between their nearest corners."""
-    import seaborn as sns
+def talk_figures(r):
+    """For talks (user, 2026-11-18): Fig. 1 (p(m1 | q range) above p(q | m1), the flexible run) on the left, the peak
+    regions boxed on the p(q | m1) panel and numbered by mass (10, 20, 35, 60 Msun -> 1-4), and on the right their
+    spin distributions as Fig. 2 (marginal_block: flexible median heatmap, Gaussian 90% contour, the marginals
+    p(chi_eff | region) above and p(chi_p | region) to the right). Returns {suffix: figure}: '_1' ... '_4', one region
+    each, its spin block filling the right side, joined to its box by two lines; '' all four in a 2 x 2 grid
+    (near-equal-mass features on top, unequal-mass below, as on the q axis). One colour scale for all five."""
     from matplotlib.colors import LogNorm
-    from matplotlib.patches import ConnectionPatch, FancyBboxPatch, Rectangle
-    plt.rcParams.update({'font.size': 10, 'axes.labelsize': 11, 'xtick.labelsize': 9, 'ytick.labelsize': 9,
-                         'legend.fontsize': 9})
-    ok = A.q_c[None, :] * A.m_c[:, None] >= A.MIN_M
-    med = np.where(ok, np.median(r.p_mass, 0), np.nan)                     # per d ln m1 dq
-    m_edges = np.exp(A.lnm_edges)
-    mnorm = LogNorm(vmin=np.nanmax(med) * 1e-3, vmax=np.nanmax(med))
-    Df = region_draws('ppc_gwtc5_k10', TALK_REGIONS)
-    Mg = region_medians('ppc_gwtc5_k100_gauss', TALK_REGIONS)
+    from matplotlib.patches import ConnectionPatch, Patch, Rectangle
+    plt.rcParams.update({'font.size': 11, 'axes.labelsize': 12, 'xtick.labelsize': 10, 'ytick.labelsize': 10,
+                         'legend.fontsize': 10, 'lines.linewidth': 1.4})
+    regions = sorted(TALK_REGIONS, key=lambda reg: reg[0][0])                     # numbered by mass
+    Df = region_draws('ppc_gwtc5_k10', regions)
+    Dg = region_draws('ppc_gwtc5_k100_gauss', regions)
     snorm = LogNorm(vmin=A.REGION_DENSITY_MIN, vmax=np.nanmax(np.median(Df, 0)))
-    W, H = 14., 8.2
-    fig = plt.figure(figsize=(W, H))
-    left, width = 0.055, 0.86
-    height = width * W / 2 / H                                             # a 2:1 panel
-    ax0 = fig.add_axes([left, 0.12, width, height])
-    pc = ax0.pcolormesh(m_edges, A.q_edges, med.T, norm=mnorm, cmap=sns.color_palette('mako', as_cmap=True),
-                        shading='flat', rasterized=True)
-    ax0.set_xscale('log'); ax0.set_xlim(M_MIN, A.MAX_M); ax0.set_ylim(0, 1)
-    ax0.set_xticks((5, 10, 20, 50, 100, 200), ['$5$', '$10$', '$20$', '$50$', '$100$', '$200$'])
-    ax0.set_xlabel(r'$m_1\,[\textrm{M}_\odot]$'); ax0.set_ylabel(r'$q$')
-    ax0.tick_params(which='both', direction='out')
-    to_axes = lambda m, q: ax0.transAxes.inverted().transform(ax0.transData.transform((m, q)))
-    for (mr, qr), D, g, (x0, y0, w, h) in zip(TALK_REGIONS, np.moveaxis(Df, 1, 0), Mg, TALK_INSETS):
-        ax0.add_patch(Rectangle((mr[0], qr[0]), mr[1] - mr[0], qr[1] - qr[0], fill=False, ec='w', lw=1.3, zorder=3))
-        # the inset: a white rounded backing, then the spin block inside it (in figure coordinates)
-        fx0, fy0 = ax0.transAxes.transform((x0, y0)); fx1, fy1 = ax0.transAxes.transform((x0 + w, y0 + h))
-        inv = fig.transFigure.inverted()
-        (bx0, by0), (bx1, by1) = inv.transform((fx0, fy0)), inv.transform((fx1, fy1))
-        fig.add_artist(FancyBboxPatch((bx0, by0), bx1 - bx0, by1 - by0, boxstyle='round,pad=0.004',
-                                      transform=fig.transFigure, fc='w', ec='0.6', lw=0.6, alpha=0.95, zorder=2))
-        n_before = len(fig.axes)
-        gs = fig.add_gridspec(1, 1, left=bx0 + 0.038, right=bx1 - 0.006, bottom=by0 + 0.045, top=by1 - 0.006)
-        ax_m, pcs = spin_block(fig, gs[0, 0], D, g, mr, qr, snorm, fontsize=7.5)
-        for ax in fig.axes[n_before:]:
-            ax.set_zorder(4)
-            ax.tick_params(labelsize=7)
-        ax_m.xaxis.label.set_size(9); ax_m.yaxis.label.set_size(9)
-        # two lines from the region's box to the inset's nearest corners
-        rx0, ry0 = to_axes(mr[0], qr[0]); rx1, ry1 = to_axes(mr[1], qr[1])
-        if x0 >= rx1 or x0 + w <= rx0:                                     # wholly to one side: join facing edges
-            xr, xi = (rx1, x0) if x0 >= rx1 else (rx0, x0 + w)
-            pairs = (((xr, ry0), (xi, y0)), ((xr, ry1), (xi, y0 + h)))
-        else:                                                               # above / below
-            yr, yi = (ry1, y0) if y0 >= ry1 else (ry0, y0 + h)
-            pairs = (((rx0, yr), (x0, yi)), ((rx1, yr), (x0 + w, yi)))
-        for pa, pb in pairs:
-            fig.add_artist(ConnectionPatch(pa, pb, coordsA='axes fraction', coordsB='axes fraction', axesA=ax0,
-                                           axesB=ax0, color='w', lw=0.8, alpha=0.8, zorder=1.5))
-    pos = ax0.get_position()
-    cb = fig.colorbar(pc, cax=fig.add_axes([pos.x0, pos.y1 + 0.015, 0.3, 0.015]), orientation='horizontal')
-    cb.set_label(r'median $p(\ln m_1, q)$', labelpad=2); cb.ax.xaxis.set_label_position('top')
-    cb.ax.xaxis.set_ticks_position('top'); cb.ax.tick_params(direction='out')
-    cb2 = fig.colorbar(pcs, cax=fig.add_axes([pos.x1 + 0.012, pos.y0, 0.01, pos.height]))
-    cb2.set_label(r'$p(\chi_\mathrm{eff}, \chi_p \mid m_1, q)$, flexible median'); cb2.ax.tick_params(direction='out')
-    h2, n2 = slice_legend_handles()
-    handles = [Line2D([], [], color='c', lw=1.0), Line2D([], [], color='c', lw=0.7, ls='--')] + h2
-    fig.legend(handles, ['Gaussian, 50\\%', 'Gaussian, 90\\%'] + n2, loc='lower right', ncol=4,
-               bbox_to_anchor=(pos.x1, pos.y1 + 0.008), **LEG)
-    return fig
+    right = dict(left=0.6, right=0.9, bottom=0.11, top=0.93)
+
+    def base(selected=None):
+        fig = plt.figure(figsize=(9.6, 4.75))         # small, so the fonts read large (user, 2026-11-18)
+        gl = fig.add_gridspec(2, 1, left=0.075, right=0.43, bottom=0.11, top=0.9, hspace=0.06)
+        a1 = fig.add_subplot(gl[0]); a2 = fig.add_subplot(gl[1], sharex=a1)
+        pc = mass_panels(fig, a1, a2, r)
+        a1.legend(*band_legend(), loc='lower left', ncol=3, bbox_to_anchor=(0., 1.0), **LEG)
+        cb = fig.colorbar(pc, cax=a2.inset_axes([1.015, 0, 0.025, 1])); cb.set_label(r'$p(q \mid m_1)$')
+        cb.ax.tick_params(direction='out')
+        for k, (mr, qr) in enumerate(regions):
+            on = selected is None or k == selected
+            a2.add_patch(Rectangle((mr[0], qr[0]), mr[1] - mr[0], qr[1] - qr[0], fill=False, ec='k',
+                                   lw=2.2 if selected == k else 1.4, alpha=1. if on else 0.45, zorder=4))
+            above = qr[1] < 0.95                                 # number above the box, or below it at q = 1
+            a2.text(np.sqrt(mr[0] * mr[1]), qr[1] + 0.015 if above else qr[0] - 0.015, f'{k + 1}', color='k',
+                    ha='center', va='bottom' if above else 'top', fontsize=11, zorder=4, alpha=1. if on else 0.45,
+                    bbox=dict(boxstyle='round,pad=0.12', fc='w', ec='none', alpha=0.85 if on else 0.4))
+        fig.legend([(Patch(color=FLEX_COLOUR, alpha=0.3, lw=0), Line2D([], [], color=FLEX_COLOUR, lw=0.8)),
+                    Line2D([], [], color=GAUSS_COLOUR, lw=0.8)], ['Flexible, median and 90\\%', 'Gaussian, 90\\%'],
+                   loc='upper center', ncol=2, bbox_to_anchor=(0.75, 1.0), **LEG)
+        return fig, a2
+
+    def colourbar(fig, ax_top, ax_bot, pcs):
+        top, bot = ax_top.get_position(), ax_bot.get_position()
+        cb2 = fig.colorbar(pcs, cax=fig.add_axes([0.915, bot.y0, 0.012, top.y1 - bot.y0]))
+        cb2.set_label(r'$p(\chi_\mathrm{eff}, \chi_p \mid m_1, q)$, flexible median')
+        cb2.ax.tick_params(direction='out')
+
+    figs = {}
+    for k, ((mr, qr), f, g) in enumerate(zip(regions, np.moveaxis(Df, 1, 0), np.moveaxis(Dg, 1, 0))):
+        fig, a2 = base(k)
+        spec = fig.add_gridspec(1, 1, **right)[0, 0]
+        ax_m, pcs = marginal_block(fig, spec, f, g, mr, qr, snorm, fontsize=11, prefix=f'{k + 1}: ')
+        for (m, q), y in (((mr[1], qr[1]), 1.), ((mr[1], qr[0]), 0.)):   # the box's right corners to the panel's left
+            fig.add_artist(ConnectionPatch((m, q), (0., y), coordsA='data', coordsB='axes fraction', axesA=a2,
+                                           axesB=ax_m, color='k', lw=1.2, zorder=5))
+        colourbar(fig, ax_m, ax_m, pcs)
+        figs[f'_{k + 1}'] = fig
+    fig, _ = base()
+    gr = fig.add_gridspec(2, 2, hspace=0.1, wspace=0.1, **right)
+    slots = sorted(range(len(regions)), key=lambda k: (-regions[k][1][0], regions[k][0][0]))   # q ~ 1 on top
+    mains = {}
+    for slot, k in enumerate(slots):
+        (mr, qr), f, g = regions[k], Df[:, k], Dg[:, k]
+        mains[slot], pcs = marginal_block(fig, gr[slot // 2, slot % 2], f, g, mr, qr, snorm, ylabel=slot % 2 == 0,
+                                          fontsize=7, xlabel=slot // 2 == 1, prefix=f'{k + 1}: ')
+    colourbar(fig, mains[1], mains[3], pcs)
+    figs[''] = fig
+    return figs
 
 
 def feature_masses():
@@ -1193,7 +1218,8 @@ def main():
         plot_style.save(spin_peaks_figure(slices=True), 'spin_peak_regions_slices')
         plot_style.save(spin_peaks_figure(marginals=True), 'spin_peak_regions_marginals')
     if args.what in ('talk', 'all'):
-        plot_style.save(talk_figure(R['ppc_gwtc5_k10']), 'mass_spin_zoom_talk')
+        for sfx, fig in talk_figures(R['ppc_gwtc5_k10']).items():
+            plot_style.save(fig, f'mass_spin_zoom_talk{sfx}')
         plt.rcParams.update(SMALL_RC)
     if args.what in ('book', 'all'):
         plot_style.save(bookkeeping_figure(), 'peak_bookkeeping')
