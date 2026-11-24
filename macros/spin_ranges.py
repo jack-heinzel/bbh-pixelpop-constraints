@@ -17,6 +17,11 @@ normalization). Flexible: of the joint log density F(ln m1, q, chi_eff, chi_p) (
 N(0, 2) (pixelpop's coupling_prior); \\spinAmpFlex. Gaussian: of each parameter field over (ln m1, q), in its own units
 (mu_eff, mu_p: chi; SdEff, SdP: ln sd, so a fractional width change), prior lnsigma ~ N(ln 0.1, 1) for the means and
 N(ln 0.5, 1) for the ln sd (model.GAUSS_LNSIGMA_CENTRES); \\spinAmp{MuEff,MuP,SdEff,SdP}Gauss.
+Jumps (user, 2026-11-24): from the empirical-Bayes prior draws (macros/spin_prior.py: fresh white sites, each
+posterior draw's kernel hyperparameters), the per-cell mean chi_p difference between the 21 Msun feature (q = 0.5)
+and the 33 Msun peak (q = 0.9), mu(21, 0.5) - mu(33, 0.9): its 90% interval (\\spinJump{suffix}) and the probability
+that |difference| >= JUMP (0.24 = 0.54 - 0.30, the rise a pure 2G+1G population at 21 Msun would need;
+\\spinJumpP{suffix}, percent). Free of the range-amplitude degeneracy: it is the field's own variation, in chi_p.
 Correlations: the Matern correlation of the field (Flexible) or of mu_chi_p (Gaussian) between two feature locations
 along one axis, per draw: \\spinCorr{TenTwenty,TwentyThirtyFive,ThirtyFiveSixty}{suffix} along ln m1 (feature masses
 10, 21, 33, 59 Msun) and \\spinCorrQ{suffix} between q = 0.5 and q = 0.9. Continuum Matern, ignoring the lattice and
@@ -67,6 +72,21 @@ def corr_lines(sfx, rho_m, rho_q, nu):
     return out
 
 
+JUMP = 0.24
+JUMP_AT = ((21., 0.5), (33., 0.9))
+
+
+def jump_lines(run, sfx):
+    from peak_fits import pct
+    qc = 0.5 * (A.q_edges[1:] + A.q_edges[:-1])
+    (ma, qa), (mb, qb) = JUMP_AT
+    ix = lambda m, q: (int(np.argmin(abs(A.m_c - m))), int(np.argmin(abs(qc - q))))
+    M = np.load(os.path.join(REPO, 'results', 'post_processing', f'{run}_spin_prior.npz'))['MOM'][..., 2].astype(float)
+    dd = M[(slice(None),) + ix(ma, qa)] - M[(slice(None),) + ix(mb, qb)]
+    return [rf'\newcommand{{\spinJump{sfx}}}{{{fmt(dd)}}}',
+            rf'\newcommand{{\spinJumpP{sfx}}}{{{pct(np.mean(np.abs(dd) >= JUMP))}}}']
+
+
 def main():
     lines = ['% Spin-field smoothing: Matern practical ranges in axis units (ln m1, q, chi_eff, chi_p) and smoothness nu,'
              ' median and 90% (macros/spin_ranges.py); prior: ln rho uniform over [0, ln 100] bins (median 10 bins,'
@@ -95,6 +115,7 @@ def main():
                 lines.append(rf'\newcommand{{\spinAmp{tex}{sfx}}}{{{fmt(amp[:, A.GP.index(name)])}}}')
             i = A.GP.index('mu_p')
             lines += corr_lines(sfx, R[:, i, 0], R[:, i, 1], nu)
+        lines += jump_lines(run, sfx)
     text = '\n'.join(lines) + '\n'
     for path in (os.path.join(HERE, 'spin_ranges.tex'), os.path.join(REPO, 'draft', 'macros', 'spin_ranges.tex')):
         with open(path, 'w') as f:

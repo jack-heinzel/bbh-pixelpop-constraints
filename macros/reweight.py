@@ -13,6 +13,8 @@ population, the number of events in each mass feature, and PE against reweighted
            plots/reweighted_membership_gauss{,_gaussian}.pdf (membership by the global fit's Gaussians, gauss_kernel)
     python macros/reweight.py membership [<run> ...] (the last figure only)
     python macros/reweight.py arc [<run> ...]        (the 2G+1G spin test: plots/reweighted_spin_arc{,_gaussian}.pdf)
+    python macros/reweight.py chip [<run> ...]       (the Spinformation events' PE, reweighted and conditional-prior chi_p:
+                                                      plots/reweighted_chip_informative{,_gaussian}.pdf)
 
 Weights. For posterior draw Lambda_n, the model's own per-sample event weights (model.setup_model(record_weights=True),
 the draw's latent sites substituted, in analysis.load_light's draw order as macros/mc_systematics.py),
@@ -559,6 +561,130 @@ def arc_figure(d, Pbar, label):
     return fig, out
 
 
+# ---------------------------------------------------------- chi_p against its prior conditioned on (chi_eff, q)
+A_MAX = 0.99                                       # PE prior: isotropic spins, magnitudes uniform on [0, A_MAX]
+COND_Q_EDGES = np.linspace(0.05, 1., 39)           # library q bins
+COND_N = 400000                                    # library spin draws per q bin
+CHIP_BINS = np.linspace(0., 1., 41)
+
+
+def chip_library(seed=0):
+    """Per q bin of COND_Q_EDGES: (chi_eff, chi_p) of COND_N isotropic, uniform-magnitude spin draws at the bin centre,
+    sorted by chi_eff, so p(chi_p | chi_eff, q) under the PE prior is a window in chi_eff."""
+    rng = np.random.default_rng(seed)
+    lib = []
+    for q in 0.5 * (COND_Q_EDGES[1:] + COND_Q_EDGES[:-1]):
+        a1, a2 = rng.uniform(0, A_MAX, (2, COND_N))
+        c1, c2 = rng.uniform(-1, 1, (2, COND_N))
+        ce = (a1 * c1 + q * a2 * c2) / (1 + q)
+        cp = np.maximum(a1 * np.sqrt(1 - c1 ** 2), (3 + 4 * q) / (4 + 3 * q) * q * a2 * np.sqrt(1 - c2 ** 2))
+        o = np.argsort(ce)
+        lib.append((ce[o], cp[o]))
+    return lib
+
+
+def cond_prior_chip(lib, chi_eff, q, n_per=20, width=0.01, seed=1):
+    """Draws from pi(chi_p | chi_eff, q) under the PE prior, n_per for each (chi_eff, q) sample (Spinformation's
+    conditioned prior, Plunkett+ 2026, marginalized to chi_p): library spins at the nearest q bin with chi_eff within
+    +-width."""
+    rng = np.random.default_rng(seed)
+    k = np.clip(np.searchsorted(COND_Q_EDGES, q) - 1, 0, len(lib) - 1)
+    out = []
+    for kk, e in zip(k, chi_eff):
+        ce, cp = lib[kk]
+        lo, hi = np.searchsorted(ce, [e - width, e + width])
+        if hi <= lo:
+            continue
+        out.append(cp[rng.integers(lo, hi, n_per)])
+    return np.concatenate(out) if out else np.array([])
+
+
+def event_chip(d, lib, i, n=5000, seed=2):
+    """Event i: chi_p samples of the PE posterior, the reweighted posterior, and the conditional prior for each
+    ((chi_eff, q) from the PE, and from the reweighted posterior), and KL(PE chi_p || conditional prior) in bits."""
+    rng = np.random.default_rng(seed + i)
+    out = {}
+    for tag, w in (('pe', d['W_pe'][i]), ('rw', d['W'][i])):
+        j = rng.choice(len(w), n, p=w / w.sum())
+        out[tag] = d['chi_p'][i, j]
+        out[tag + '_prior'] = cond_prior_chip(lib, d['chi_eff'][i, j], d['mass_ratio'][i, j], seed=seed + i)
+    h = lambda x: np.histogram(x, CHIP_BINS)[0] + 0.5
+    p, r = h(out['pe']), h(out['pe_prior'])
+    p, r = p / p.sum(), r / r.sum()
+    out['kl'] = float(np.sum(p * np.log2(p / r)))
+    return out
+
+
+# Spinformation (Plunkett, Heinzel, Wolfe, Gerosa & Vitale 2026, arXiv:2610.18973), Table 1: KL_p, KL_eff [bits] of
+# the GWTC-5 BBHs with KL_p > 0.25 (component-spin information beyond (chi_eff, chi_p) and beyond chi_eff alone), plus
+# GW250114 from their text (KL_p = 0.08, ~2.2 bits beyond chi_eff). By the chain rule, KL_eff - KL_p ~ the information
+# carried by chi_p. Per-event values for the other events are not released; the table selects on KL_p, so events whose
+# extra information is all in chi_p (KL_eff > 0.25, KL_p < 0.25) are missing apart from GW250114.
+SPINFORMATION = {'GW231123_135430': (2.28, 3.85), 'GW241011_233834': (1.62, 2.69), 'GW191109_010717': (0.97, 1.29),
+                 'GW190517_055101': (0.59, 1.07), 'GW240920_124024': (0.53, 0.76), 'GW190412_053044': (0.37, 1.52),
+                 'GW191204_171526': (0.31, 0.40), 'GW230814_230901': (0.27, 1.12), 'GW231226_101520': (0.27, 0.48),
+                 'GW241225_042553': (0.26, 0.33), 'GW250114_082203': (0.08, 2.2)}
+CHIP_MIN_P = 0.3                                   # chip_figure: an event's feature is its most probable one above this
+
+
+def chip_figure(d, Pbar, label, lib=None):
+    """Population-reweighted against PE chi_p for the Spinformation events (user, 2026-11-24), grouped by feature
+    (most probable box membership above CHIP_MIN_P; else 'outside every feature'), in mass order: per event, the chi_p
+    prior conditioned on its PE (chi_eff, q) (grey, filled; isotropic spins, magnitudes uniform: what chi_p would be with
+    no information beyond chi_eff, Spinformation's reference), the PE posterior (black) and the reweighted posterior
+    (feature colour), annotated with Spinformation's KL_eff - KL_p (and KL_eff, KL_p), and the chi_p a 2G primary of
+    spin CHI_F would have at the event's median (chi_eff, q) (dotted, where defined)."""
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    from paper_figs import LEG, TWO_COL, feature_masses
+    fx = feature_masses()
+    lib = lib or chip_library()
+    names = [str(n) for n in d['names']]
+    order = sorted(FEATURES, key=lambda f: FEATURES[f][0][0])
+    picks = []
+    for ev, (klp, kle) in SPINFORMATION.items():
+        i = [j for j, n in enumerate(names) if ev in n][0]
+        k = int(np.argmax(Pbar[i]))
+        f = list(FEATURES)[k] if Pbar[i, k] > CHIP_MIN_P else ODD
+        picks.append(((order + [ODD]).index(f), -(kle - klp), f, i, klp, kle))
+    picks.sort()
+    ncol = 3
+    nrow = int(np.ceil(len(picks) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(TWO_COL, 1.3 * nrow + 0.45), sharex=True)
+    axes = axes.ravel()
+    for ax, (_, _, f, i, klp, kle) in zip(axes, picks):
+        c = ODD_COLOUR if f == ODD else FEATURE_COLOURS[f]
+        o = event_chip(d, lib, i)
+        ax.hist(o['pe_prior'], CHIP_BINS, density=True, color='0.85', lw=0)
+        ax.hist(o['pe'], CHIP_BINS, density=True, histtype='step', color='k', lw=1.0)
+        ax.hist(o['rw'], CHIP_BINS, density=True, histtype='step', color=c, lw=1.3)
+        ce = weighted_quantiles(d['chi_eff'][i:i + 1], d['W_pe'][i:i + 1], [0.5])[0, 0]
+        qq = weighted_quantiles(d['mass_ratio'][i:i + 1], d['W_pe'][i:i + 1], [0.5])[0, 0]
+        x2 = CHI_F ** 2 - ((1 + qq) * ce) ** 2
+        if x2 > 0:
+            ax.axvline(np.sqrt(x2), color='k', ls=':', lw=0.8)
+        where = 'outside every feature' if f == ODD else rf'${fx[f]}\,\textrm{{M}}_\odot$, $P = {Pbar[i, list(FEATURES).index(f)]:.2f}$'
+        ax.text(0.97, 0.95, short_name(d['names'][i]) + '\n' + where + '\n'
+                + rf'$\chi_\mathrm{{p}}$: {kle - klp:.2f} bits ({kle:.2f} $-$ {klp:.2f})' + '\n'
+                + rf'$\chi_\mathrm{{eff}} = {ce:.2f}$, $q = {qq:.2f}$', transform=ax.transAxes, ha='right', va='top',
+                fontsize=5.3, bbox=dict(fc='w', ec='none', alpha=0.8, pad=1), zorder=10)
+        ax.set_yticks([]); ax.set_xlim(0, 1); ax.set_ylim(0, ax.get_ylim()[1] * 1.45)
+    for ax in axes[len(picks):]:
+        ax.axis('off')
+    for ax in axes[(nrow - 1) * ncol:]:
+        ax.set_xlabel(r'$\chi_\mathrm{p}$')
+    for j in range(max(0, len(picks) - ncol), len(picks)):
+        axes[j].tick_params(labelbottom=True)
+        axes[j].set_xlabel(r'$\chi_\mathrm{p}$')
+    h = [Patch(color='0.85'), Line2D([], [], color='k'), Line2D([], [], color='0.4', lw=1.3),
+         Line2D([], [], color='k', ls=':')]
+    fig.legend(h, [r'prior given $(\chi_\mathrm{eff}, q)$', 'PE', f'reweighted ({label}; feature colour)',
+                   rf'2G primary, $\chi_1 = {CHI_F:g}$'], loc='upper center', ncol=4, **LEG)
+    fig.tight_layout(rect=(0, 0, 1, 1 - 0.3 / fig.get_figheight())); fig.subplots_adjust(hspace=0.12, wspace=0.05)
+    return fig
+
+
 CONTOUR_GRIDS = {'arc': (('xarc', np.linspace(-1.2, 1.2, 97), False), ('chi_p', np.linspace(0., 1., 51), False)),
                  'mass': (('mass_1', np.geomspace(3., 200., 121), True), ('mass_ratio', np.linspace(0., 1., 61), False)),
                  'spin': (('chi_eff', np.linspace(-1., 1., 101), False), ('chi_p', np.linspace(0., 1., 51), False))}
@@ -638,6 +764,23 @@ def gauss_kernel(d, run):
         z2 = ((m1 - mu) / sg) ** 2 + ((q - mq) / sq) ** 2
         K.append(np.nan_to_num(np.exp(-0.5 * z2), nan=0.))
     return np.stack(K, -1).astype(np.float32), fits
+
+
+def chip(runs):
+    """chip_figure -> plots/reweighted_chip_informative{,_gaussian}.pdf."""
+    os.environ.setdefault('JAX_PLATFORMS', 'cpu')
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import plot_style
+    from paper_figs import SMALL_RC
+    plot_style.apply(); plt.rcParams.update(SMALL_RC)
+    lib = chip_library()
+    for run in runs:
+        d = load(run)
+        _, Pbar, _ = counts_table(d)
+        sfx = '' if run == 'ppc_gwtc5_k10' else '_gaussian'
+        plot_style.save(chip_figure(d, Pbar, MODEL_LABELS[run], lib), f'reweighted_chip_informative{sfx}')
 
 
 def arc(runs):
@@ -725,7 +868,7 @@ def report(runs):
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('what', choices=('compute', 'report', 'membership', 'arc'))
+    ap.add_argument('what', choices=('compute', 'report', 'membership', 'arc', 'chip'))
     ap.add_argument('runs', nargs='*', default=list(RUNS))
     ap.add_argument('--n', type=int, default=None, help='compute: first N draws only (a test; written to --out)')
     ap.add_argument('--out', default=None)
@@ -733,6 +876,8 @@ if __name__ == '__main__':
     if a.what == 'compute':
         for run in a.runs:
             compute(run, n_max=a.n, path=a.out)
+    elif a.what == 'chip':
+        chip(a.runs)
     elif a.what == 'arc':
         arc(a.runs)
     elif a.what == 'membership':
