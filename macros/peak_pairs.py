@@ -1,7 +1,8 @@
 """Mass bookkeeping between the near-equal-mass peaks and the q ~ 0.5 peaks, per posterior draw, from the joint fits.
 
     python macros/peak_pairs.py [--modes]
-        -> macros/peak_pairs.tex, plots/compare_gwtc5_field_vs_gauss_k100_peak_pairs.pdf
+        -> macros/peak_pairs.tex, plots/compare_gwtc5_field_vs_gauss_k100_peak_pairs.pdf,
+           plots/compare_gwtc5_field_vs_gauss_k100_peak_pairs_q{,_ratio}.pdf (the mass-ratio test, mc_mass_ratio)
            (--modes: first recompute the fit-free modes, results/post_processing/<run>_peak_modes.npz; a few minutes)
 
 For each pair (lo, hi) = (10, 20), (35, 60) (user, 2026-10-26): the total mass of a binary at the lower peak,
@@ -105,6 +106,21 @@ def mc_total_mass(F, n=20000, seed=0, window=None):
     return out
 
 
+def mc_mass_ratio(A, B, n=20000, seed=1):
+    """<m_lo / m_hi> per draw (user, 2026-11-24): the mass ratio a binary would have if its primary came from the
+    higher peak and its secondary from the lower one, m_lo ~ N(mu_lo, sigma_lo), m_hi ~ N(mu_hi, sigma_hi), each
+    kept > 3 Msun (inverse CDF), drawn independently; joint_fits rows A (lower peak), B (higher peak) of the same
+    posterior draws. Compared with the higher peak's measured mean q (q_moments), it tests whether the q ~ 0.5 peaks'
+    secondaries sit where the near-equal-mass peaks are, without plotting p(m2 | m1) (which is p(q | m1) rescaled)."""
+    from scipy.special import ndtr, ndtri
+    rng = np.random.default_rng(seed)
+
+    def tn(mu, sig):
+        a = ndtr((3. - mu) / sig)
+        return mu + sig * ndtri(a + (1 - a) * rng.random(n))
+    return np.array([np.mean(tn(a[1], a[2]) / tn(b[1], b[2])) for a, b in zip(A, B)])
+
+
 def pair_stats(run, lo, hi):
     """Per-draw retained fraction (mean q and mu_q; mean: mu_hi over the mean total mass of binaries drawn from the
     fitted lower peak, mc_total_mass), R and location ratio, for draws with both peaks."""
@@ -117,6 +133,8 @@ def pair_stats(run, lo, hi):
     out = {'retained': B[:, 1] / M, 'retained_muq': B[:, 1] / M_muq, 'R': M / B[:, 1], 'loc': B[:, 1] / A[:, 1]}
     Mt = mc_total_mass(A)                                  # <M_lo> from binaries drawn from the fitted peak
     out.update(Mtot_mean=Mt, retained_mean=B[:, 1] / Mt)
+    q_pred, q_hi = mc_mass_ratio(A, B), q_moments(B)[0]                 # predicted against measured q of the hi peak
+    out.update(q_pred=q_pred, q_hi=q_hi, q_ratio=q_hi / q_pred)
     if os.path.exists(modes_path(run)):
         m = np.load(modes_path(run))
         Mt, mh = m[f'Mtot_{lo}'], m[f'm1_{hi}']
@@ -144,6 +162,11 @@ def write_tex(S):
             lines.append(rf'\newcommand{{\pair{tex}RetainedMean{suffix}}}{{{fmt(s["retained_mean"])}}}')
             lines.append(rf'\newcommand{{\pair{tex}QuantileRetainedMean{suffix}}}'
                          rf'{{{pct(np.mean(s["retained_mean"] < RETAINED))}}}')
+            lines.append(f'% mass ratio (user, 2026-11-24): QPred = <m_lo / m_hi> from the two fitted peaks (Monte Carlo),'
+                         f' QHi = the higher peak\'s measured mean q, QRatio = QHi / QPred, QRatioAbove = P(QRatio > 1) [%]')
+            for par, key in (('QPred', 'q_pred'), ('QHi', 'q_hi'), ('QRatio', 'q_ratio')):
+                lines.append(rf'\newcommand{{\pair{tex}{par}{suffix}}}{{{fmt(s[key])}}}')
+            lines.append(rf'\newcommand{{\pair{tex}QRatioAbove{suffix}}}{{{pct(np.mean(s["q_ratio"] > 1))}}}')
             if 'retained_mode' in s:
                 lines.append(f'% fit-free: modes of p(M | q band) and p(m1 | q band); {len(s["retained_mode"])} draws')
                 for par, key in (('MTotMode', 'Mtot_mode'), ('HiMode', 'hi_mode'), ('RetainedMode', 'retained_mode')):
@@ -189,6 +212,54 @@ def figure(S):
     plot_style.save(fig, NAME)
 
 
+def q_figures(S):
+    """The mass-ratio test (user, 2026-11-24), one column per pair, both spin models: (1) per draw, the higher
+    peak's measured mean q (x) against <m_lo / m_hi> from the fitted peaks (y), with y = x dashed; (2) the
+    histogram of their ratio, measured / predicted, against 1."""
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    import plot_style
+    from paper_figs import LEG, SMALL_RC, TWO_COL, feature_masses
+    plot_style.apply(); plt.rcParams.update(SMALL_RC)
+    fx = feature_masses()
+    handles = [Line2D([], [], color=c, marker='o', ls='', ms=3) for _, c in RUN_LABELS.values()]
+    labels = [l for l, _ in RUN_LABELS.values()]
+    pair_lab = lambda lo, hi: rf'${fx[lo]} \to {fx[hi]}\,\textrm{{M}}_\odot$'
+    # scatter
+    fig, axes = plt.subplots(1, len(PAIRS), figsize=(0.75 * TWO_COL, 0.36 * TWO_COL + 0.15))
+    for ax, (lo, hi) in zip(axes, PAIRS):
+        for run, (label, col) in RUN_LABELS.items():
+            s = S[run][(lo, hi)]
+            ax.scatter(s['q_hi'], s['q_pred'], s=2, color=col, alpha=0.25, lw=0, rasterized=True)
+            ax.plot(np.median(s['q_hi']), np.median(s['q_pred']), 'P', color=col, mec='k', mew=0.5, ms=7, zorder=5)
+        ax.plot([0, 1], [0, 1], 'k--', lw=0.8)
+        ax.set_xlim(0.25, 0.85); ax.set_ylim(0.25, 0.85); ax.set_aspect('equal')
+        ax.set_xlabel(rf'measured $\langle q \rangle_{{{fx[hi]}}}$')
+        ax.set_ylabel(rf'$\langle m_{{{fx[lo]}}} / m_{{{fx[hi]}}} \rangle$, fitted peaks')
+        ax.text(0.04, 0.95, pair_lab(lo, hi), transform=ax.transAxes, va='top')
+    fig.legend(handles + [Line2D([], [], color='k', ls='--', lw=0.8)], labels + ['$y = x$'], loc='upper center',
+               ncol=3, bbox_to_anchor=(0.5, 1.0), **LEG)
+    fig.tight_layout(rect=(0, 0, 1, 0.95))
+    plot_style.save(fig, NAME + '_q')
+    # ratio
+    fig, axes = plt.subplots(1, len(PAIRS), figsize=(0.75 * TWO_COL, 0.25 * TWO_COL + 0.3), sharey=True)
+    bins = np.linspace(0.4, 1.8, 57)
+    for ax, (lo, hi) in zip(axes, PAIRS):
+        for run, (label, col) in RUN_LABELS.items():
+            ax.hist(S[run][(lo, hi)]['q_ratio'], bins=bins, density=True, histtype='step', color=col, lw=1.3)
+        ax.axvline(1., color='k', ls='--', lw=0.8)
+        ax.set_xlim(bins[0], bins[-1]); ax.set_yticks([])
+        ax.set_xlabel(r'measured $\langle q \rangle$ / $\langle m_{\rm lo} / m_{\rm hi} \rangle$')
+        ax.text(0.04, 0.95, pair_lab(lo, hi), transform=ax.transAxes, va='top',
+                bbox=dict(fc='w', ec='none', alpha=0.85, pad=1))
+    axes[0].set_ylabel('density')
+    fig.legend([Line2D([], [], color=c) for _, c in RUN_LABELS.values()], labels, loc='upper center', ncol=2, **LEG)
+    fig.tight_layout(rect=(0, 0, 1, 0.93))
+    plot_style.save(fig, NAME + '_q_ratio')
+
+
 def main(modes=False):
     if modes:
         for run in RUN_NAMES:
@@ -203,8 +274,11 @@ def main(modes=False):
             if 'retained_mode' in s:
                 print(f'    fit-free: M_tot mode {fmt(s["Mtot_mode"])}, m1 mode {fmt(s["hi_mode"])}, retained '
                       f'{fmt(s["retained_mode"])}, P(< {RETAINED}) {np.mean(s["retained_mode"] < RETAINED):.2f}')
+            print(f'    mass ratio: <m_lo / m_hi> {fmt(s["q_pred"])}, measured <q>_hi {fmt(s["q_hi"])}, ratio '
+                  f'{fmt(s["q_ratio"])}, P(ratio > 1) {np.mean(s["q_ratio"] > 1):.2f}')
     write_tex(S)
     figure(S)
+    q_figures(S)
 
 
 if __name__ == '__main__':
