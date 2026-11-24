@@ -12,6 +12,7 @@ population, the number of events in each mass feature, and PE against reweighted
            plots/reweighted_membership_contours{,_gaussian}.pdf (the same with per-event contours),
            plots/reweighted_membership_gauss{,_gaussian}.pdf (membership by the global fit's Gaussians, gauss_kernel)
     python macros/reweight.py membership [<run> ...] (the last figure only)
+    python macros/reweight.py arc [<run> ...]        (the 2G+1G spin test: plots/reweighted_spin_arc{,_gaussian}.pdf)
 
 Weights. For posterior draw Lambda_n, the model's own per-sample event weights (model.setup_model(record_weights=True),
 the draw's latent sites substituted, in analysis.load_light's draw order as macros/mc_systematics.py),
@@ -474,7 +475,92 @@ def membership_figure(d, Pbar, label, contours=False, kernel=None, fits=None):
     return fig
 
 
-CONTOUR_GRIDS = {'mass': (('mass_1', np.geomspace(3., 200., 121), True), ('mass_ratio', np.linspace(0., 1., 61), False)),
+CHI_F = 0.69                                       # 2G primary spin (remnant of a near-equal-mass 1G merger)
+ARC_MIN_P = 0.5                                    # arc_figure: members with box P above this get a chi_1 interval
+ARC_MAX_SHOWN = 25                                 # ... at most this many (the narrowest PE intervals)
+ARC_INFORMATIVE = 0.4                              # PE chi_1 90% interval narrower than this: informative
+ARC_BAND = (0.55, 0.85)                            # shaded band around CHI_F
+
+
+def implied_chi1(d):
+    """The primary spin magnitude implied by (chi_eff, chi_p, q) for a nonspinning secondary,
+    chi_1 = sqrt[((1 + q) chi_eff)^2 + chi_p^2] (exact then: chi_eff = chi_1 cos(t) / (1 + q), chi_p = chi_1 sin(t))."""
+    return np.sqrt(((1 + d['mass_ratio']) * d['chi_eff']) ** 2 + d['chi_p'] ** 2)
+
+
+def arc_figure(d, Pbar, label):
+    """The 2G+1G spin test per feature (user, 2026-11-24). Columns: features by mass. Top: each member's reweighted
+    90% contour in ((1 + q) chi_eff, chi_p), coloured by box membership (MEMBER_CMAP); an isotropic 2G primary of spin
+    CHI_F with a nonspinning secondary lies on the arc of radius CHI_F (band: ARC_BAND). Bottom: the implied chi_1
+    (implied_chi1) of the members with P > ARC_MIN_P, at most ARC_MAX_SHOWN of them (the narrowest PE intervals),
+    ordered by reweighted median: PE 90% interval (grey, the data alone) and reweighted (colour; filled where CHI_F
+    is inside it). Text: membership-weighted fractions of events consistent with CHI_F (90%), for the PE and the
+    reweighted posteriors, and for the PE-informative members (PE interval < ARC_INFORMATIVE)."""
+    import matplotlib
+    import matplotlib.pyplot as plt
+    from paper_figs import TWO_COL, feature_masses
+    fx = feature_masses()
+    cmap = matplotlib.colors.LinearSegmentedColormap.from_list('member', plt.get_cmap(MEMBER_CMAP)(np.linspace(0.1, 0.95, 256)))
+    d = dict(d, chi1=implied_chi1(d), xarc=(1 + d['mass_ratio']) * d['chi_eff'])
+    rw = weighted_quantiles(d['chi1'], d['W'], [0.05, 0.5, 0.95])
+    pe = weighted_quantiles(d['chi1'], d['W_pe'], [0.05, 0.5, 0.95])
+    inside = lambda c: (c[:, 0] <= CHI_F) & (c[:, 2] >= CHI_F)
+    informative = (pe[:, 2] - pe[:, 0]) < ARC_INFORMATIVE
+    order = sorted(FEATURES, key=lambda f: FEATURES[f][0][0])
+    fig, axes = plt.subplots(2, len(order), figsize=(TWO_COL, 5.6), gridspec_kw=dict(height_ratios=(0.75, 1.5)))
+    tt = np.linspace(0, np.pi, 200)
+    out = {}
+    for col, name in zip(axes.T, order):
+        k = list(FEATURES).index(name)
+        P = Pbar[:, k]
+        ax = col[0]
+        ax.fill_between(np.concatenate([ARC_BAND[1] * np.cos(tt), ARC_BAND[0] * np.cos(tt[::-1])]),
+                        np.concatenate([ARC_BAND[1] * np.sin(tt), ARC_BAND[0] * np.sin(tt[::-1])]), color='0.88',
+                        lw=0, zorder=0)
+        ax.plot(CHI_F * np.cos(tt), CHI_F * np.sin(tt), 'k--', lw=0.8, zorder=1)
+        for i in np.argsort(P):
+            if P[i] > 0.1:
+                event_contour(ax, d, i, d['W'], 'arc', colors=[cmap(P[i])], linewidths=0.3 + 0.7 * P[i],
+                              alpha=0.35 + 0.6 * P[i], zorder=2 + P[i])
+        ax.set_xlim(-0.8, 1.0); ax.set_ylim(0, 1); ax.set_aspect('equal')
+        ax.set_xlabel(r'$(1 + q)\,\chi_\mathrm{eff}$', labelpad=1)
+        ax.set_title(rf'${fx[name]}\,\textrm{{M}}_\odot$ feature', fontsize=7, pad=3)
+        ax = col[1]
+        mem = np.where(P > ARC_MIN_P)[0]
+        mem = mem[np.argsort(pe[mem, 2] - pe[mem, 0])][:ARC_MAX_SHOWN]                 # the most informative
+        mem = mem[np.argsort(rw[mem, 1])]
+        ok = inside(rw[mem])
+        ax.axvspan(*ARC_BAND, color='0.88', lw=0, zorder=0); ax.axvline(CHI_F, color='k', ls='--', lw=0.8)
+        for yy, (i, good) in enumerate(zip(mem, ok)):
+            c = cmap(P[i])
+            ax.plot([pe[i, 0], pe[i, 2]], [yy + 0.25, yy + 0.25], color='0.6', lw=0.7)
+            ax.plot(pe[i, 1], yy + 0.25, '|', color='0.45', ms=3.5, mew=0.7)
+            ax.plot([rw[i, 0], rw[i, 2]], [yy, yy], color=c, lw=1.1)
+            ax.plot(rw[i, 1], yy, 'o', ms=3.2, mfc=c if good else 'w', mec=c, mew=0.8)
+            ax.text(1.01, yy, short_name(d['names'][i]).split('_')[0][2:], fontsize=4.5, va='center', ha='left',
+                    color='k' if good else '0.55', transform=ax.get_yaxis_transform())
+        ax.set_xlim(0, 1.05); ax.set_ylim(-0.8, max(len(mem), 1)); ax.set_yticks([])
+        ax.set_xlabel(r'implied $\chi_1$', labelpad=1)
+        w = P / P.sum()
+        f_pe, f_rw = (w * inside(pe)).sum(), (w * inside(rw)).sum()
+        n_inf = (P * informative).sum()
+        f_inf = (P * informative * inside(pe)).sum() / max(n_inf, 1e-9)
+        out[name] = dict(N=P.sum(), f_pe=f_pe, f_rw=f_rw, n_inf=n_inf, f_inf=f_inf)
+        txt = (rf'consistent with ${CHI_F:g}$:' + '\n' + rf'PE {f_pe:.0%}, reweighted {f_rw:.0%}' + '\n'
+               + rf'PE-informative: {f_inf:.0%} of {n_inf:.1f}').replace('%', r'\%')
+        ax.text(0.02, 1.01, txt, transform=ax.transAxes, fontsize=5.5, va='bottom', ha='left')
+    axes[0, 0].set_ylabel(r'$\chi_\mathrm{p}$')
+    for ax in axes[0, 1:]:
+        ax.tick_params(labelleft=False)
+    axes[1, 0].set_ylabel(rf'members ($P_{{ik}} > {ARC_MIN_P:g}$)')
+    fig.text(0.5, 0.995, rf'dashed: $\chi_1 = {CHI_F:g}$ (2G primary, nonspinning secondary); contours and coloured bars: '
+             rf'population-reweighted ({label}); grey: PE', ha='center', va='top', fontsize=6)
+    fig.tight_layout(rect=(0, 0, 1, 0.975)); fig.subplots_adjust(hspace=0.32, wspace=0.3)
+    return fig, out
+
+
+CONTOUR_GRIDS = {'arc': (('xarc', np.linspace(-1.2, 1.2, 97), False), ('chi_p', np.linspace(0., 1., 51), False)),
+                 'mass': (('mass_1', np.geomspace(3., 200., 121), True), ('mass_ratio', np.linspace(0., 1., 61), False)),
                  'spin': (('chi_eff', np.linspace(-1., 1., 101), False), ('chi_p', np.linspace(0., 1., 51), False))}
 CRED = 0.9                                         # credible level of the per-event contours
 
@@ -554,6 +640,26 @@ def gauss_kernel(d, run):
     return np.stack(K, -1).astype(np.float32), fits
 
 
+def arc(runs):
+    """Only arc_figure -> plots/reweighted_spin_arc{,_gaussian}.pdf, and the per-feature fractions printed."""
+    os.environ.setdefault('JAX_PLATFORMS', 'cpu')
+    import matplotlib
+    matplotlib.use('Agg')
+    import matplotlib.pyplot as plt
+    import plot_style
+    from paper_figs import SMALL_RC
+    plot_style.apply(); plt.rcParams.update(SMALL_RC)
+    for run in runs:
+        d = load(run)
+        _, Pbar, _ = counts_table(d)
+        fig, out = arc_figure(d, Pbar, MODEL_LABELS[run])
+        for name, o in out.items():
+            print(f'{run} {name:>2} Msun: sum P {o["N"]:.1f}; consistent with chi_1 = {CHI_F} (90%): PE {o["f_pe"]:.2f}, '
+                  f'reweighted {o["f_rw"]:.2f}; PE-informative {o["n_inf"]:.1f} events, of which consistent {o["f_inf"]:.2f}')
+        sfx = '' if run == 'ppc_gwtc5_k10' else '_gaussian'
+        plot_style.save(fig, f'reweighted_spin_arc{sfx}')
+
+
 def membership(runs):
     """Only membership_figure -> plots/reweighted_membership{,_gaussian}.pdf."""
     os.environ.setdefault('JAX_PLATFORMS', 'cpu')
@@ -619,7 +725,7 @@ def report(runs):
 
 if __name__ == '__main__':
     ap = argparse.ArgumentParser()
-    ap.add_argument('what', choices=('compute', 'report', 'membership'))
+    ap.add_argument('what', choices=('compute', 'report', 'membership', 'arc'))
     ap.add_argument('runs', nargs='*', default=list(RUNS))
     ap.add_argument('--n', type=int, default=None, help='compute: first N draws only (a test; written to --out)')
     ap.add_argument('--out', default=None)
@@ -627,6 +733,8 @@ if __name__ == '__main__':
     if a.what == 'compute':
         for run in a.runs:
             compute(run, n_max=a.n, path=a.out)
+    elif a.what == 'arc':
+        arc(a.runs)
     elif a.what == 'membership':
         membership(a.runs)
     else:
