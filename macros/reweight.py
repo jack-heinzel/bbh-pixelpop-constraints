@@ -14,7 +14,8 @@ population, the number of events in each mass feature, and PE against reweighted
     python macros/reweight.py membership [<run> ...] (the last figure only)
     python macros/reweight.py arc [<run> ...]        (the 2G+1G spin test: plots/reweighted_spin_arc{,_gaussian}.pdf)
     python macros/reweight.py chip [<run> ...]       (the Spinformation events' PE, reweighted and conditional-prior chi_p:
-                                                      plots/reweighted_chip_informative{,_gaussian}.pdf)
+                                                      plots/reweighted_chip_informative{,_gaussian}.pdf; the 10 most
+                                                      probable 21 Msun members: reweighted_chip_members20{,_gaussian}.pdf)
 
 Weights. For posterior draw Lambda_n, the model's own per-sample event weights (model.setup_model(record_weights=True),
 the draw's latent sites substituted, in analysis.load_light's draw order as macros/mc_systematics.py),
@@ -766,6 +767,48 @@ def gauss_kernel(d, run):
     return np.stack(K, -1).astype(np.float32), fits
 
 
+def chip_members_figure(d, Pbar, label, feature='20', n=10, lib=None):
+    """chi_p of the n most probable members of a feature (box P; user, 2026-11-24), as chip_figure: PE (black),
+    population-reweighted (feature colour), prior given the event's PE (chi_eff, q) (grey), and the chi_p of a 2G
+    primary of spin CHI_F at the event's median (chi_eff, q) (dotted). Spinformation's KL_eff - KL_p where published."""
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+    from paper_figs import LEG, TWO_COL, feature_masses
+    fx = feature_masses()
+    lib = lib or chip_library()
+    k = list(FEATURES).index(feature)
+    c = FEATURE_COLOURS[feature]
+    top = np.argsort(-Pbar[:, k])[:n]
+    ncol = 5
+    nrow = int(np.ceil(n / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(TWO_COL, 1.35 * nrow + 0.45), sharex=True)
+    for ax, i in zip(axes.ravel(), top):
+        o = event_chip(d, lib, i)
+        ax.hist(o['pe_prior'], CHIP_BINS, density=True, color='0.85', lw=0)
+        ax.hist(o['pe'], CHIP_BINS, density=True, histtype='step', color='k', lw=1.0)
+        ax.hist(o['rw'], CHIP_BINS, density=True, histtype='step', color=c, lw=1.3)
+        ce = weighted_quantiles(d['chi_eff'][i:i + 1], d['W_pe'][i:i + 1], [0.5])[0, 0]
+        qq = weighted_quantiles(d['mass_ratio'][i:i + 1], d['W_pe'][i:i + 1], [0.5])[0, 0]
+        x2 = CHI_F ** 2 - ((1 + qq) * ce) ** 2
+        if x2 > 0:
+            ax.axvline(np.sqrt(x2), color='k', ls=':', lw=0.8)
+        name = short_name(d['names'][i])
+        kl = next((f'\n{v[1] - v[0]:.2f} bits' for e, v in SPINFORMATION.items() if e in str(d['names'][i])), '')
+        ax.text(0.97, 0.95, name.split('_')[0] + '\n' + rf'$P = {Pbar[i, k]:.2f}$' + '\n'
+                + rf'$\chi_\mathrm{{eff}} = {ce:.2f}$' + '\n' + rf'$q = {qq:.2f}$' + kl, transform=ax.transAxes,
+                ha='right', va='top', fontsize=5.3, bbox=dict(fc='w', ec='none', alpha=0.8, pad=1), zorder=10)
+        ax.set_yticks([]); ax.set_xlim(0, 1); ax.set_ylim(0, ax.get_ylim()[1] * 1.5)
+        ax.set_xticks([0.25, 0.5, 0.75])
+    for ax in axes[-1]:
+        ax.set_xlabel(r'$\chi_\mathrm{p}$')
+    h = [Patch(color='0.85'), Line2D([], [], color='k'), Line2D([], [], color=c, lw=1.3), Line2D([], [], color='k', ls=':')]
+    fig.legend(h, [r'prior given $(\chi_\mathrm{eff}, q)$', 'PE', f'reweighted ({label})',
+                   rf'2G primary, $\chi_1 = {CHI_F:g}$'], loc='upper center', ncol=4, **LEG)
+    fig.tight_layout(rect=(0, 0, 1, 1 - 0.3 / fig.get_figheight())); fig.subplots_adjust(hspace=0.1, wspace=0.05)
+    return fig
+
+
 def chip(runs):
     """chip_figure -> plots/reweighted_chip_informative{,_gaussian}.pdf."""
     os.environ.setdefault('JAX_PLATFORMS', 'cpu')
@@ -781,6 +824,7 @@ def chip(runs):
         _, Pbar, _ = counts_table(d)
         sfx = '' if run == 'ppc_gwtc5_k10' else '_gaussian'
         plot_style.save(chip_figure(d, Pbar, MODEL_LABELS[run], lib), f'reweighted_chip_informative{sfx}')
+        plot_style.save(chip_members_figure(d, Pbar, MODEL_LABELS[run], lib=lib), f'reweighted_chip_members20{sfx}')
 
 
 def arc(runs):
