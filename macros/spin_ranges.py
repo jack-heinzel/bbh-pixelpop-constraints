@@ -12,6 +12,11 @@ A.dq in q, 0.02 in chi_eff, 0.01 in chi_p).
   property together. Macros \\spinRange{Lnm,Q,ChiEff,ChiP}Flex, \\spinNuFlex.
   Gaussian: one field per Gaussian parameter over (ln m1, q) ('log_ranges_gauss', A.GP order), shared nu. Macros
   \\spinRange{MuEff,MuP,SdEff,SdP}{Lnm,Q}Gauss, \\spinNuGauss.
+Amplitudes: sigma = exp(lnsigma), the field's standard deviation averaged over its grid sites (matern_spectrum's
+normalization). Flexible: of the joint log density F(ln m1, q, chi_eff, chi_p) (natural-log units), prior lnsigma ~
+N(0, 2) (pixelpop's coupling_prior); \\spinAmpFlex. Gaussian: of each parameter field over (ln m1, q), in its own units
+(mu_eff, mu_p: chi; SdEff, SdP: ln sd, so a fractional width change), prior lnsigma ~ N(ln 0.1, 1) for the means and
+N(ln 0.5, 1) for the ln sd (model.GAUSS_LNSIGMA_CENTRES); \\spinAmp{MuEff,MuP,SdEff,SdP}Gauss.
 Correlations: the Matern correlation of the field (Flexible) or of mu_chi_p (Gaussian) between two feature locations
 along one axis, per draw: \\spinCorr{TenTwenty,TwentyThirtyFive,ThirtyFiveSixty}{suffix} along ln m1 (feature masses
 10, 21, 33, 59 Msun) and \\spinCorrQ{suffix} between q = 0.5 and q = 0.9. Continuum Matern, ignoring the lattice and
@@ -66,7 +71,9 @@ def main():
     lines = ['% Spin-field smoothing: Matern practical ranges in axis units (ln m1, q, chi_eff, chi_p) and smoothness nu,'
              ' median and 90% (macros/spin_ranges.py); prior: ln rho uniform over [0, ln 100] bins (median 10 bins,'
              ' 0.42 in ln m1, 0.1 in q). Corr: field correlation between feature masses 10, 21, 33, 59 Msun along ln m1'
-             ' (Flexible: the joint spin field; Gaussian: mu_chi_p), CorrQ: between q = 0.5 and 0.9']
+             ' (Flexible: the joint spin field; Gaussian: mu_chi_p), CorrQ: between q = 0.5 and 0.9; Amp: field sd'
+             ' (Flexible: of the log density, prior lnsigma ~ N(0, 2); Gaussian: in chi for the means, prior median 0.1,'
+             ' in ln sd for the widths, prior median 0.5)']
     for run, sfx in RUN_NAMES.items():
         lines.append(f'% {run}')
         if sfx == 'Flex':
@@ -74,6 +81,7 @@ def main():
             for j, ax in enumerate(UNITS):
                 lines.append(rf'\newcommand{{\spinRange{ax}{sfx}}}{{{fmt(R[:, j] * UNITS[ax])}}}')
             lines.append(rf'\newcommand{{\spinNu{sfx}}}{{{fmt(nu)}}}')
+            lines.append(rf'\newcommand{{\spinAmp{sfx}}}{{{fmt(np.exp(load(run, "lnsigma_spin")))}}}')
             lines += corr_lines(sfx, R[:, 0], R[:, 1], nu)
         else:
             R, nu = np.exp(load(run, 'log_ranges_gauss')), np.exp(load(run, 'log_nu_gauss'))
@@ -82,6 +90,9 @@ def main():
                 for j, ax in enumerate(('Lnm', 'Q')):
                     lines.append(rf'\newcommand{{\spinRange{tex}{ax}{sfx}}}{{{fmt(R[:, i, j] * UNITS[ax])}}}')
             lines.append(rf'\newcommand{{\spinNu{sfx}}}{{{fmt(nu)}}}')
+            amp = np.exp(load(run, 'lnsigma_gauss'))
+            for name, tex in GAUSS_TEX.items():
+                lines.append(rf'\newcommand{{\spinAmp{tex}{sfx}}}{{{fmt(amp[:, A.GP.index(name)])}}}')
             i = A.GP.index('mu_p')
             lines += corr_lines(sfx, R[:, i, 0], R[:, i, 1], nu)
     text = '\n'.join(lines) + '\n'
