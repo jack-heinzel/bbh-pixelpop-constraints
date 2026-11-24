@@ -692,7 +692,7 @@ CONTOUR_GRIDS = {'arc': (('xarc', np.linspace(-1.2, 1.2, 97), False), ('chi_p', 
 CRED = 0.9                                         # credible level of the per-event contours
 
 
-def event_contour(ax, d, i, w, space, **kw):
+def event_contour(ax, d, i, w, space, cred=CRED, **kw):
     """Event i's CRED credible contour (highest-density region of a weighted 2D histogram, smoothed by 1.2 bins with
     reflection at the edges) in ``space`` ('mass': (ln m1, q), 'spin': (chi_eff, chi_p))."""
     from scipy.ndimage import gaussian_filter
@@ -703,7 +703,7 @@ def event_contour(ax, d, i, w, space, **kw):
     H = gaussian_filter(H, 1.2, mode='reflect')
     h = np.sort(H.ravel())[::-1]
     c = np.cumsum(h) / h.sum()
-    level = h[min(np.searchsorted(c, CRED), len(h) - 1)]
+    level = h[min(np.searchsorted(c, cred), len(h) - 1)]
     xc = 0.5 * (ex[1:] + ex[:-1]) if not logx else np.sqrt(ex[1:] * ex[:-1])
     ax.contour(xc, 0.5 * (ey[1:] + ey[:-1]), H.T, levels=[level], **kw)
 
@@ -767,6 +767,21 @@ def gauss_kernel(d, run):
     return np.stack(K, -1).astype(np.float32), fits
 
 
+CHIP_ALWAYS = ('GW241011',)                        # chip_members_figure: shown even outside the top n (user, 2026-11-24)
+
+
+def member_picks(d, Pbar, k, n):
+    """The n most probable members of feature k (box P), then any CHIP_ALWAYS event not among them."""
+    top = list(np.argsort(-Pbar[:, k])[:n])
+    names = [str(x) for x in d['names']]
+    return top + [i for e in CHIP_ALWAYS for i, x in enumerate(names) if e in x and i not in top]
+
+
+def rank_note(Pbar, k, i, n):
+    r = int(np.sum(Pbar[:, k] > Pbar[i, k])) + 1
+    return f' (rank {r})' if r > n else ''
+
+
 def chip_members_figure(d, Pbar, label, feature='20', n=10, lib=None):
     """chi_p of the n most probable members of a feature (box P; user, 2026-11-24), as chip_figure: PE (black),
     population-reweighted (feature colour), prior given the event's PE (chi_eff, q) (grey), and the chi_p of a 2G
@@ -779,10 +794,12 @@ def chip_members_figure(d, Pbar, label, feature='20', n=10, lib=None):
     lib = lib or chip_library()
     k = list(FEATURES).index(feature)
     c = FEATURE_COLOURS[feature]
-    top = np.argsort(-Pbar[:, k])[:n]
-    ncol = 5
-    nrow = int(np.ceil(n / ncol))
+    top = member_picks(d, Pbar, k, n)
+    ncol = 4
+    nrow = int(np.ceil(len(top) / ncol))
     fig, axes = plt.subplots(nrow, ncol, figsize=(TWO_COL, 1.35 * nrow + 0.45), sharex=True)
+    for ax in axes.ravel()[len(top):]:
+        ax.axis('off')
     for ax, i in zip(axes.ravel(), top):
         o = event_chip(d, lib, i)
         ax.hist(o['pe_prior'], CHIP_BINS, density=True, color='0.85', lw=0)
@@ -795,17 +812,60 @@ def chip_members_figure(d, Pbar, label, feature='20', n=10, lib=None):
             ax.axvline(np.sqrt(x2), color='k', ls=':', lw=0.8)
         name = short_name(d['names'][i])
         kl = next((f'\n{v[1] - v[0]:.2f} bits' for e, v in SPINFORMATION.items() if e in str(d['names'][i])), '')
-        ax.text(0.97, 0.95, name.split('_')[0] + '\n' + rf'$P = {Pbar[i, k]:.2f}$' + '\n'
+        ax.text(0.97, 0.95, name.split('_')[0] + '\n' + rf'$P = {Pbar[i, k]:.2f}$' + rank_note(Pbar, k, i, n) + '\n'
                 + rf'$\chi_\mathrm{{eff}} = {ce:.2f}$' + '\n' + rf'$q = {qq:.2f}$' + kl, transform=ax.transAxes,
                 ha='right', va='top', fontsize=5.3, bbox=dict(fc='w', ec='none', alpha=0.8, pad=1), zorder=10)
         ax.set_yticks([]); ax.set_xlim(0, 1); ax.set_ylim(0, ax.get_ylim()[1] * 1.5)
         ax.set_xticks([0.25, 0.5, 0.75])
-    for ax in axes[-1]:
-        ax.set_xlabel(r'$\chi_\mathrm{p}$')
+    for j in range(max(0, len(top) - ncol), len(top)):
+        axes.ravel()[j].tick_params(labelbottom=True)
+        axes.ravel()[j].set_xlabel(r'$\chi_\mathrm{p}$')
     h = [Patch(color='0.85'), Line2D([], [], color='k'), Line2D([], [], color=c, lw=1.3), Line2D([], [], color='k', ls=':')]
     fig.legend(h, [r'prior given $(\chi_\mathrm{eff}, q)$', 'PE', f'reweighted ({label})',
                    rf'2G primary, $\chi_1 = {CHI_F:g}$'], loc='upper center', ncol=4, **LEG)
     fig.tight_layout(rect=(0, 0, 1, 1 - 0.3 / fig.get_figheight())); fig.subplots_adjust(hspace=0.1, wspace=0.05)
+    return fig
+
+
+def chip_members_2d_figure(d, Pbar, label, feature='20', n=10):
+    """(chi_eff, chi_p) of the member_picks events (user, 2026-11-24): 50% and 90% contours of the PE (black) and the
+    population-reweighted posterior (feature colour), and the arc a 2G primary of spin CHI_F with a nonspinning
+    secondary traces over isotropic orientations, chi_p = sqrt(CHI_F^2 - ((1 + q) chi_eff)^2), at the event's PE median q
+    (dashed)."""
+    import matplotlib.pyplot as plt
+    from matplotlib.lines import Line2D
+    from paper_figs import LEG, TWO_COL
+    k = list(FEATURES).index(feature)
+    c = FEATURE_COLOURS[feature]
+    top = member_picks(d, Pbar, k, n)
+    ncol = 4
+    nrow = int(np.ceil(len(top) / ncol))
+    fig, axes = plt.subplots(nrow, ncol, figsize=(TWO_COL, 1.6 * nrow + 0.45), sharex=True, sharey=True)
+    for ax in axes.ravel()[len(top):]:
+        ax.axis('off')
+    for ax, i in zip(axes.ravel(), top):
+        for w, col, lw in ((d['W_pe'], 'k', 0.9), (d['W'], c, 1.2)):
+            for cred in (0.5, 0.9):
+                event_contour(ax, d, i, w, 'spin', cred=cred, colors=[col], linewidths=lw if cred == 0.9 else 0.6 * lw)
+        qq = weighted_quantiles(d['mass_ratio'][i:i + 1], d['W_pe'][i:i + 1], [0.5])[0, 0]
+        ce = np.linspace(-CHI_F, CHI_F, 400) / (1 + qq)
+        ax.plot(ce, np.sqrt(np.maximum(CHI_F ** 2 - ((1 + qq) * ce) ** 2, 0)), 'k--', lw=0.7)
+        name = short_name(d['names'][i])
+        kl = next((f'\n{v[1] - v[0]:.2f} bits' for e, v in SPINFORMATION.items() if e in str(d['names'][i])), '')
+        ax.text(0.03, 0.95, name.split('_')[0] + '\n' + rf'$P = {Pbar[i, k]:.2f}$' + rank_note(Pbar, k, i, n) + '\n'
+                + rf'$q = {qq:.2f}$' + kl, transform=ax.transAxes, ha='left', va='top', fontsize=5.3,
+                bbox=dict(fc='w', ec='none', alpha=0.8, pad=1), zorder=10)
+        ax.set_xlim(-0.6, 0.6); ax.set_ylim(0, 1)
+        ax.set_xticks([-0.4, 0., 0.4]); ax.set_yticks([0.25, 0.5, 0.75])
+    for j in range(max(0, len(top) - ncol), len(top)):
+        axes.ravel()[j].tick_params(labelbottom=True)
+        axes.ravel()[j].set_xlabel(r'$\chi_\mathrm{eff}$')
+    for ax in axes[:, 0]:
+        ax.set_ylabel(r'$\chi_\mathrm{p}$')
+    h = [Line2D([], [], color='k'), Line2D([], [], color=c, lw=1.2), Line2D([], [], color='k', ls='--', lw=0.7)]
+    fig.legend(h, ['PE', f'reweighted ({label})', rf'2G primary, $\chi_1 = {CHI_F:g}$, isotropic'],
+               loc='upper center', ncol=3, **LEG)
+    fig.tight_layout(rect=(0, 0, 1, 1 - 0.3 / fig.get_figheight())); fig.subplots_adjust(hspace=0.08, wspace=0.05)
     return fig
 
 
@@ -825,6 +885,7 @@ def chip(runs):
         sfx = '' if run == 'ppc_gwtc5_k10' else '_gaussian'
         plot_style.save(chip_figure(d, Pbar, MODEL_LABELS[run], lib), f'reweighted_chip_informative{sfx}')
         plot_style.save(chip_members_figure(d, Pbar, MODEL_LABELS[run], lib=lib), f'reweighted_chip_members20{sfx}')
+        plot_style.save(chip_members_2d_figure(d, Pbar, MODEL_LABELS[run]), f'reweighted_spin_members20{sfx}')
 
 
 def arc(runs):
